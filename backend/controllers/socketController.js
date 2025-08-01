@@ -181,7 +181,42 @@ class SocketController {
     // Handle seek to position
     socket.on('seekToPosition', async (position) => {
       try {
+        const logContext = logger.startCollection('seekToPosition-handler');
+        logger.collect(logContext, 'Seek to position requested:', position);
+        
+        // Get current playback state and autoplay setting
+        const playbackState = regionService.getPlaybackState();
+        const isPlaying = playbackState.isPlaying;
+        const isAutoplayEnabled = playbackState.autoplayEnabled;
+        
+        logger.collect(logContext, 'Current state:', 
+          `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
+        
+        // If currently playing, pause first
+        if (isPlaying) {
+          logger.collect(logContext, 'Pausing before seeking to position');
+          await reaperService.togglePlay(true); // Pause
+          
+          // Wait a short time for pause to take effect
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        // Send the seek command
+        logger.collect(logContext, 'Sending seek command for position:', position);
         await reaperService.seekToPosition(position);
+        
+        // If was playing and autoplay is enabled, resume playback
+        if (isPlaying && isAutoplayEnabled) {
+          logger.collect(logContext, 'Autoplay enabled, resuming playback');
+          
+          // Wait a short time for seek to take effect
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          await reaperService.togglePlay(false); // Resume
+        }
+        
+        // Flush logs
+        logger.flushLogs(logContext);
       } catch (error) {
         logger.error('Error seeking to position:', error);
       }
@@ -190,13 +225,54 @@ class SocketController {
     // Handle seek to region
     socket.on('seekToRegion', async (regionId) => {
       try {
+        const logContext = logger.startCollection('seekToRegion-handler');
+        logger.collect(logContext, 'Seek to region requested:', regionId);
+        
         const region = regionService.findRegionById(regionId);
         if (region) {
+          logger.collect(logContext, 'Found region:', 
+            `ID=${region.id}, Name=${region.name}, Start=${region.start}, End=${region.end}`);
+          
+          // Get current playback state and autoplay setting
+          const playbackState = regionService.getPlaybackState();
+          const isPlaying = playbackState.isPlaying;
+          const isAutoplayEnabled = playbackState.autoplayEnabled;
+          
+          logger.collect(logContext, 'Current state:', 
+            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
+          
+          // If currently playing, pause first
+          if (isPlaying) {
+            logger.collect(logContext, 'Pausing before seeking to region');
+            await reaperService.togglePlay(true); // Pause
+            
+            // Wait a short time for pause to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
           // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
           // This prevents issues with selection when regions are adjacent
           const positionWithOffset = region.start + 0.001;
+          
+          // Send the seek command
+          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
           await reaperService.seekToPosition(positionWithOffset);
+          
+          // If was playing and autoplay is enabled, resume playback
+          if (isPlaying && isAutoplayEnabled) {
+            logger.collect(logContext, 'Autoplay enabled, resuming playback');
+            
+            // Wait a short time for seek to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await reaperService.togglePlay(false); // Resume
+          }
+        } else {
+          logger.collect(logContext, 'Region not found:', regionId);
         }
+        
+        // Flush logs
+        logger.flushLogs(logContext);
       } catch (error) {
         logger.error('Error seeking to region:', error);
       }
@@ -205,12 +281,53 @@ class SocketController {
     // Handle seek to beginning of current region
     socket.on('seekToCurrentRegionStart', async () => {
       try {
+        const logContext = logger.startCollection('seekToCurrentRegionStart-handler');
+        logger.collect(logContext, 'Seek to current region start requested');
+        
         const currentRegion = regionService.getCurrentRegion();
         if (currentRegion) {
+          logger.collect(logContext, 'Found current region:', 
+            `ID=${currentRegion.id}, Name=${currentRegion.name}, Start=${currentRegion.start}, End=${currentRegion.end}`);
+          
+          // Get current playback state and autoplay setting
+          const playbackState = regionService.getPlaybackState();
+          const isPlaying = playbackState.isPlaying;
+          const isAutoplayEnabled = playbackState.autoplayEnabled;
+          
+          logger.collect(logContext, 'Current state:', 
+            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
+          
+          // If currently playing, pause first
+          if (isPlaying) {
+            logger.collect(logContext, 'Pausing before seeking to current region start');
+            await reaperService.togglePlay(true); // Pause
+            
+            // Wait a short time for pause to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
           // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
           const positionWithOffset = currentRegion.start + 0.001;
+          
+          // Send the seek command
+          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
           await reaperService.seekToPosition(positionWithOffset);
+          
+          // If was playing and autoplay is enabled, resume playback
+          if (isPlaying && isAutoplayEnabled) {
+            logger.collect(logContext, 'Autoplay enabled, resuming playback');
+            
+            // Wait a short time for seek to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await reaperService.togglePlay(false); // Resume
+          }
+        } else {
+          logger.collect(logContext, 'No current region found');
         }
+        
+        // Flush logs
+        logger.flushLogs(logContext);
       } catch (error) {
         logger.error('Error seeking to current region start:', error);
       }
@@ -219,12 +336,53 @@ class SocketController {
     // Handle next region
     socket.on('nextRegion', async () => {
       try {
+        const logContext = logger.startCollection('nextRegion-handler');
+        logger.collect(logContext, 'Next region requested');
+        
         const nextRegion = regionService.getNextRegion();
         if (nextRegion) {
+          logger.collect(logContext, 'Found next region:', 
+            `ID=${nextRegion.id}, Name=${nextRegion.name}, Start=${nextRegion.start}, End=${nextRegion.end}`);
+          
+          // Get current playback state and autoplay setting
+          const playbackState = regionService.getPlaybackState();
+          const isPlaying = playbackState.isPlaying;
+          const isAutoplayEnabled = playbackState.autoplayEnabled;
+          
+          logger.collect(logContext, 'Current state:', 
+            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
+          
+          // If currently playing, pause first
+          if (isPlaying) {
+            logger.collect(logContext, 'Pausing before going to next region');
+            await reaperService.togglePlay(true); // Pause
+            
+            // Wait a short time for pause to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
           // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
           const positionWithOffset = nextRegion.start + 0.001;
+          
+          // Send the seek command
+          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
           await reaperService.seekToPosition(positionWithOffset);
+          
+          // If was playing and autoplay is enabled, resume playback
+          if (isPlaying && isAutoplayEnabled) {
+            logger.collect(logContext, 'Autoplay enabled, resuming playback');
+            
+            // Wait a short time for seek to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await reaperService.togglePlay(false); // Resume
+          }
+        } else {
+          logger.collect(logContext, 'No next region found');
         }
+        
+        // Flush logs
+        logger.flushLogs(logContext);
       } catch (error) {
         logger.error('Error going to next region:', error);
       }
@@ -233,12 +391,53 @@ class SocketController {
     // Handle previous region
     socket.on('previousRegion', async () => {
       try {
+        const logContext = logger.startCollection('previousRegion-handler');
+        logger.collect(logContext, 'Previous region requested');
+        
         const prevRegion = regionService.getPreviousRegion();
         if (prevRegion) {
+          logger.collect(logContext, 'Found previous region:', 
+            `ID=${prevRegion.id}, Name=${prevRegion.name}, Start=${prevRegion.start}, End=${prevRegion.end}`);
+          
+          // Get current playback state and autoplay setting
+          const playbackState = regionService.getPlaybackState();
+          const isPlaying = playbackState.isPlaying;
+          const isAutoplayEnabled = playbackState.autoplayEnabled;
+          
+          logger.collect(logContext, 'Current state:', 
+            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
+          
+          // If currently playing, pause first
+          if (isPlaying) {
+            logger.collect(logContext, 'Pausing before going to previous region');
+            await reaperService.togglePlay(true); // Pause
+            
+            // Wait a short time for pause to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
           // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
           const positionWithOffset = prevRegion.start + 0.001;
+          
+          // Send the seek command
+          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
           await reaperService.seekToPosition(positionWithOffset);
+          
+          // If was playing and autoplay is enabled, resume playback
+          if (isPlaying && isAutoplayEnabled) {
+            logger.collect(logContext, 'Autoplay enabled, resuming playback');
+            
+            // Wait a short time for seek to take effect
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await reaperService.togglePlay(false); // Resume
+          }
+        } else {
+          logger.collect(logContext, 'No previous region found');
         }
+        
+        // Flush logs
+        logger.flushLogs(logContext);
       } catch (error) {
         logger.error('Error going to previous region:', error);
       }
@@ -250,6 +449,21 @@ class SocketController {
         await regionService.fetchRegions();
       } catch (error) {
         logger.error('Error refreshing regions:', error);
+      }
+    });
+    
+    // Handle toggle autoplay
+    socket.on('toggleAutoplay', (enabled) => {
+      try {
+        const playbackState = regionService.getPlaybackState();
+        playbackState.autoplayEnabled = enabled;
+        
+        // Emit updated playback state
+        regionService.emitEvent('playbackStateUpdated', playbackState);
+        
+        logger.log(`Autoplay ${enabled ? 'enabled' : 'disabled'}`);
+      } catch (error) {
+        logger.error('Error toggling autoplay:', error);
       }
     });
   }

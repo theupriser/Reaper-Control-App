@@ -33,6 +33,7 @@ export const socketControl = {
   previousRegion: transportService.previousRegion,
   seekToCurrentRegionStart: transportService.seekToCurrentRegionStart,
   refreshRegions: transportService.refreshRegions,
+  toggleAutoplay: transportService.toggleAutoplay,
   disconnect: transportService.disconnect,
   
   // Testing function

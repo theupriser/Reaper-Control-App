@@ -13,7 +13,7 @@
   
   // Toggle autoplay function
   function toggleAutoplay() {
-    autoplayEnabled.update(current => !current);
+    socketControl.toggleAutoplay();
   }
   
   // Progress bar click handling

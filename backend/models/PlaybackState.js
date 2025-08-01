@@ -15,6 +15,7 @@ class PlaybackState {
     this.isPlaying = data.isPlaying || false;
     this.currentPosition = data.currentPosition || 0;
     this.currentRegionId = data.currentRegionId || null;
+    this.autoplayEnabled = data.autoplayEnabled !== undefined ? data.autoplayEnabled : true;
   }
 
   /**
@@ -125,7 +126,8 @@ class PlaybackState {
     return {
       isPlaying: this.isPlaying,
       currentPosition: this.currentPosition,
-      currentRegionId: this.currentRegionId
+      currentRegionId: this.currentRegionId,
+      autoplayEnabled: this.autoplayEnabled
     };
   }
 }

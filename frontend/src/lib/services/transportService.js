@@ -13,7 +13,9 @@ import {
   createErrorMessage,
   findRegionById,
   getNextRegion,
-  getPreviousRegion
+  getPreviousRegion,
+  toggleAutoplay as toggleAutoplayStore,
+  autoplayEnabled
 } from '../stores';
 
 /**
@@ -28,32 +30,14 @@ export function seekToPosition(position) {
       return;
     }
     
-    // Get current playback state and autoplay setting
-    const currentPlaybackState = getPlaybackState();
-    const isAutoplayEnabled = getAutoplayEnabled();
+    // Send the seek command to the backend
+    // The backend will handle pausing and resuming playback as needed
+    socketService.emit('seekToPosition', position);
     
-    // If currently playing, pause first
-    if (currentPlaybackState.isPlaying) {
-      console.log('Pausing before seeking to position');
-      socketService.emit('togglePlay'); // Pause
-      
-      // Wait a short time for pause to take effect
-      setTimeout(() => {
-        // Send the seek command
-        socketService.emit('seekToPosition', position);
-        
-        // If autoplay is enabled, resume playback
-        if (isAutoplayEnabled) {
-          console.log('Autoplay enabled, resuming playback');
-          setTimeout(() => {
-            socketService.emit('togglePlay'); // Resume
-          }, TIMEOUTS.reconnect);
-        }
-      }, TIMEOUTS.reconnect);
-    } else {
-      // If already paused, just send the command
-      socketService.emit('seekToPosition', position);
-    }
+    // Clear the status message after 1.5 seconds
+    setTimeout(() => {
+      setStatusMessage(null);
+    }, 1500);
   } catch (error) {
     console.error('Error sending seekToPosition command:', error);
     setStatusMessage(createErrorMessage(
@@ -101,36 +85,18 @@ export function seekToRegion(regionId) {
       return;
     }
     
-    // Get current playback state and autoplay setting
-    const currentPlaybackState = getPlaybackState();
-    const isAutoplayEnabled = getAutoplayEnabled();
-    
     // Provide immediate feedback by updating the playback state
     // This will be overridden by the next server update
     updatePartialPlaybackState({ currentRegionId: regionId });
     
-    // If currently playing, pause first
-    if (currentPlaybackState.isPlaying) {
-      console.log('Pausing before seeking to region');
-      socketService.emit('togglePlay'); // Pause
-      
-      // Wait a short time for pause to take effect
-      setTimeout(() => {
-        // Send the seek command
-        socketService.emit('seekToRegion', regionId);
-        
-        // If autoplay is enabled, resume playback
-        if (isAutoplayEnabled) {
-          console.log('Autoplay enabled, resuming playback');
-          setTimeout(() => {
-            socketService.emit('togglePlay'); // Resume
-          }, TIMEOUTS.reconnect);
-        }
-      }, TIMEOUTS.reconnect);
-    } else {
-      // If already paused, just send the command
-      socketService.emit('seekToRegion', regionId);
-    }
+    // Send the seek command to the backend
+    // The backend will handle pausing and resuming playback as needed
+    socketService.emit('seekToRegion', regionId);
+    
+    // Clear the status message after 1.5 seconds
+    setTimeout(() => {
+      setStatusMessage(null);
+    }, 1500);
   } catch (error) {
     console.error('Error sending seekToRegion command:', error);
     setStatusMessage(createErrorMessage(
@@ -146,32 +112,14 @@ export function seekToRegion(regionId) {
 export function nextRegion() {
   console.log('Sending nextRegion command');
   try {
-    // Get current playback state and autoplay setting
-    const currentPlaybackState = getPlaybackState();
-    const isAutoplayEnabled = getAutoplayEnabled();
+    // Send the next region command to the backend
+    // The backend will handle pausing and resuming playback as needed
+    socketService.emit('nextRegion');
     
-    // If currently playing, pause first
-    if (currentPlaybackState.isPlaying) {
-      console.log('Pausing before going to next region');
-      socketService.emit('togglePlay'); // Pause
-      
-      // Wait a short time for pause to take effect
-      setTimeout(() => {
-        // Send the next region command
-        socketService.emit('nextRegion');
-        
-        // If autoplay is enabled, resume playback
-        if (isAutoplayEnabled) {
-          console.log('Autoplay enabled, resuming playback');
-          setTimeout(() => {
-            socketService.emit('togglePlay'); // Resume
-          }, TIMEOUTS.reconnect);
-        }
-      }, TIMEOUTS.reconnect);
-    } else {
-      // If already paused, just send the command
-      socketService.emit('nextRegion');
-    }
+    // Clear the status message after 1.5 seconds
+    setTimeout(() => {
+      setStatusMessage(null);
+    }, 1500);
   } catch (error) {
     console.error('Error sending nextRegion command:', error);
     setStatusMessage(createErrorMessage(
@@ -187,32 +135,14 @@ export function nextRegion() {
 export function previousRegion() {
   console.log('Sending previousRegion command');
   try {
-    // Get current playback state and autoplay setting
-    const currentPlaybackState = getPlaybackState();
-    const isAutoplayEnabled = getAutoplayEnabled();
+    // Send the previous region command to the backend
+    // The backend will handle pausing and resuming playback as needed
+    socketService.emit('previousRegion');
     
-    // If currently playing, pause first
-    if (currentPlaybackState.isPlaying) {
-      console.log('Pausing before going to previous region');
-      socketService.emit('togglePlay'); // Pause
-      
-      // Wait a short time for pause to take effect
-      setTimeout(() => {
-        // Send the previous region command
-        socketService.emit('previousRegion');
-        
-        // If autoplay is enabled, resume playback
-        if (isAutoplayEnabled) {
-          console.log('Autoplay enabled, resuming playback');
-          setTimeout(() => {
-            socketService.emit('togglePlay'); // Resume
-          }, TIMEOUTS.reconnect);
-        }
-      }, TIMEOUTS.reconnect);
-    } else {
-      // If already paused, just send the command
-      socketService.emit('previousRegion');
-    }
+    // Clear the status message after 1.5 seconds
+    setTimeout(() => {
+      setStatusMessage(null);
+    }, 1500);
   } catch (error) {
     console.error('Error sending previousRegion command:', error);
     setStatusMessage(createErrorMessage(
@@ -228,32 +158,14 @@ export function previousRegion() {
 export function seekToCurrentRegionStart() {
   console.log('Sending seekToCurrentRegionStart command');
   try {
-    // Get current playback state and autoplay setting
-    const currentPlaybackState = getPlaybackState();
-    const isAutoplayEnabled = getAutoplayEnabled();
+    // Send the rewind command to the backend
+    // The backend will handle pausing and resuming playback as needed
+    socketService.emit('seekToCurrentRegionStart');
     
-    // If currently playing, pause first
-    if (currentPlaybackState.isPlaying) {
-      console.log('Pausing before rewinding to region start');
-      socketService.emit('togglePlay'); // Pause
-      
-      // Wait a short time for pause to take effect
-      setTimeout(() => {
-        // Send the rewind command
-        socketService.emit('seekToCurrentRegionStart');
-        
-        // If autoplay is enabled, resume playback
-        if (isAutoplayEnabled) {
-          console.log('Autoplay enabled, resuming playback');
-          setTimeout(() => {
-            socketService.emit('togglePlay'); // Resume
-          }, TIMEOUTS.reconnect);
-        }
-      }, TIMEOUTS.reconnect);
-    } else {
-      // If already paused, just send the command
-      socketService.emit('seekToCurrentRegionStart');
-    }
+    // Clear the status message after 1.5 seconds
+    setTimeout(() => {
+      setStatusMessage(null);
+    }, 1500);
   } catch (error) {
     console.error('Error sending seekToCurrentRegionStart command:', error);
     setStatusMessage(createErrorMessage(
@@ -291,6 +203,40 @@ export function disconnect() {
   socketService.disconnect();
 }
 
+/**
+ * Toggles the autoplay setting with enhanced feedback and error handling
+ * @param {boolean} enabled - The new autoplay setting
+ */
+export function toggleAutoplay(enabled) {
+  console.log('Sending toggleAutoplay command:', enabled);
+  try {
+    // If no value is provided, toggle the current value
+    if (enabled === undefined) {
+      const currentValue = getAutoplayEnabled();
+      enabled = !currentValue;
+      toggleAutoplayStore();
+    } else {
+      // If a specific value is provided, set it directly
+      // This requires updating the store manually since toggleAutoplayStore only toggles
+      autoplayEnabled.set(enabled);
+    }
+    
+    // Send the command to the backend
+    socketService.emit('toggleAutoplay', enabled);
+    
+    // Clear the status message after 1.5 seconds
+    setTimeout(() => {
+      setStatusMessage(null);
+    }, 1500);
+  } catch (error) {
+    console.error('Error sending toggleAutoplay command:', error);
+    setStatusMessage(createErrorMessage(
+      'Failed to toggle autoplay',
+      'There was an error communicating with the server. Please try again.'
+    ));
+  }
+}
+
 // Export all transport functions as a single object for compatibility
 export const transportService = {
   seekToPosition,
@@ -300,5 +246,6 @@ export const transportService = {
   previousRegion,
   seekToCurrentRegionStart,
   refreshRegions,
+  toggleAutoplay,
   disconnect
 };

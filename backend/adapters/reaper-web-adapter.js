@@ -19,13 +19,16 @@ class Web {
     this.host = config.host || '127.0.0.1';
     this.port = config.webPort || 8080;
     
-    // Set up logging context
-    this.logContext = logger.startCollection('WebAdapter');
-    
-    // Log configuration
-    logger.collect(this.logContext, 'Web Adapter Configuration:');
-    logger.collect(this.logContext, '- Host:', this.host);
-    logger.collect(this.logContext, '- Web Port:', this.port);
+    // Set up logging context only if WEB_ADAPTER_LOG is enabled
+    this.logContext = null;
+    if (process.env.WEB_ADAPTER_LOG === 'true') {
+      this.logContext = logger.startCollection('WebAdapter');
+      
+      // Log configuration
+      logger.collect(this.logContext, 'Web Adapter Configuration:');
+      logger.collect(this.logContext, '- Host:', this.host);
+      logger.collect(this.logContext, '- Web Port:', this.port);
+    }
     
     // Store for pending responses
     this.pendingCommands = new Map();
@@ -44,14 +47,27 @@ class Web {
     try {
       // Test connection by sending a simple request
       const response = await this.sendRequest('TRANSPORT');
-      logger.collect(this.logContext, 'Web Adapter: Connected to Reaper Web Interface');
-      logger.collect(this.logContext, 'Web Adapter: Initial transport state:', response);
-      // Flush logs after successful connection
-      logger.flushLogs(this.logContext);
+      
+      if (this.logContext) {
+        logger.collect(this.logContext, 'Web Adapter: Connected to Reaper Web Interface');
+        logger.collect(this.logContext, 'Web Adapter: Initial transport state:', response);
+        // Flush logs after successful connection
+        logger.flushLogs(this.logContext);
+      } else {
+        // Always log connection success, even without detailed logging
+        logger.log('Web Adapter: Connected to Reaper Web Interface');
+      }
+      
       return Promise.resolve();
     } catch (error) {
-      logger.collectError(this.logContext, 'Web Adapter: Failed to connect to Reaper Web Interface:', error);
-      // Error logs are automatically flushed by the logger
+      if (this.logContext) {
+        logger.collectError(this.logContext, 'Web Adapter: Failed to connect to Reaper Web Interface:', error);
+        // Error logs are automatically flushed by the logger
+      } else {
+        // Always log connection errors, even without detailed logging
+        logger.error('Web Adapter: Failed to connect to Reaper Web Interface:', error);
+      }
+      
       return Promise.reject(error);
     }
   }
@@ -62,7 +78,9 @@ class Web {
    * @returns {Promise<string>} A promise that resolves with the response
    */
   async send(command) {
-    logger.collect(this.logContext, `Web Adapter: Sending command: ${command}`);
+    if (this.logContext) {
+      logger.collect(this.logContext, `Web Adapter: Sending command: ${command}`);
+    }
     
     try {
       // Parse the command to create appropriate request
@@ -71,14 +89,18 @@ class Web {
         const response = await this.sendRequest('REGION');
         const result = this.formatRegionListResponse(response);
         // Flush logs after important region operations
-        logger.flushLogs(this.logContext);
+        if (this.logContext) {
+          logger.flushLogs(this.logContext);
+        }
         return result;
       } else if (command === '/TRANSPORT') {
         // For transport commands, request the transport state
         const response = await this.sendRequest('TRANSPORT');
         const result = this.formatTransportResponse(response);
         // Flush logs after important transport operations
-        logger.flushLogs(this.logContext);
+        if (this.logContext) {
+          logger.flushLogs(this.logContext);
+        }
         return result;
       } else if (command.startsWith('/SET/POS/')) {
         // For position commands, extract the position value
@@ -88,7 +110,9 @@ class Web {
         // Send the position command
         await this.sendRequest(`SET/POS/${position}`);
         // Flush logs after position change
-        logger.flushLogs(this.logContext);
+        if (this.logContext) {
+          logger.flushLogs(this.logContext);
+        }
         return '';
       } else if (command.match(/^\/\d+$/)) {
         // For action commands like /1007, extract the action ID
@@ -104,8 +128,13 @@ class Web {
         return response;
       }
     } catch (error) {
-      logger.collectError(this.logContext, `Web Adapter: Error sending command: ${command}`, error);
-      // Error logs are automatically flushed by the logger
+      if (this.logContext) {
+        logger.collectError(this.logContext, `Web Adapter: Error sending command: ${command}`, error);
+        // Error logs are automatically flushed by the logger
+      } else {
+        // Always log errors, even without detailed logging
+        logger.error(`Web Adapter: Error sending command: ${command}`, error);
+      }
       throw error;
     }
   }
@@ -121,7 +150,9 @@ class Web {
       // Create the request URL
       const requestUrl = `http://${this.host}:${this.port}/_/${command}`;
       
-      logger.collect(this.logContext, `Web Adapter: Sending request to ${requestUrl}`);
+      if (this.logContext) {
+        logger.collect(this.logContext, `Web Adapter: Sending request to ${requestUrl}`);
+      }
       
       // Parse the URL
       const parsedUrl = url.parse(requestUrl);
@@ -146,20 +177,32 @@ class Web {
         
         // Handle end of response
         res.on('end', () => {
-          logger.collect(this.logContext, `Web Adapter: Received response for ${command}:`, data.substring(0, 100) + (data.length > 100 ? '...' : ''));
+          if (this.logContext) {
+            logger.collect(this.logContext, `Web Adapter: Received response for ${command}:`, data.substring(0, 100) + (data.length > 100 ? '...' : ''));
+          }
           resolve(data);
         });
       });
       
       // Handle errors
       req.on('error', (error) => {
-        logger.collectError(this.logContext, `Web Adapter: Error sending request to ${requestUrl}:`, error);
+        if (this.logContext) {
+          logger.collectError(this.logContext, `Web Adapter: Error sending request to ${requestUrl}:`, error);
+        } else {
+          // Always log errors, even without detailed logging
+          logger.error(`Web Adapter: Error sending request to ${requestUrl}:`, error);
+        }
         reject(error);
       });
       
       // Handle timeout
       req.on('timeout', () => {
-        logger.collectError(this.logContext, `Web Adapter: Request to ${requestUrl} timed out`);
+        if (this.logContext) {
+          logger.collectError(this.logContext, `Web Adapter: Request to ${requestUrl} timed out`);
+        } else {
+          // Always log timeout errors, even without detailed logging
+          logger.error(`Web Adapter: Request to ${requestUrl} timed out`);
+        }
         req.abort();
         reject(new Error('Request timed out'));
       });
@@ -176,7 +219,9 @@ class Web {
    * @returns {string} The formatted response
    */
   formatRegionListResponse(response) {
-    logger.collect(this.logContext, 'Web Adapter: Formatting region list response');
+    if (this.logContext) {
+      logger.collect(this.logContext, 'Web Adapter: Formatting region list response');
+    }
     
     // Initialize the formatted response
     let formattedResponse = 'REGION_LIST\n';
@@ -203,10 +248,17 @@ class Web {
       // Add the end marker
       formattedResponse += 'REGION_LIST_END';
       
-      logger.collect(this.logContext, 'Web Adapter: Formatted region list response:', formattedResponse);
+      if (this.logContext) {
+        logger.collect(this.logContext, 'Web Adapter: Formatted region list response:', formattedResponse);
+      }
       return formattedResponse;
     } catch (error) {
-      logger.collectError(this.logContext, 'Web Adapter: Error formatting region list response:', error);
+      if (this.logContext) {
+        logger.collectError(this.logContext, 'Web Adapter: Error formatting region list response:', error);
+      } else {
+        // Always log errors, even without detailed logging
+        logger.error('Web Adapter: Error formatting region list response:', error);
+      }
       
       // Return an empty region list in case of error
       return 'REGION_LIST\nREGION_LIST_END';
@@ -220,14 +272,21 @@ class Web {
    * @returns {string} The formatted response
    */
   formatTransportResponse(response) {
-    const detailedLogContext = logger.startCollection('format-transport-response');
-    logger.collect(detailedLogContext, 'Web Adapter: Formatting transport response');
-    logger.collect(detailedLogContext, 'Raw response from Reaper:', response);
+    let detailedLogContext = null;
+    
+    // Only create log context if WEB_ADAPTER_LOG is enabled
+    if (process.env.WEB_ADAPTER_LOG === 'true') {
+      detailedLogContext = logger.startCollection('format-transport-response');
+      logger.collect(detailedLogContext, 'Web Adapter: Formatting transport response');
+      logger.collect(detailedLogContext, 'Raw response from Reaper:', response);
+    }
     
     try {
       // Split the response into lines
       const lines = response.split('\n');
-      logger.collect(detailedLogContext, 'Response split into lines, count:', lines.length);
+      if (detailedLogContext) {
+        logger.collect(detailedLogContext, 'Response split into lines, count:', lines.length);
+      }
       
       // Find the transport line
       let transportLineFound = false;
@@ -237,45 +296,60 @@ class Web {
         
         // Skip empty lines
         if (!line.trim()) {
-          logger.collect(detailedLogContext, `Line ${i}: Empty line, skipping`);
+          if (detailedLogContext) {
+            logger.collect(detailedLogContext, `Line ${i}: Empty line, skipping`);
+          }
           continue;
         }
         
         // Parse the line
         const parts = line.split('\t');
-        logger.collect(detailedLogContext, `Line ${i}: Split into ${parts.length} parts:`, parts);
+        if (detailedLogContext) {
+          logger.collect(detailedLogContext, `Line ${i}: Split into ${parts.length} parts:`, parts);
+        }
         
         // Check if this is a transport line
         if (parts[0] === 'TRANSPORT') {
           transportLineFound = true;
-          logger.collect(detailedLogContext, `Line ${i}: Found transport line:`, line);
-          logger.collect(detailedLogContext, 'Transport parts:', parts);
           
-          // Log the play state specifically
-          if (parts.length > 1) {
-            const playstate = parseInt(parts[1]);
-            logger.collect(detailedLogContext, 'Playstate value:', playstate);
-            logger.collect(detailedLogContext, 'isPlaying (playstate === 1):', playstate === 1);
+          if (detailedLogContext) {
+            logger.collect(detailedLogContext, `Line ${i}: Found transport line:`, line);
+            logger.collect(detailedLogContext, 'Transport parts:', parts);
+            
+            // Log the play state specifically
+            if (parts.length > 1) {
+              const playstate = parseInt(parts[1]);
+              logger.collect(detailedLogContext, 'Playstate value:', playstate);
+              logger.collect(detailedLogContext, 'isPlaying (playstate === 1):', playstate === 1);
+            }
+            
+            logger.flushLogs(detailedLogContext);
           }
           
-          logger.flushLogs(detailedLogContext);
           return line;
         }
       }
       
       // If no transport line was found, return a default response
       if (!transportLineFound) {
-        logger.collect(detailedLogContext, 'Web Adapter: No transport line found in response');
-        logger.collect(detailedLogContext, 'Returning default transport response');
-        logger.flushLogs(detailedLogContext);
+        if (detailedLogContext) {
+          logger.collect(detailedLogContext, 'Web Adapter: No transport line found in response');
+          logger.collect(detailedLogContext, 'Returning default transport response');
+          logger.flushLogs(detailedLogContext);
+        }
         return 'TRANSPORT\t0\t0\t0\t0:00\t1.1.00';
       }
     } catch (error) {
-      logger.collectError(detailedLogContext, 'Web Adapter: Error formatting transport response:', error);
+      if (detailedLogContext) {
+        logger.collectError(detailedLogContext, 'Web Adapter: Error formatting transport response:', error);
+        logger.collect(detailedLogContext, 'Returning default transport response due to error');
+        logger.flushLogs(detailedLogContext);
+      } else {
+        // Always log errors, even without detailed logging
+        logger.error('Web Adapter: Error formatting transport response:', error);
+      }
       
       // Return a default transport state in case of error
-      logger.collect(detailedLogContext, 'Returning default transport response due to error');
-      logger.flushLogs(detailedLogContext);
       return 'TRANSPORT\t0\t0\t0\t0:00\t1.1.00';
     }
   }

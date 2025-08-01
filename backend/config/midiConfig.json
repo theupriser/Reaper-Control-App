@@ -1,0 +1,14 @@
+{
+  "channel": 3,
+  "noteMapping": {
+    "seekToCurrentRegionStart": 44,
+    "previousRegion": 48,
+    "pause": 49,
+    "togglePlay": 50,
+    "seekToRegion": 52,
+    "nextRegion": 51,
+    "toggleAutoplay": 47,
+    "refreshRegions": 101,
+    "seekToPosition": 102
+  }
+}

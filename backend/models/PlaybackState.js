@@ -26,17 +26,25 @@ class PlaybackState {
    */
   updateFromTransportResponse(transportResponse, regions) {
     const logger = require('../utils/logger');
-    const logContext = logger.startCollection('PlaybackState-update');
+    let logContext = null;
     
-    logger.collect(logContext, 'Updating playback state from transport response');
-    logger.collect(logContext, 'Raw transport response:', transportResponse);
+    // Only collect logs if PLAYBACK_STATE_LOG is enabled
+    if (process.env.PLAYBACK_STATE_LOG === 'true') {
+      logContext = logger.startCollection('PlaybackState-update');
+      logger.collect(logContext, 'Updating playback state from transport response');
+      logger.collect(logContext, 'Raw transport response:', transportResponse);
+    }
     
     const parts = transportResponse.split('\t');
-    logger.collect(logContext, 'Split response parts:', parts);
+    if (logContext) {
+      logger.collect(logContext, 'Split response parts:', parts);
+    }
     
     if (parts.length < 3) {
-      logger.collect(logContext, 'Invalid transport response: not enough parts');
-      logger.flushLogs(logContext);
+      if (logContext) {
+        logger.collect(logContext, 'Invalid transport response: not enough parts');
+        logger.flushLogs(logContext);
+      }
       return false;
     }
 
@@ -44,24 +52,32 @@ class PlaybackState {
     const previousPosition = this.currentPosition;
     const previousRegionId = this.currentRegionId;
     
-    logger.collect(logContext, 'Previous state:', 
-      `isPlaying=${wasPlaying}, position=${previousPosition}, regionId=${previousRegionId}`);
+    if (logContext) {
+      logger.collect(logContext, 'Previous state:', 
+        `isPlaying=${wasPlaying}, position=${previousPosition}, regionId=${previousRegionId}`);
+    }
 
     // Update play state and position
     const playstate = parseInt(parts[1]);
-    logger.collect(logContext, 'Parsed playstate:', playstate);
+    if (logContext) {
+      logger.collect(logContext, 'Parsed playstate:', playstate);
+    }
     
     this.isPlaying = playstate === 1;
     this.currentPosition = parseFloat(parts[2]);
     
-    logger.collect(logContext, 'Updated state (before region check):', 
-      `isPlaying=${this.isPlaying}, position=${this.currentPosition}`);
+    if (logContext) {
+      logger.collect(logContext, 'Updated state (before region check):', 
+        `isPlaying=${this.isPlaying}, position=${this.currentPosition}`);
+    }
 
     // Find current region based on position
     this.currentRegionId = this.findCurrentRegionId(regions);
     
-    logger.collect(logContext, 'Final updated state:', 
-      `isPlaying=${this.isPlaying}, position=${this.currentPosition}, regionId=${this.currentRegionId}`);
+    if (logContext) {
+      logger.collect(logContext, 'Final updated state:', 
+        `isPlaying=${this.isPlaying}, position=${this.currentPosition}, regionId=${this.currentRegionId}`);
+    }
 
     // Check if anything changed
     const changed = (
@@ -70,8 +86,10 @@ class PlaybackState {
       previousRegionId !== this.currentRegionId
     );
     
-    logger.collect(logContext, 'State changed:', changed);
-    logger.flushLogs(logContext);
+    if (logContext) {
+      logger.collect(logContext, 'State changed:', changed);
+      logger.flushLogs(logContext);
+    }
     
     // Return true if anything changed
     return changed;

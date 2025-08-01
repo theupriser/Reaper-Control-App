@@ -8,6 +8,7 @@ Remote control application for Reaper DAW.
 - Region navigation
 - Real-time status updates
 - WebSocket connection monitoring
+- MIDI input control
 
 ## WebSocket Connection Status
 
@@ -70,3 +71,75 @@ To test disconnection handling:
 
 - `/backend` - Node.js backend with Socket.IO server
 - `/frontend` - Svelte frontend application
+
+### Logging Configuration
+
+The application supports configurable logging through environment variables:
+
+#### General Logging
+
+- `NODE_ENV`: Set to `production` to disable most logs, or `development` to enable detailed logging
+- `LOG_BUNDLE_SIZE`: Maximum number of logs to collect before flushing (default: 20)
+- `LOG_BUNDLE_TIMEOUT`: Maximum time in milliseconds to wait before flushing logs (default: 2000)
+
+#### Feature-specific Logging
+
+- `MIDI_LOG_ALL`: Set to `true` to log all MIDI input events, not just mapped notes
+- `PLAYBACK_STATE_LOG`: Set to `true` to log detailed playback state updates
+- `WEB_ADAPTER_LOG`: Set to `true` to log detailed web adapter communication
+- `SOCKET_EVENT_LOG`: Set to `true` to log detailed socket event communication
+- `SOCKET_CONNECTION_LOG`: Set to `true` to log detailed socket connection information
+
+These settings can be configured in the `.env` file.
+
+## MIDI Control
+
+The application supports MIDI input control, allowing you to trigger actions using MIDI notes from any connected MIDI device.
+
+### MIDI Configuration
+
+MIDI settings are configured in the `/backend/config/midiConfig.json` file:
+
+```json
+{
+  "channel": 0,
+  "noteMapping": {
+    "togglePlay": 50,
+    "pause": 49,
+    "seekToPosition": 51,
+    "seekToRegion": 52,
+    "seekToCurrentRegionStart": 53,
+    "nextRegion": 54,
+    "previousRegion": 55,
+    "refreshRegions": 56,
+    "toggleAutoplay": 57
+  }
+}
+```
+
+- `channel`: The MIDI channel to listen on (0-15)
+- `noteMapping`: Maps MIDI note numbers to specific actions
+
+### Available MIDI Actions
+
+- `togglePlay` (Note 50): Toggle play/pause
+- `pause` (Note 49): Always pauses Reaper
+- `seekToPosition` (Note 51): Seek to position 0
+- `seekToRegion` (Note 52): Seek to the first region
+- `seekToCurrentRegionStart` (Note 53): Seek to the start of the current region
+- `nextRegion` (Note 54): Go to the next region
+- `previousRegion` (Note 55): Go to the previous region
+- `refreshRegions` (Note 56): Refresh the regions list
+- `toggleAutoplay` (Note 57): Toggle autoplay on
+
+### How It Works
+
+1. The application detects all available MIDI input devices on startup
+2. It listens for noteOn events on the configured MIDI channel
+3. When a mapped note is received, it triggers the corresponding action
+4. The action is executed in the same way as if it was triggered via the web interface
+
+### Requirements
+
+- MIDI input device(s) connected to the server
+- Node.js with easymidi library (automatically installed with npm)

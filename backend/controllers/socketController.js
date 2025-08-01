@@ -111,8 +111,68 @@ class SocketController {
     // Handle play/pause toggle
     socket.on('togglePlay', async () => {
       try {
+        const logContext = logger.startCollection('togglePlay-handler');
+        logger.collect(logContext, 'Toggle play/pause requested');
+        
         const playbackState = regionService.getPlaybackState();
+        logger.collect(logContext, 'Current playback state:', 
+          JSON.stringify(playbackState.toJSON()));
+        
+        // Send toggle command to Reaper
+        logger.collect(logContext, 'Sending toggle command to Reaper, current isPlaying:', playbackState.isPlaying);
         await reaperService.togglePlay(playbackState.isPlaying);
+        logger.collect(logContext, 'Toggle command sent successfully');
+        
+        // Add a delayed check for play/pause state after 1 second
+        // Always check the state after toggling, regardless of whether we're playing or pausing
+        logger.collect(logContext, 'Setting up 1-second delayed check for play/pause state');
+        
+        setTimeout(async () => {
+          const delayedLogContext = logger.startCollection('delayed-playback-check');
+          try {
+            const actionType = !playbackState.isPlaying ? 'play' : 'pause';
+            logger.collect(delayedLogContext, `Executing delayed ${actionType} state check after 1 second`);
+            
+            // Get transport state after delay
+            logger.collect(delayedLogContext, 'Requesting transport state from Reaper');
+            const transportState = await reaperService.getTransportState();
+            
+            if (transportState) {
+              logger.collect(delayedLogContext, 'Received transport state:', transportState);
+              
+              // Update playback state
+              logger.collect(delayedLogContext, 'Updating playback state from transport response');
+              const currentPlaybackState = regionService.getPlaybackState();
+              logger.collect(delayedLogContext, 'Current playback state before update:', 
+                JSON.stringify(currentPlaybackState.toJSON()));
+              
+              const changed = currentPlaybackState.updateFromTransportResponse(
+                transportState, 
+                regionService.getRegions()
+              );
+              
+              logger.collect(delayedLogContext, 'Playback state after update:', 
+                JSON.stringify(currentPlaybackState.toJSON()));
+              logger.collect(delayedLogContext, 'State changed:', changed);
+              
+              // Always emit the updated state to ensure UI is in sync with Reaper
+              // This ensures the UI reflects Reaper's actual state even if Reaper didn't respond to the command
+              logger.collect(delayedLogContext, 'Emitting updated playback state');
+              regionService.emitEvent('playbackStateUpdated', regionService.getPlaybackState());
+              logger.log(`Emitted delayed ${actionType} state update after 1 second`);
+            } else {
+              logger.collect(delayedLogContext, 'No transport state received from Reaper');
+            }
+            
+            // Flush logs
+            logger.flushLogs(delayedLogContext);
+          } catch (error) {
+            logger.collectError(delayedLogContext, 'Error in delayed playback state check:', error);
+          }
+        }, 1000); // 1 second delay
+        
+        // Flush logs
+        logger.flushLogs(logContext);
       } catch (error) {
         logger.error('Error toggling play/pause:', error);
       }
@@ -132,7 +192,10 @@ class SocketController {
       try {
         const region = regionService.findRegionById(regionId);
         if (region) {
-          await reaperService.seekToPosition(region.start);
+          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
+          // This prevents issues with selection when regions are adjacent
+          const positionWithOffset = region.start + 0.001;
+          await reaperService.seekToPosition(positionWithOffset);
         }
       } catch (error) {
         logger.error('Error seeking to region:', error);
@@ -144,7 +207,9 @@ class SocketController {
       try {
         const currentRegion = regionService.getCurrentRegion();
         if (currentRegion) {
-          await reaperService.seekToPosition(currentRegion.start);
+          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
+          const positionWithOffset = currentRegion.start + 0.001;
+          await reaperService.seekToPosition(positionWithOffset);
         }
       } catch (error) {
         logger.error('Error seeking to current region start:', error);
@@ -156,7 +221,9 @@ class SocketController {
       try {
         const nextRegion = regionService.getNextRegion();
         if (nextRegion) {
-          await reaperService.seekToPosition(nextRegion.start);
+          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
+          const positionWithOffset = nextRegion.start + 0.001;
+          await reaperService.seekToPosition(positionWithOffset);
         }
       } catch (error) {
         logger.error('Error going to next region:', error);
@@ -168,7 +235,9 @@ class SocketController {
       try {
         const prevRegion = regionService.getPreviousRegion();
         if (prevRegion) {
-          await reaperService.seekToPosition(prevRegion.start);
+          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
+          const positionWithOffset = prevRegion.start + 0.001;
+          await reaperService.seekToPosition(positionWithOffset);
         }
       } catch (error) {
         logger.error('Error going to previous region:', error);

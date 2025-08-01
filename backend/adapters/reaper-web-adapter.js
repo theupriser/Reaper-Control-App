@@ -220,34 +220,62 @@ class Web {
    * @returns {string} The formatted response
    */
   formatTransportResponse(response) {
-    logger.collect(this.logContext, 'Web Adapter: Formatting transport response');
+    const detailedLogContext = logger.startCollection('format-transport-response');
+    logger.collect(detailedLogContext, 'Web Adapter: Formatting transport response');
+    logger.collect(detailedLogContext, 'Raw response from Reaper:', response);
     
     try {
       // Split the response into lines
       const lines = response.split('\n');
+      logger.collect(detailedLogContext, 'Response split into lines, count:', lines.length);
       
       // Find the transport line
-      for (const line of lines) {
+      let transportLineFound = false;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
         // Skip empty lines
-        if (!line.trim()) continue;
+        if (!line.trim()) {
+          logger.collect(detailedLogContext, `Line ${i}: Empty line, skipping`);
+          continue;
+        }
         
         // Parse the line
         const parts = line.split('\t');
+        logger.collect(detailedLogContext, `Line ${i}: Split into ${parts.length} parts:`, parts);
         
         // Check if this is a transport line
         if (parts[0] === 'TRANSPORT') {
-          logger.collect(this.logContext, 'Web Adapter: Found transport line:', line);
+          transportLineFound = true;
+          logger.collect(detailedLogContext, `Line ${i}: Found transport line:`, line);
+          logger.collect(detailedLogContext, 'Transport parts:', parts);
+          
+          // Log the play state specifically
+          if (parts.length > 1) {
+            const playstate = parseInt(parts[1]);
+            logger.collect(detailedLogContext, 'Playstate value:', playstate);
+            logger.collect(detailedLogContext, 'isPlaying (playstate === 1):', playstate === 1);
+          }
+          
+          logger.flushLogs(detailedLogContext);
           return line;
         }
       }
       
       // If no transport line was found, return a default response
-      logger.collect(this.logContext, 'Web Adapter: No transport line found, returning default');
-      return 'TRANSPORT\t0\t0\t0\t0:00\t1.1.00';
+      if (!transportLineFound) {
+        logger.collect(detailedLogContext, 'Web Adapter: No transport line found in response');
+        logger.collect(detailedLogContext, 'Returning default transport response');
+        logger.flushLogs(detailedLogContext);
+        return 'TRANSPORT\t0\t0\t0\t0:00\t1.1.00';
+      }
     } catch (error) {
-      logger.collectError(this.logContext, 'Web Adapter: Error formatting transport response:', error);
+      logger.collectError(detailedLogContext, 'Web Adapter: Error formatting transport response:', error);
       
       // Return a default transport state in case of error
+      logger.collect(detailedLogContext, 'Returning default transport response due to error');
+      logger.flushLogs(detailedLogContext);
       return 'TRANSPORT\t0\t0\t0\t0:00\t1.1.00';
     }
   }

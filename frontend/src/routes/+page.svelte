@@ -21,11 +21,6 @@
 </script>
 
 <div class="queue-container">
-  <div class="header-section">
-    <h1>Reaper Control</h1>
-    <p class="subtitle">Remote control for Reaper DAW</p>
-  </div>
-  
   <div class="controls-section">
     <TransportControls />
   </div>

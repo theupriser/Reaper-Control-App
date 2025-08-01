@@ -1,5 +1,6 @@
 <script>
-  import { socketControl, playbackState, currentRegion } from '$lib/stores/socket';
+  import { socketControl, playbackState, currentRegion, autoplayEnabled } from '$lib/stores/socket';
+  import { writable } from 'svelte/store';
   
   // Format time in seconds to MM:SS format
   function formatTime(seconds) {
@@ -8,6 +9,60 @@
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Toggle autoplay function
+  function toggleAutoplay() {
+    autoplayEnabled.update(current => !current);
+  }
+  
+  // Progress bar click handling
+  let popoverVisible = writable(false);
+  let popoverPosition = writable({ x: 0, y: 0 });
+  let popoverTime = writable(0);
+  
+  function handleProgressBarClick(event) {
+    if (!$currentRegion) return;
+    
+    // Get the click position relative to the progress container
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const containerWidth = rect.width;
+    
+    // Calculate the percentage of the click position
+    const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
+    
+    // Calculate the time position based on the percentage
+    const regionDuration = $currentRegion.end - $currentRegion.start;
+    const clickedTime = $currentRegion.start + (percentage * regionDuration);
+    
+    // Calculate popover position, ensuring it stays within viewport
+    let popoverX = clickX;
+    
+    // Ensure popover doesn't go off the left or right edge
+    // Assuming popover width is about 60px
+    const popoverWidth = 60;
+    const minX = popoverWidth / 2;
+    const maxX = containerWidth - (popoverWidth / 2);
+    
+    if (popoverX < minX) popoverX = minX;
+    if (popoverX > maxX) popoverX = maxX;
+    
+    // Set the popover position and time
+    popoverPosition.set({ 
+      x: popoverX, 
+      y: rect.top - 30 // Position above the progress bar
+    });
+    popoverTime.set(clickedTime - $currentRegion.start); // Time relative to region start
+    popoverVisible.set(true);
+    
+    // Seek to the clicked position
+    socketControl.seekToPosition(clickedTime);
+    
+    // Hide the popover after 2 seconds
+    setTimeout(() => {
+      popoverVisible.set(false);
+    }, 2000);
   }
 </script>
 
@@ -30,6 +85,42 @@
         <span class="current-time">{formatTime($playbackState.currentPosition)}</span>
       {/if}
     </div>
+  </div>
+  
+  <!-- Progress bar -->
+  {#if $currentRegion}
+    <div class="progress-container" on:click={handleProgressBarClick}>
+      <div 
+        class="progress-bar" 
+        style="width: {Math.min(100, Math.max(0, (($playbackState.currentPosition - $currentRegion.start) / ($currentRegion.end - $currentRegion.start)) * 100))}%"
+      ></div>
+      
+      <!-- Time popover -->
+      {#if $popoverVisible}
+        <div 
+          class="time-popover"
+          style="left: {$popoverPosition.x}px; top: {$popoverPosition.y}px"
+        >
+          {formatTime($popoverTime)}
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <div class="progress-container">
+      <div class="progress-bar" style="width: 0%"></div>
+    </div>
+  {/if}
+  
+  <div class="autoplay-toggle">
+    <label class="toggle-switch">
+      <input 
+        type="checkbox" 
+        checked={$autoplayEnabled} 
+        on:change={toggleAutoplay}
+      />
+      <span class="toggle-slider"></span>
+    </label>
+    <span class="toggle-label">Auto-resume playback</span>
   </div>
   
   <div class="controls">
@@ -125,6 +216,115 @@
     opacity: 0.7;
   }
   
+  /* Progress bar styles */
+  .progress-container {
+    width: 100%;
+    height: 6px;
+    background-color: #4a4a4a;
+    border-radius: 3px;
+    margin-bottom: 1rem;
+    overflow: visible;
+    position: relative;
+    cursor: pointer;
+  }
+  
+  .progress-bar {
+    height: 100%;
+    background-color: #4CAF50;
+    border-radius: 3px;
+    transition: width 0.2s ease-out;
+  }
+  
+  /* Time popover styles */
+  .time-popover {
+    position: absolute;
+    background-color: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    transform: translate(-50%, -100%);
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 0.2s ease-out;
+  }
+  
+  .time-popover::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translate(-50%, -90%); }
+    to { opacity: 1; transform: translate(-50%, -100%); }
+  }
+  
+  /* Autoplay toggle styles */
+  .autoplay-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+  }
+  
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+    margin-right: 8px;
+  }
+  
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4a4a4a;
+    transition: .4s;
+    border-radius: 20px;
+  }
+  
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+  }
+  
+  input:checked + .toggle-slider {
+    background-color: #4CAF50;
+  }
+  
+  input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+  }
+  
+  .toggle-label {
+    font-size: 0.9rem;
+    color: #ddd;
+  }
+  
   .controls {
     display: flex;
     justify-content: center;
@@ -172,6 +372,25 @@
       gap: 0.5rem;
     }
     
+    .progress-container {
+      height: 5px;
+      margin-bottom: 0.8rem;
+    }
+    
+    .time-popover {
+      padding: 3px 6px;
+      font-size: 0.7rem;
+    }
+    
+    .autoplay-toggle {
+      justify-content: flex-start;
+      margin-top: 0.5rem;
+    }
+    
+    .toggle-label {
+      font-size: 0.8rem;
+    }
+    
     .controls {
       gap: 0.5rem;
     }
@@ -179,6 +398,18 @@
     .play-pause {
       width: 50px;
       height: 50px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .progress-container {
+      height: 8px; /* Make the touch target larger on mobile */
+      margin-bottom: 0.6rem;
+    }
+    
+    .progress-bar {
+      height: 4px;
+      margin-top: 2px; /* Center the bar in the container */
     }
   }
 </style>

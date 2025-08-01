@@ -1,0 +1,21 @@
+{
+  "name": "reaper-control-backend",
+  "version": "1.0.0",
+  "description": "Node.js backend server for Reaper control",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1",
+    "reaper-osc": "^0.5.3",
+    "osc": "^2.4.5",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

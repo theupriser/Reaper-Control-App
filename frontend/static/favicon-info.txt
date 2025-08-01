@@ -1,0 +1,8 @@
+To add a favicon to the application:
+
+1. Create or obtain a favicon.png file (32x32 pixels is recommended)
+2. Place it in this directory (frontend/static)
+3. The app.html template is already configured to use it with:
+   <link rel="icon" href="%sveltekit.assets%/favicon.png" />
+
+You can also add other static assets like images, fonts, or additional icons in this directory.

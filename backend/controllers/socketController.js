@@ -1,0 +1,189 @@
+/**
+ * Socket Controller
+ * Handles all Socket.IO events and communication
+ */
+
+const logger = require('../utils/logger');
+const reaperService = require('../services/reaperService');
+const regionService = require('../services/regionService');
+
+class SocketController {
+  constructor(io) {
+    this.io = io;
+    this.setupEventListeners();
+  }
+
+  /**
+   * Set up event listeners for region and playback state updates
+   */
+  setupEventListeners() {
+    // Listen for region updates
+    regionService.on('regionsUpdated', (regions) => {
+      this.io.emit('regions', regions);
+    });
+
+    // Listen for playback state updates
+    regionService.on('playbackStateUpdated', (playbackState) => {
+      this.io.emit('playbackState', playbackState);
+    });
+
+    // Listen for errors
+    regionService.on('error', (error) => {
+      this.io.emit('status', error);
+    });
+  }
+
+  /**
+   * Initialize Socket.IO connection handling
+   */
+  initialize() {
+    this.io.on('connection', (socket) => this.handleConnection(socket));
+    logger.log('Socket controller initialized');
+  }
+
+  /**
+   * Handle a new socket connection
+   * @param {Object} socket - Socket.IO socket
+   */
+  handleConnection(socket) {
+    // Create a connection-specific log context
+    const connectionContext = logger.startCollection(`socket-connection-${socket.id}`);
+    
+    logger.collect(connectionContext, 'Client connected:', socket.id);
+    logger.collect(connectionContext, 'Current regions count at connection time:', regionService.getRegions().length);
+    
+    // Send initial data to the newly connected client
+    logger.collect(connectionContext, 'Sending initial data to client:', socket.id);
+    socket.emit('regions', regionService.getRegions());
+    socket.emit('playbackState', regionService.getPlaybackState());
+    
+    // Flush the connection logs
+    logger.flushLogs(connectionContext);
+    
+    // Create a context for ongoing socket events
+    const socketEventsContext = `socket-events-${socket.id}`;
+    
+    // Set up event handlers
+    this.setupSocketEventHandlers(socket, socketEventsContext);
+    
+    // Handle custom ping event for connection monitoring
+    socket.on('ping', (callback) => {
+      logger.log('Received ping from client:', socket.id);
+      // If callback is provided, call it to send pong response
+      if (typeof callback === 'function') {
+        callback();
+        logger.log('Sent pong response to client:', socket.id);
+      }
+    });
+    
+    // Handle disconnect
+    socket.on('disconnect', () => {
+      logger.log('Client disconnected:', socket.id);
+    });
+  }
+
+  /**
+   * Set up event handlers for a socket
+   * @param {Object} socket - Socket.IO socket
+   * @param {string} socketEventsContext - Logging context for this socket
+   */
+  setupSocketEventHandlers(socket, socketEventsContext) {
+    // Log all socket events for debugging, but bundle them by event type
+    const originalOn = socket.on;
+    socket.on = function(event, handler) {
+      if (event !== 'disconnect') {
+        const wrappedHandler = function(...args) {
+          // Start a new collection for each event
+          const eventContext = logger.startCollection(`${socketEventsContext}-${event}`);
+          logger.collect(eventContext, `Socket ${socket.id} received event: ${event}`, args);
+          
+          // Execute the handler and flush logs afterward
+          const result = handler.apply(this, args);
+          setTimeout(() => logger.flushLogs(eventContext), 100); // Small delay to include any logs from the handler
+          return result;
+        };
+        return originalOn.call(this, event, wrappedHandler);
+      } else {
+        return originalOn.call(this, event, handler);
+      }
+    };
+
+    // Handle play/pause toggle
+    socket.on('togglePlay', async () => {
+      try {
+        const playbackState = regionService.getPlaybackState();
+        await reaperService.togglePlay(playbackState.isPlaying);
+      } catch (error) {
+        logger.error('Error toggling play/pause:', error);
+      }
+    });
+    
+    // Handle seek to position
+    socket.on('seekToPosition', async (position) => {
+      try {
+        await reaperService.seekToPosition(position);
+      } catch (error) {
+        logger.error('Error seeking to position:', error);
+      }
+    });
+    
+    // Handle seek to region
+    socket.on('seekToRegion', async (regionId) => {
+      try {
+        const region = regionService.findRegionById(regionId);
+        if (region) {
+          await reaperService.seekToPosition(region.start);
+        }
+      } catch (error) {
+        logger.error('Error seeking to region:', error);
+      }
+    });
+    
+    // Handle seek to beginning of current region
+    socket.on('seekToCurrentRegionStart', async () => {
+      try {
+        const currentRegion = regionService.getCurrentRegion();
+        if (currentRegion) {
+          await reaperService.seekToPosition(currentRegion.start);
+        }
+      } catch (error) {
+        logger.error('Error seeking to current region start:', error);
+      }
+    });
+    
+    // Handle next region
+    socket.on('nextRegion', async () => {
+      try {
+        const nextRegion = regionService.getNextRegion();
+        if (nextRegion) {
+          await reaperService.seekToPosition(nextRegion.start);
+        }
+      } catch (error) {
+        logger.error('Error going to next region:', error);
+      }
+    });
+    
+    // Handle previous region
+    socket.on('previousRegion', async () => {
+      try {
+        const prevRegion = regionService.getPreviousRegion();
+        if (prevRegion) {
+          await reaperService.seekToPosition(prevRegion.start);
+        }
+      } catch (error) {
+        logger.error('Error going to previous region:', error);
+      }
+    });
+    
+    // Handle refresh regions
+    socket.on('refreshRegions', async () => {
+      try {
+        await regionService.fetchRegions();
+      } catch (error) {
+        logger.error('Error refreshing regions:', error);
+      }
+    });
+  }
+}
+
+module.exports = SocketController;

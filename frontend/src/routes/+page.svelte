@@ -1,7 +1,7 @@
 <script>
   import TransportControls from '$lib/components/TransportControls.svelte';
   import RegionList from '$lib/components/RegionList.svelte';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { socketControl } from '$lib/stores/socket';
   
   // Refresh regions on component mount
@@ -13,10 +13,17 @@
       // Any cleanup if needed
     };
   });
+  
+  // Ensure socket is disconnected when component is destroyed
+  onDestroy(() => {
+    socketControl.disconnect();
+  });
 </script>
 
 <div class="queue-container">
   <div class="header-section">
+    <h1>Reaper Control</h1>
+    <p class="subtitle">Remote control for Reaper DAW</p>
   </div>
   
   <div class="controls-section">

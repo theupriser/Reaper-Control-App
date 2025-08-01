@@ -1,6 +1,7 @@
 <script>
   import { onDestroy } from 'svelte';
   import { socketControl } from '$lib/stores/socket';
+  import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
   
   // Clean up socket connection when the app is destroyed
   onDestroy(() => {
@@ -21,6 +22,10 @@
   <main>
     <slot />
   </main>
+  
+  <div class="connection-status-container">
+    <ConnectionStatus />
+  </div>
   
   <footer>
     <p>© 2025 Reaper Control</p>
@@ -73,6 +78,18 @@
     font-size: 0.8rem;
   }
   
+  .connection-status-container {
+    position: fixed;
+    top: 3.5rem; /* Adjusted to be below the header */
+    right: 0;
+    z-index: 100;
+    background-color: transparent;
+    padding: 0.5rem 1rem;
+    display: flex;
+    justify-content: flex-end;
+    box-shadow: none;
+  }
+  
   /* Responsive adjustments */
   @media (max-width: 768px) {
     main {
@@ -81,6 +98,11 @@
     
     h1 {
       font-size: 1.2rem;
+    }
+    
+    .connection-status-container {
+      padding: 0.25rem 0.5rem;
+      top: 2.7rem; /* Adjusted for smaller header on mobile */
     }
   }
 </style>

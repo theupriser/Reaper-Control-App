@@ -2,8 +2,11 @@ import { io } from 'socket.io-client';
 import { writable, derived } from 'svelte/store';
 
 // Backend server URL - Check if window is defined to handle SSR
+// When running in Docker, we need to use the service name 'backend' instead of window.location.hostname
 const SOCKET_URL = typeof window !== 'undefined' 
-  ? `http://${window.location.hostname}:3000`
+  ? window.location.hostname === 'localhost' 
+    ? `http://localhost:3000` 
+    : `http://backend:3000` // Use Docker service name when not on localhost
   : 'http://localhost:3000'; // Fallback for server-side rendering
 
 // Create stores for regions and playback state
@@ -16,6 +19,16 @@ export const playbackState = writable({
 
 // Create a store for status messages
 export const statusMessage = writable(null);
+
+// Create a store for connection status
+export const connectionStatus = writable({
+  connected: false,
+  lastPing: null,
+  pingLatency: null,
+  reconnecting: false,
+  reconnectAttempt: 0,
+  lastError: null
+});
 
 // Create a derived store for the current region
 export const currentRegion = derived(
@@ -56,10 +69,70 @@ function createSocketConnection() {
     transports: ['websocket', 'polling']
   });
   
+  // Set up ping/pong mechanism for connection monitoring
+  let pingInterval;
+  let pingTimeout;
+  const PING_INTERVAL = 10000; // 10 seconds
+  const PING_TIMEOUT = 5000;   // 5 seconds
+  
+  function startPingInterval() {
+    // Clear any existing interval
+    if (pingInterval) clearInterval(pingInterval);
+    
+    // Start new ping interval
+    pingInterval = setInterval(() => {
+      if (socket.connected) {
+        const startTime = Date.now();
+        
+        // Set a timeout for ping response
+        if (pingTimeout) clearTimeout(pingTimeout);
+        pingTimeout = setTimeout(() => {
+          console.warn('Ping timeout - no response from server');
+          connectionStatus.update(status => ({
+            ...status,
+            pingLatency: null,
+            lastError: 'Ping timeout'
+          }));
+        }, PING_TIMEOUT);
+        
+        // Send ping and wait for pong
+        socket.emit('ping', () => {
+          if (pingTimeout) clearTimeout(pingTimeout);
+          const latency = Date.now() - startTime;
+          console.log(`Received pong from server (latency: ${latency}ms)`);
+          
+          connectionStatus.update(status => ({
+            ...status,
+            lastPing: new Date(),
+            pingLatency: latency
+          }));
+        });
+      }
+    }, PING_INTERVAL);
+  }
+  
+  function stopPingInterval() {
+    if (pingInterval) clearInterval(pingInterval);
+    if (pingTimeout) clearTimeout(pingTimeout);
+  }
+
   // Set up event listeners with enhanced logging
   socket.on('connect', () => {
     console.log('Connected to backend server:', SOCKET_URL);
     console.log('Socket ID:', socket.id);
+    
+    // Update connection status
+    connectionStatus.set({
+      connected: true,
+      lastPing: null,
+      pingLatency: null,
+      reconnecting: false,
+      reconnectAttempt: 0,
+      lastError: null
+    });
+    
+    // Start ping interval
+    startPingInterval();
     
     // Refresh regions immediately after connection
     setTimeout(() => {
@@ -70,10 +143,30 @@ function createSocketConnection() {
   
   socket.on('disconnect', () => {
     console.log('Disconnected from backend server');
+    
+    // Update connection status
+    connectionStatus.update(status => ({
+      ...status,
+      connected: false
+    }));
+    
+    // Stop ping interval
+    stopPingInterval();
   });
   
   socket.on('reconnect', (attemptNumber) => {
     console.log(`Reconnected to backend server after ${attemptNumber} attempts`);
+    
+    // Update connection status
+    connectionStatus.update(status => ({
+      ...status,
+      connected: true,
+      reconnecting: false,
+      reconnectAttempt: 0
+    }));
+    
+    // Restart ping interval
+    startPingInterval();
     
     // Refresh regions after reconnection
     setTimeout(() => {
@@ -84,14 +177,35 @@ function createSocketConnection() {
   
   socket.on('reconnect_attempt', (attemptNumber) => {
     console.log(`Attempting to reconnect to backend server (attempt ${attemptNumber})`);
+    
+    // Update connection status
+    connectionStatus.update(status => ({
+      ...status,
+      reconnecting: true,
+      reconnectAttempt: attemptNumber
+    }));
   });
   
   socket.on('reconnect_error', (error) => {
     console.error('Error while reconnecting:', error);
+    
+    // Update connection status
+    connectionStatus.update(status => ({
+      ...status,
+      lastError: error.message || 'Reconnection error'
+    }));
   });
   
   socket.on('reconnect_failed', () => {
     console.error('Failed to reconnect to backend server after multiple attempts');
+    
+    // Update connection status
+    connectionStatus.update(status => ({
+      ...status,
+      reconnecting: false,
+      lastError: 'Failed to reconnect after multiple attempts'
+    }));
+    
     statusMessage.set({
       type: 'error',
       message: 'Connection to server lost',

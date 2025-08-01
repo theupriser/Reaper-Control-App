@@ -1,165 +1,72 @@
-# Reaper Control Queue
+# Reaper Control
 
-A web-based queue system for Cockos Reaper that allows you to control and navigate through regions during live performances. Built with SvelteKit 5 for the frontend and Node.js for the backend, with real-time communication via Socket.IO.
+Remote control application for Reaper DAW.
 
 ## Features
 
-- View a setlist of all regions in your Reaper project
-- Play, pause, and navigate between regions
-- Seek to the beginning of the current region to restart a song
-- Real-time updates of playback position and state
-- Responsive design for both desktop and mobile use
-- Background Node.js server that communicates with Reaper via its web interface
+- Remote playback control for Reaper
+- Region navigation
+- Real-time status updates
+- WebSocket connection monitoring
 
-## Project Structure
+## WebSocket Connection Status
 
-The project is divided into two main parts:
+The application now includes a WebSocket connection status indicator that shows whether the connection between the frontend and backend is active. This helps diagnose connection issues and provides a way to manually reconnect if needed.
 
-- **Backend**: Node.js server that communicates with Reaper via its web interface and provides a Socket.IO interface for the frontend
-- **Frontend**: SvelteKit 5 application that provides the user interface for controlling Reaper
+### Connection Status Features
 
-## Prerequisites
+- Visual indicator showing if the connection is active (green) or disconnected (red)
+- Connection status text (Connected, Reconnecting, Disconnected)
+- Last ping time and latency for active connections
+- Error details for failed connections
+- Manual reconnect button when disconnected
 
-- [Node.js](https://nodejs.org/) (v16 or later)
-- [npm](https://www.npmjs.com/) (v7 or later)
-- [Cockos Reaper](https://www.reaper.fm/) with web interface enabled (port 8080)
+### How It Works
 
-## Setup
+1. The frontend sends a ping to the backend every 10 seconds
+2. The backend responds with a pong
+3. The frontend measures the round-trip time (latency)
+4. The connection status is updated based on these pings and other socket events
+5. The ConnectionStatus component displays this information to the user
 
-### 1. Reaper Configuration
+### Testing the Connection
 
-1. Open Reaper and go to `Preferences > Control/OSC/web`
-2. Enable the built-in web interface:
-   - Check "Enable web interface" option
-   - Set the port to 8080 (default)
-   - Access control can be set to your preference (none for local use)
-   - No authentication is required for local use
-3. Make sure Reaper is running and the web interface is accessible at `http://localhost:8080`
+To test if the WebSocket connection is working:
 
-### 2. Backend Setup
+1. Start the application using `docker-compose up`
+2. Open the application in a browser
+3. Check the connection status indicator in the header section
+   - A green dot indicates an active connection
+   - The latency shows the response time in milliseconds
 
-1. Navigate to the backend directory:
+To test disconnection handling:
+
+1. Stop the backend service while keeping the frontend running:
    ```
-   cd backend
+   docker-compose stop backend
    ```
-
-2. Install dependencies:
+2. Observe the connection status change to "Disconnected" with a red indicator
+3. The reconnect button should appear
+4. Start the backend service again:
    ```
-   npm install
+   docker-compose start backend
    ```
-
-3. Configure the environment variables by editing the `.env` file:
-   ```
-   # Server configuration
-   PORT=3000
-
-   # Reaper host configuration
-   REAPER_HOST=127.0.0.1
-
-   # Reaper Web Interface configuration (currently in use)
-   REAPER_WEB_PORT=8080
-
-   # Reaper OSC configuration (kept for backward compatibility)
-   REAPER_PORT=8000
-   LOCAL_PORT=9000
-   ```
-
-4. Start the backend server:
-   ```
-   npm start
-   ```
-
-### 3. Frontend Setup
-
-1. Navigate to the frontend directory:
-   ```
-   cd frontend
-   ```
-
-2. Install dependencies:
-   ```
-   npm install
-   ```
-
-3. Start the development server:
-   ```
-   npm run dev
-   ```
-
-4. Open your browser and navigate to `http://localhost:5173`
-
-## Usage
-
-### Regions in Reaper
-
-For the application to work properly, you need to have regions defined in your Reaper project:
-
-1. In Reaper, position the cursor where you want a region to start
-2. Press Shift+R or right-click on the timeline and select "Insert region"
-3. Name your region (this will appear in the setlist)
-4. Adjust the start and end points of the region as needed
-
-### Using the Queue
-
-1. Make sure both the backend server and frontend are running
-2. Open the application in your browser (or on your mobile device)
-3. The setlist will show all regions from your Reaper project
-4. Use the transport controls to:
-   - Play/Pause: Toggle playback
-   - Previous: Go to the previous region
-   - Restart: Jump to the beginning of the current region
-   - Next: Go to the next region
-   - Refresh: Update the region list from Reaper
-5. Click on any region in the setlist to jump directly to it
+5. Click the reconnect button or wait for automatic reconnection attempts
 
 ## Development
 
-### Backend
+### Prerequisites
 
-The backend is built with:
-- Express.js for the HTTP server
-- Socket.IO for real-time communication with the frontend
-- HTTP client for communication with Reaper's web interface
+- Docker and Docker Compose
+- Node.js (for local development)
 
-Key files:
-- `server.js`: Main server file with Socket.IO and Reaper web interface setup
-- `adapters/reaper-web-adapter.js`: Adapter for communicating with Reaper's web interface
-- `.env`: Configuration variables
+### Setup
 
-### Frontend
+1. Clone the repository
+2. Copy `.env.example` to `.env` and adjust settings if needed
+3. Run `docker-compose up` to start the application
 
-The frontend is built with:
-- SvelteKit 5 for the framework
-- Socket.IO client for real-time communication with the backend
+### Project Structure
 
-Key files and directories:
-- `src/lib/stores/socket.js`: Socket.IO connection and state management
-- `src/lib/components/`: UI components
-- `src/routes/`: SvelteKit routes
-
-## Troubleshooting
-
-### Connection Issues
-
-- Make sure Reaper is running and the web interface is enabled on port 8080
-- Verify you can access Reaper's web interface directly at http://localhost:8080
-- Check that the REAPER_WEB_PORT in the `.env` file matches the port in Reaper's web interface configuration
-- Ensure the backend server is running before starting the frontend
-- Check the browser console and backend terminal for any error messages
-
-### Region Detection Issues
-
-- Make sure you have regions defined in your Reaper project
-- Try clicking the "Refresh Regions" button in the application
-- Check that the regions are properly defined with start and end points
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- [Cockos Reaper](https://www.reaper.fm/) for the amazing DAW and its built-in web interface
-- [SvelteKit](https://kit.svelte.dev/) for the frontend framework
-- [Socket.IO](https://socket.io/) for real-time communication
-- [Reaper Web Interface Documentation](https://www.reaper.fm/sdk/reascript/reascripthelp.html#HTTP_Server) for the API reference
+- `/backend` - Node.js backend with Socket.IO server
+- `/frontend` - Svelte frontend application

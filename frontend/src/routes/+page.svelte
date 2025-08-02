@@ -3,21 +3,72 @@
   import RegionList from '$lib/components/RegionList.svelte';
   import { onMount } from 'svelte';
   import { socketControl } from '$lib/stores/socket';
+  import { 
+    setlists, 
+    currentSetlist, 
+    setlistLoading, 
+    fetchSetlists, 
+    fetchSetlist 
+  } from '$lib/stores';
   
-  // Refresh regions on component mount
-  onMount(() => {
+  // Local state
+  // Initialize with empty string to ensure "All Regions" is selected by default in the dropdown
+  let selectedSetlistId = "";
+  
+  /**
+   * Refresh regions and fetch setlists on component mount
+   * This ensures we have the latest data from Reaper and all available setlists
+   */
+  onMount(async () => {
     socketControl.refreshRegions();
+    await fetchSetlists();
     
     // Return a cleanup function
     return () => {
       // Any cleanup if needed
     };
   });
+  
+  /**
+   * Handle setlist selection from the dropdown
+   * When a setlist is selected, fetch its details
+   * When "All Regions" is selected, clear the current setlist
+   */
+  async function handleSetlistChange(event) {
+    const id = event.target.value;
+    selectedSetlistId = id;
+    
+    if (id) {
+      await fetchSetlist(id);
+    } else {
+      // Clear current setlist to show all regions
+      currentSetlist.set(null);
+    }
+  }
 </script>
 
 <div class="queue-container">
   <div class="controls-section">
     <TransportControls />
+  </div>
+  
+  <div class="setlist-selector">
+    <label for="setlist-select">Select Setlist:</label>
+    <select 
+      id="setlist-select" 
+      bind:value={selectedSetlistId} 
+      on:change={handleSetlistChange}
+      disabled={$setlistLoading}
+    >
+      <option value="">All Regions</option>
+      {#each $setlists as setlist (setlist.id)}
+        <option value={setlist.id}>{setlist.name}</option>
+      {/each}
+    </select>
+    
+    {#if $setlistLoading}
+      <div class="loading-indicator">Loading...</div>
+    {/if}
   </div>
   
   <div class="regions-section">
@@ -50,6 +101,43 @@
     margin: 0.5rem 0 0;
     color: #aaaaaa;
     font-size: 1rem;
+  }
+  
+  .setlist-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+  
+  .setlist-selector label {
+    font-weight: bold;
+    color: #ffffff;
+    white-space: nowrap;
+  }
+  
+  .setlist-selector select {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #444;
+    background-color: #333;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .setlist-selector select:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  
+  .loading-indicator {
+    font-size: 0.9rem;
+    color: #aaaaaa;
+    font-style: italic;
   }
   
   .info-section {
@@ -96,6 +184,21 @@
     
     .subtitle {
       font-size: 0.9rem;
+    }
+    
+    .setlist-selector {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+      padding: 0.75rem;
+    }
+    
+    .setlist-selector label {
+      margin-bottom: 0.25rem;
+    }
+    
+    .setlist-selector select {
+      width: 100%;
     }
     
     .info-card {

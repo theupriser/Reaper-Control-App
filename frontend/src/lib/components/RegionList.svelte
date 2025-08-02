@@ -1,29 +1,38 @@
 <script>
-  import { socketControl, regions, playbackState, statusMessage } from '$lib/stores/socket';
+  import { socketControl } from '$lib/stores/socket';
+  import { 
+    regions, 
+    playbackState, 
+    statusMessage,
+    currentSetlist 
+  } from '$lib/stores';
   import { onMount } from 'svelte';
   
-  // Add debugging for regions store
-  $: {
-    console.log('RegionList: regions store updated, length:', $regions ? $regions.length : 0);
-    if ($regions && $regions.length > 0) {
-      console.log('RegionList: first region:', $regions[0]);
-    } else {
-      console.log('RegionList: no regions available');
-    }
-  }
+  /**
+   * Computed property to determine which items to display
+   * If a setlist is selected, display its items
+   * Otherwise, display all regions
+   */
+  $: displayItems = $currentSetlist 
+    ? $currentSetlist.items.map(item => {
+        // Find the corresponding region for each setlist item
+        const region = $regions.find(r => r.id === item.regionId);
+        return {
+          id: item.id,
+          regionId: item.regionId,
+          name: item.name,
+          // Use region data if available, otherwise use defaults
+          start: region ? region.start : 0,
+          end: region ? region.end : 0
+        };
+      })
+    : $regions;
   
-  // Add debugging for status messages
-  $: if ($statusMessage) {
-    console.log('RegionList: status message updated:', $statusMessage);
-  }
-  
-  // Add debugging for component lifecycle
-  onMount(() => {
-    console.log('RegionList component mounted');
-    console.log('Initial regions count:', $regions ? $regions.length : 0);
-  });
-  
-  // Format time in seconds to MM:SS format
+  /**
+   * Format time in seconds to MM:SS format
+   * @param {number} seconds - Time in seconds
+   * @returns {string} Formatted time string (MM:SS)
+   */
   function formatTime(seconds) {
     if (!seconds && seconds !== 0) return '--:--';
     
@@ -32,26 +41,36 @@
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
   
-  // Calculate duration from start and end times
+  /**
+   * Calculate duration from start and end times
+   * @param {number} start - Start time in seconds
+   * @param {number} end - End time in seconds
+   * @returns {string} Formatted duration string
+   */
   function calculateDuration(start, end) {
     return formatTime(end - start);
   }
   
-  // Handle region selection
+  /**
+   * Handle region selection
+   * Seeks to the selected region in Reaper
+   * @param {number} regionId - ID of the region to seek to
+   */
   function selectRegion(regionId) {
-    console.log('RegionList: selecting region with ID:', regionId);
     socketControl.seekToRegion(regionId);
   }
   
-  // Handle refresh button click
+  /**
+   * Handle refresh button click
+   * Refreshes the list of regions from Reaper
+   */
   function handleRefresh() {
-    console.log('RegionList: refresh button clicked');
     socketControl.refreshRegions();
   }
 </script>
 
 <div class="region-list-container">
-  <h2>Setlist</h2>
+  <h2>{$currentSetlist ? $currentSetlist.name : 'All Regions'}</h2>
   
   {#if $statusMessage}
     <div class="status-message {$statusMessage.type}">
@@ -94,19 +113,26 @@
         Refresh Regions
       </button>
     </div>
+  {:else if $currentSetlist && $currentSetlist.items.length === 0}
+    <div class="empty-state">
+      <p>This setlist is empty</p>
+      <p class="empty-state-hint">
+        Add items to this setlist in the Setlist Editor.
+      </p>
+    </div>
   {:else}
     <div class="region-list">
-      {#each $regions as region (region.id)}
+      {#each displayItems as item (item.id)}
         <div 
-          class="region-item {$playbackState.currentRegionId === region.id ? 'active' : ''}"
-          on:click={() => selectRegion(region.id)}
+          class="region-item {$playbackState.currentRegionId === item.regionId ? 'active' : ''}"
+          on:click={() => selectRegion(item.regionId)}
         >
           <div class="region-info">
-            <div class="region-name">{region.name}</div>
-            <div class="region-duration">{calculateDuration(region.start, region.end)}</div>
+            <div class="region-name">{item.name}</div>
+            <div class="region-duration">{calculateDuration(item.start, item.end)}</div>
           </div>
           
-          {#if $playbackState.currentRegionId === region.id}
+          {#if $playbackState.currentRegionId === item.regionId}
             <div class="playing-indicator">
               {#if $playbackState.isPlaying}
                 <div class="playing-animation">

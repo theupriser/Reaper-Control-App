@@ -1,0 +1,29 @@
+[
+  {
+    "id": "mdud39c6qy1eq8z",
+    "name": "Default Setlist",
+    "projectId": "521cb334-4db1-4165-bf73-43349ad20c18",
+    "items": [
+      {
+        "id": "mdudat3ngj0",
+        "regionId": 1,
+        "name": "Radio Sicko -  Intro",
+        "position": 0
+      },
+      {
+        "id": "mdudajovm7l",
+        "regionId": 2,
+        "name": "QOTSA - No One Knows",
+        "position": 1
+      },
+      {
+        "id": "mdudawlqbk8",
+        "regionId": 3,
+        "name": "Redmond Sicko - Qotsa Snippet",
+        "position": 2
+      }
+    ],
+    "createdAt": "2025-08-02T14:42:32.838Z",
+    "updatedAt": "2025-08-02T15:24:11.124Z"
+  }
+]

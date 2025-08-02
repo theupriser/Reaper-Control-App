@@ -55,3 +55,22 @@ export {
   updateProjectId,
   getProjectId
 } from './projectStore';
+
+// Re-export from setlist store
+export {
+  setlists,
+  currentSetlist,
+  loading as setlistLoading,
+  error as setlistError,
+  currentSetlistWithRegions,
+  fetchSetlists,
+  fetchSetlist,
+  createSetlist,
+  updateSetlist,
+  deleteSetlist,
+  addSetlistItem,
+  removeSetlistItem,
+  moveSetlistItem,
+  clearError as clearSetlistError,
+  resetSetlistStore
+} from './setlistStore';

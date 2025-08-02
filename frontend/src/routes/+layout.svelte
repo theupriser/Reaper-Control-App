@@ -1,13 +1,8 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { socketControl } from '$lib/stores/socket';
   import { projectId } from '$lib/stores';
   import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
-  
-  // Clean up socket connection when the app is destroyed
-  onDestroy(() => {
-    socketControl.disconnect();
-  });
   
   // Refresh the project ID when the app is mounted
   onMount(() => {
@@ -22,12 +17,19 @@
 
 <div class="app">
   <header>
-    <h1>Reaper Control</h1>
-    {#if $projectId}
-      <div class="project-id">
-        Project ID: <span class="id-value">{$projectId}</span>
-      </div>
-    {/if}
+    <div class="header-content">
+      <h1>Reaper Control</h1>
+      {#if $projectId}
+        <div class="project-id">
+          Project ID: <span class="id-value">{$projectId}</span>
+        </div>
+      {/if}
+    </div>
+    
+    <nav class="main-nav">
+      <a href="/" class="nav-link">Player</a>
+      <a href="/setlists" class="nav-link">Setlists</a>
+    </nav>
   </header>
   
   <main>
@@ -65,11 +67,16 @@
   header {
     background-color: #1e1e1e;
     padding: 1rem;
-    text-align: center;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
     align-items: center;
+  }
+  
+  .header-content {
+    text-align: center;
+    width: 100%;
+    margin-bottom: 1rem;
   }
   
   h1 {
@@ -81,6 +88,35 @@
     font-size: 0.8rem;
     color: #aaaaaa;
     margin-top: 0.5rem;
+  }
+  
+  .main-nav {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0;
+    width: 100%;
+    justify-content: center;
+    border-top: 1px solid #333;
+  }
+  
+  .nav-link {
+    color: #ffffff;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    font-weight: 500;
+  }
+  
+  .nav-link:hover {
+    background-color: #333;
+  }
+  
+  /* Active link styling - will be applied by the router */
+  :global(.active-nav-link) {
+    background-color: #333;
+    color: #4CAF50;
   }
   
   .id-value {
@@ -130,7 +166,24 @@
     
     .connection-status-container {
       padding: 0.25rem 0.5rem;
-      top: 2.7rem; /* Adjusted for smaller header on mobile */
+      top: 4rem; /* Adjusted for header with navigation */
+    }
+    
+    header {
+      padding: 0.75rem 0.5rem;
+    }
+    
+    .header-content {
+      margin-bottom: 0.5rem;
+    }
+    
+    .main-nav {
+      gap: 0.5rem;
+    }
+    
+    .nav-link {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.9rem;
     }
   }
 </style>

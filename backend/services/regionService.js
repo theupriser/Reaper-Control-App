@@ -166,11 +166,9 @@ class RegionService {
           // Create a Region object
           const region = new Region(regionData);
           
-          // Only log the first few regions as examples
-          if (validRegionCount < 3) {
-            logger.collect(logContext, `Region example ${validRegionCount + 1}:`, 
-              `ID: ${region.id}, Name: ${region.name}, Start: ${region.start}, End: ${region.end}`);
-          }
+
+          logger.collect(logContext, `Region ${region.id}:`,
+            `Name: ${region.name}, Start: ${region.start}, End: ${region.end}`);
           
           parsedRegions.push(region);
           validRegionCount++;

@@ -16,6 +16,7 @@ import {
   updatePlaybackState,
   setStatusMessage,
   createErrorMessage,
+  createInfoMessage,
   setConnected,
   setDisconnected,
   setReconnecting,

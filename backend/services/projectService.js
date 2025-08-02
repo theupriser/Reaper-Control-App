@@ -16,6 +16,7 @@ class ProjectService extends EventEmitter {
     this.projectIdKey = 'ProjectId';
     this.pollingInterval = null;
     this.pollingFrequency = 2000; // Check every 2 seconds
+    this.pollingEnabled = true; // Flag to enable/disable polling
   }
 
   /**
@@ -48,6 +49,11 @@ class ProjectService extends EventEmitter {
     
     // Set up new polling interval
     this.pollingInterval = setInterval(async () => {
+      // Skip polling if disabled
+      if (!this.pollingEnabled) {
+        return;
+      }
+      
       try {
         // Get the current project ID from Reaper
         const currentProjectId = await reaperService.getProjectExtState(this.projectSection, this.projectIdKey);
@@ -172,6 +178,23 @@ class ProjectService extends EventEmitter {
    */
   async refreshProjectId() {
     return this.getOrGenerateProjectId();
+  }
+
+  /**
+   * Disable polling for project changes
+   * This is useful when performing operations that should not trigger a project reload
+   */
+  disablePolling() {
+    this.pollingEnabled = false;
+    logger.log('Project polling disabled');
+  }
+
+  /**
+   * Enable polling for project changes
+   */
+  enablePolling() {
+    this.pollingEnabled = true;
+    logger.log('Project polling enabled');
   }
 }
 

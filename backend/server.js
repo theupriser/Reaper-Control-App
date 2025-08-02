@@ -18,6 +18,7 @@ const apiRoutes = require('./routes/apiRoutes');
 const reaperService = require('./services/reaperService');
 const regionService = require('./services/regionService');
 const projectService = require('./services/projectService');
+const setlistService = require('./services/setlistService');
 const SocketController = require('./controllers/socketController');
 
 // Create Express app
@@ -36,9 +37,6 @@ const io = new Server(server, {
   }
 });
 
-// Register API routes
-app.use('/api', apiRoutes);
-
 // Initialize socket controller
 const socketController = new SocketController(io);
 
@@ -54,8 +52,14 @@ async function initializeApp() {
     // Initialize project service
     await projectService.initialize();
     
+    // Initialize setlist service
+    await setlistService.initialize();
+    
     // Initialize socket controller
     socketController.initialize();
+    
+    // Register API routes after all services are initialized
+    app.use('/api', apiRoutes);
     
     logger.log('Application initialized successfully');
   } catch (error) {

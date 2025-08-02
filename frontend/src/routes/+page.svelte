@@ -1,7 +1,7 @@
 <script>
   import TransportControls from '$lib/components/TransportControls.svelte';
   import RegionList from '$lib/components/RegionList.svelte';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { socketControl } from '$lib/stores/socket';
   
   // Refresh regions on component mount
@@ -12,11 +12,6 @@
     return () => {
       // Any cleanup if needed
     };
-  });
-  
-  // Ensure socket is disconnected when component is destroyed
-  onDestroy(() => {
-    socketControl.disconnect();
   });
 </script>
 

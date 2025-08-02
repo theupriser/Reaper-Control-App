@@ -21,7 +21,8 @@ import {
   setReconnecting,
   setReconnected,
   setConnectionError,
-  updatePingInfo
+  updatePingInfo,
+  updateProjectId
 } from '../stores';
 
 // Socket instance
@@ -75,6 +76,8 @@ function setupEventListeners() {
   socket.on('regions', handleRegionsUpdate);
   socket.on('playbackState', handlePlaybackStateUpdate);
   socket.on('status', handleStatusMessage);
+  socket.on('projectId', handleProjectIdUpdate);
+  socket.on('projectChanged', handleProjectChanged);
 }
 
 /**
@@ -323,6 +326,46 @@ function handleStatusMessage(data) {
 }
 
 /**
+ * Handles the project ID update event
+ * @param {string} data - The project ID
+ */
+function handleProjectIdUpdate(data) {
+  console.log('Received project ID from server:', data);
+  
+  // Update the project ID store
+  updateProjectId(data);
+  
+  // Show status message
+  setStatusMessage(createInfoMessage(
+    'Project identified',
+    `Connected to project with ID: ${data.substring(0, 8)}...`
+  ));
+}
+
+/**
+ * Handles the project changed event (when switching tabs in Reaper)
+ * @param {string} projectId - The new project ID
+ */
+function handleProjectChanged(projectId) {
+  console.log('Project changed detected, new project ID:', projectId);
+  
+  // Update the project ID store
+  updateProjectId(projectId);
+  
+  // Show status message
+  setStatusMessage(createInfoMessage(
+    'Project changed',
+    `Switched to project with ID: ${projectId.substring(0, 8)}...`
+  ));
+  
+  // Refresh regions for the new project
+  setTimeout(() => {
+    console.log('Refreshing regions after project change...');
+    socket.emit('refreshRegions');
+  }, 500);
+}
+
+/**
  * Creates the default socket control interface for SSR
  * @returns {Object} - The default socket control interface
  */
@@ -372,6 +415,16 @@ function createSocketControl() {
         console.log('Socket disconnected for testing. Focus the window to trigger reconnection.');
       } else {
         console.log('Socket is already disconnected or not initialized');
+      }
+    },
+    
+    /**
+     * Refresh the project ID
+     */
+    refreshProjectId: () => {
+      if (socket) {
+        console.log('Requesting project ID refresh');
+        socket.emit('refreshProjectId');
       }
     },
     

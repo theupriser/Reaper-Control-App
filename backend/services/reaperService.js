@@ -98,6 +98,53 @@ class ReaperService {
   async seekToPosition(position) {
     await this.sendCommand(`/SET/POS/${position}`);
   }
+
+  /**
+   * Get project extended state
+   * @param {string} section - The section name
+   * @param {string} key - The key name
+   * @returns {Promise<string>} The value or empty string if not found
+   */
+  async getProjectExtState(section, key) {
+    if (!this.isConnected) {
+      try {
+        await this.connect();
+      } catch (error) {
+        throw new Error(`Cannot get project extended state, not connected to Reaper: ${error.message}`);
+      }
+    }
+
+    try {
+      return await this.reaper.getProjectExtState(section, key);
+    } catch (error) {
+      logger.error(`Error getting project extended state for ${section}/${key}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set project extended state
+   * @param {string} section - The section name
+   * @param {string} key - The key name
+   * @param {string} value - The value to set
+   * @returns {Promise<void>}
+   */
+  async setProjectExtState(section, key, value) {
+    if (!this.isConnected) {
+      try {
+        await this.connect();
+      } catch (error) {
+        throw new Error(`Cannot set project extended state, not connected to Reaper: ${error.message}`);
+      }
+    }
+
+    try {
+      await this.reaper.setProjectExtState(section, key, value);
+    } catch (error) {
+      logger.error(`Error setting project extended state for ${section}/${key}:`, error);
+      throw error;
+    }
+  }
 }
 
 // Create and export a singleton instance

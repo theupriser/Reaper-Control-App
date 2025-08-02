@@ -6,6 +6,7 @@
 const logger = require('../utils/logger');
 const reaperService = require('./reaperService');
 const regionService = require('./regionService');
+const projectService = require('./projectService');
 
 class SocketService {
   constructor() {
@@ -40,6 +41,31 @@ class SocketService {
       }
     });
 
+    // Listen for project ID updates
+    projectService.on('projectIdUpdated', (projectId) => {
+      if (this.io) {
+        logger.log('Emitting project ID to all clients:', projectId);
+        this.io.emit('projectId', projectId);
+      }
+    });
+    
+    // Listen for project changes (when switching tabs in Reaper)
+    projectService.on('projectChanged', (projectId) => {
+      if (this.io) {
+        logger.log('Project changed detected, notifying all clients');
+        
+        // Emit project changed event with the new project ID
+        this.io.emit('projectChanged', projectId);
+        
+        // Also refresh regions for the new project
+        regionService.fetchRegions().then(() => {
+          logger.log('Regions refreshed after project change');
+        }).catch(error => {
+          logger.error('Error refreshing regions after project change:', error);
+        });
+      }
+    });
+
     // Listen for errors
     regionService.on('error', (error) => {
       if (this.io) {
@@ -67,9 +93,16 @@ class SocketService {
       // Always log basic connection info even without detailed logging
       logger.log('Client connected:', socket.id);
     }
-    
+  
     socket.emit('regions', regionService.getRegions());
     socket.emit('playbackState', regionService.getPlaybackState());
+  
+    // Send project ID if available
+    const projectId = projectService.getProjectId();
+    if (projectId) {
+      logger.log('Sending project ID to client:', socket.id, projectId);
+      socket.emit('projectId', projectId);
+    }
     
     // Flush the connection logs if they exist
     if (connectionContext) {
@@ -486,6 +519,27 @@ class SocketService {
         logger.log(`Autoplay ${enabled ? 'enabled' : 'disabled'}`);
       } catch (error) {
         logger.error('Error toggling autoplay:', error);
+      }
+    });
+    
+    // Handle refresh project ID
+    socket.on('refreshProjectId', async () => {
+      try {
+        const logContext = logger.startCollection('refreshProjectId-handler');
+        logger.collect(logContext, 'Refresh project ID requested');
+        
+        // Refresh the project ID
+        const projectId = await projectService.refreshProjectId();
+        logger.collect(logContext, 'Project ID refreshed:', projectId);
+        
+        // Send the project ID to the client
+        socket.emit('projectId', projectId);
+        logger.collect(logContext, 'Sent project ID to client');
+        
+        // Flush logs
+        logger.flushLogs(logContext);
+      } catch (error) {
+        logger.error('Error refreshing project ID:', error);
       }
     });
   }

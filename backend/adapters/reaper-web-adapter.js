@@ -271,6 +271,101 @@ class Web {
    * @param {string} response - The raw response from Reaper
    * @returns {string} The formatted response
    */
+  /**
+   * Get project extended state
+   * @param {string} section - The section name
+   * @param {string} key - The key name
+   * @returns {Promise<string>} The value or empty string if not found
+   */
+  async getProjectExtState(section, key) {
+    if (this.logContext) {
+      logger.collect(this.logContext, `Web Adapter: Getting project extended state for ${section}/${key}`);
+    }
+    
+    try {
+      // URL encode the section and key
+      const encodedSection = encodeURIComponent(section);
+      const encodedKey = encodeURIComponent(key);
+      
+      // Send the request
+      const response = await this.sendRequest(`GET/PROJEXTSTATE/${encodedSection}/${encodedKey}`);
+      
+      // Parse the response
+      const lines = response.split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        
+        const parts = line.split('\t');
+        if (parts[0] === 'PROJEXTSTATE' && parts.length >= 4) {
+          // The value is in the 4th part (index 3)
+          const value = parts[3];
+          
+          // Decode any escaped characters
+          const decodedValue = value.replace(/\\n/g, '\n')
+                               .replace(/\\t/g, '\t')
+                               .replace(/\\\\/g, '\\');
+          
+          if (this.logContext) {
+            logger.collect(this.logContext, `Web Adapter: Found project extended state value: ${decodedValue}`);
+            logger.flushLogs(this.logContext);
+          }
+          
+          return decodedValue;
+        }
+      }
+      
+      // If we get here, no value was found
+      if (this.logContext) {
+        logger.collect(this.logContext, `Web Adapter: No project extended state found for ${section}/${key}`);
+        logger.flushLogs(this.logContext);
+      }
+      
+      return '';
+    } catch (error) {
+      if (this.logContext) {
+        logger.collectError(this.logContext, `Web Adapter: Error getting project extended state for ${section}/${key}:`, error);
+      } else {
+        logger.error(`Web Adapter: Error getting project extended state for ${section}/${key}:`, error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Set project extended state
+   * @param {string} section - The section name
+   * @param {string} key - The key name
+   * @param {string} value - The value to set
+   * @returns {Promise<void>}
+   */
+  async setProjectExtState(section, key, value) {
+    if (this.logContext) {
+      logger.collect(this.logContext, `Web Adapter: Setting project extended state for ${section}/${key} to ${value}`);
+    }
+    
+    try {
+      // URL encode the section, key, and value
+      const encodedSection = encodeURIComponent(section);
+      const encodedKey = encodeURIComponent(key);
+      const encodedValue = encodeURIComponent(value);
+      
+      // Send the request
+      await this.sendRequest(`SET/PROJEXTSTATE/${encodedSection}/${encodedKey}/${encodedValue}`);
+      
+      if (this.logContext) {
+        logger.collect(this.logContext, `Web Adapter: Successfully set project extended state for ${section}/${key}`);
+        logger.flushLogs(this.logContext);
+      }
+    } catch (error) {
+      if (this.logContext) {
+        logger.collectError(this.logContext, `Web Adapter: Error setting project extended state for ${section}/${key}:`, error);
+      } else {
+        logger.error(`Web Adapter: Error setting project extended state for ${section}/${key}:`, error);
+      }
+      throw error;
+    }
+  }
+  
   formatTransportResponse(response) {
     let detailedLogContext = null;
     

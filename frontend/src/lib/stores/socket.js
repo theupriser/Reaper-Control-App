@@ -36,6 +36,9 @@ export const socketControl = {
   toggleAutoplay: transportService.toggleAutoplay,
   disconnect: transportService.disconnect,
   
+  // Project functions
+  refreshProjectId: socketService.refreshProjectId,
+  
   // Testing function
   testReconnection: socketService.testReconnection
 };

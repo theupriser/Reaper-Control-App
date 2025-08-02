@@ -1,22 +1,33 @@
 <script>
-  import { onDestroy } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { socketControl } from '$lib/stores/socket';
+  import { projectId } from '$lib/stores';
   import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
   
   // Clean up socket connection when the app is destroyed
   onDestroy(() => {
     socketControl.disconnect();
   });
+  
+  // Refresh the project ID when the app is mounted
+  onMount(() => {
+    socketControl.refreshProjectId();
+  });
 </script>
 
 <svelte:head>
-  <title>Reaper Control</title>
+  <title>Reaper Control {$projectId ? `- ${$projectId.substring(0, 8)}...` : ''}</title>
   <meta name="description" content="Queue system for Cockos Reaper" />
 </svelte:head>
 
 <div class="app">
   <header>
     <h1>Reaper Control</h1>
+    {#if $projectId}
+      <div class="project-id">
+        Project ID: <span class="id-value">{$projectId}</span>
+      </div>
+    {/if}
   </header>
   
   <main>
@@ -26,10 +37,10 @@
   <div class="connection-status-container">
     <ConnectionStatus />
   </div>
-  
-  <footer>
-    <p>© 2025 Reaper Control</p>
-  </footer>
+<!--  -->
+<!--  <footer>-->
+<!--    <p>© 2025 Reaper Control</p>-->
+<!--  </footer>-->
 </div>
 
 <style>
@@ -56,11 +67,28 @@
     padding: 1rem;
     text-align: center;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
   
   h1 {
     margin: 0;
     font-size: 1.5rem;
+  }
+  
+  .project-id {
+    font-size: 0.8rem;
+    color: #aaaaaa;
+    margin-top: 0.5rem;
+  }
+  
+  .id-value {
+    font-family: monospace;
+    background-color: #2a2a2a;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    color: #4caf50;
   }
   
   main {

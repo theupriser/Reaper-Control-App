@@ -17,6 +17,7 @@ const logger = require('./utils/logger');
 const apiRoutes = require('./routes/apiRoutes');
 const reaperService = require('./services/reaperService');
 const regionService = require('./services/regionService');
+const projectService = require('./services/projectService');
 const SocketController = require('./controllers/socketController');
 
 // Create Express app
@@ -49,6 +50,9 @@ async function initializeApp() {
     
     // Initialize region service
     await regionService.initialize();
+    
+    // Initialize project service
+    await projectService.initialize();
     
     // Initialize socket controller
     socketController.initialize();

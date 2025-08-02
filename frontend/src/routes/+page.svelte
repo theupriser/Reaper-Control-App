@@ -28,18 +28,6 @@
   <div class="regions-section">
     <RegionList />
   </div>
-  
-  <div class="info-section">
-    <div class="info-card">
-      <h3>Instructions</h3>
-      <ul>
-        <li>Use the transport controls to play, pause, and navigate between regions</li>
-        <li>Click on a region in the setlist to jump to it</li>
-        <li>Use the restart button to jump to the beginning of the current region</li>
-        <li>If regions aren't showing, click the refresh button</li>
-      </ul>
-    </div>
-  </div>
 </div>
 
 <style>

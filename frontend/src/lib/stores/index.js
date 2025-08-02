@@ -48,3 +48,10 @@ export {
   getConnectionStatus,
   isConnected
 } from './connectionStore';
+
+// Re-export from project store
+export {
+  projectId,
+  updateProjectId,
+  getProjectId
+} from './projectStore';

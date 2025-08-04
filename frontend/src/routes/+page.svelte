@@ -10,7 +10,7 @@
     fetchSetlists, 
     fetchSetlist 
   } from '$lib/stores';
-  import { setSelectedSetlist, playbackState } from '$lib/stores/playbackStore';
+  import { setSelectedSetlist, playbackState, getPlaybackState } from '$lib/stores/playbackStore';
   
   // Local state
   // Initialize with empty string to ensure "All Regions" is selected by default in the dropdown
@@ -26,11 +26,19 @@
     await fetchSetlists();
     
     // Subscribe to playbackState to get the selectedSetlistId
+    // Only update the selectedSetlistId when it changes, not on every playback state update
+    let previousSetlistId = null;
     const unsubscribe = playbackState.subscribe(state => {
-      if (state.selectedSetlistId) {
+      // Only update if the setlist ID has changed to avoid unnecessary refreshes during playback
+      if (state.selectedSetlistId !== previousSetlistId) {
+        console.log('Setlist ID changed, updating dropdown:', state.selectedSetlistId);
         // If there's a selected setlist in playbackState, load it
-        selectedSetlistId = state.selectedSetlistId;
-        fetchSetlist(state.selectedSetlistId);
+        selectedSetlistId = state.selectedSetlistId || "";
+        if (state.selectedSetlistId) {
+          fetchSetlist(state.selectedSetlistId);
+        }
+        // Update the previous ID to avoid future unnecessary updates
+        previousSetlistId = state.selectedSetlistId;
       }
     });
     
@@ -42,18 +50,34 @@
   
   /**
    * Handle setlist selection from the dropdown
-   * When a setlist is selected, fetch its details
+   * When a setlist is selected, fetch its details, pause Reaper, and select the first song
    * When "All Regions" is selected, clear the current setlist
    * Also store the selected setlist in Reaper extended data
    */
   async function handleSetlistChange(event) {
     const id = event.target.value;
     selectedSetlistId = id;
-    
+
     if (id) {
-      await fetchSetlist(id);
+      // Get current playback state
+      const currentState = getPlaybackState();
+
+      // Only pause if currently playing
+      if (currentState.isPlaying) {
+        socketControl.togglePlay();
+      }
+
+      // Fetch the setlist and store the result
+      const setlist = await fetchSetlist(id);
+      
       // Store the selected setlist ID in Reaper extended data
       setSelectedSetlist(id);
+
+      // Select the first song in the setlist if available
+      if (setlist && setlist.items && setlist.items.length > 0) {
+        const firstSong = setlist.items[0];
+        socketControl.seekToRegion(firstSong.regionId);
+      }
     } else {
       // Clear current setlist to show all regions
       currentSetlist.set(null);
@@ -68,24 +92,26 @@
     <TransportControls />
   </div>
   
-  <div class="setlist-selector">
-    <label for="setlist-select">Select Setlist:</label>
-    <select 
-      id="setlist-select" 
-      bind:value={selectedSetlistId} 
-      on:change={handleSetlistChange}
-      disabled={$setlistLoading}
-    >
-      <option value="">All Regions</option>
-      {#each $setlists as setlist (setlist.id)}
-        <option value={setlist.id}>{setlist.name}</option>
-      {/each}
-    </select>
-    
-    {#if $setlistLoading}
-      <div class="loading-indicator">Loading...</div>
-    {/if}
-  </div>
+  {#if $setlists && $setlists.length > 0}
+    <div class="setlist-selector">
+      <label for="setlist-select">Select Setlist:</label>
+      <select 
+        id="setlist-select" 
+        bind:value={selectedSetlistId} 
+        on:change={handleSetlistChange}
+        disabled={$setlistLoading}
+      >
+        <option value="">All Regions</option>
+        {#each $setlists as setlist (setlist.id)}
+          <option value={setlist.id}>{setlist.name}</option>
+        {/each}
+      </select>
+      
+      {#if $setlistLoading}
+        <div class="loading-indicator">Loading...</div>
+      {/if}
+    </div>
+  {/if}
   
   <div class="regions-section">
     <RegionList />

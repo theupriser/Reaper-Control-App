@@ -142,28 +142,9 @@ class SetlistService {
       // Store the map
       this.setlists.set(projectId, setlistsMap);
       
-      // Check if there are any setlists, if not, create a default one
+      // No longer creating a default setlist when none exist
       if (setlistsMap.size === 0) {
-        logger.collect(logContext, `No setlists found for project: ${projectId}, creating default setlist`);
-        
-        // Create a default setlist
-        const defaultSetlist = new Setlist({
-          name: 'Default Setlist',
-          projectId: projectId,
-          items: []
-        });
-        
-        // Add to map
-        setlistsMap.set(defaultSetlist.id, defaultSetlist);
-        this.setlists.set(projectId, setlistsMap);
-        
-        // Save to file
-        await this.saveSetlistsForProject(projectId);
-        
-        // Emit event
-        this.emitEvent('setlistCreated', defaultSetlist);
-        
-        logger.collect(logContext, `Created default setlist with ID: ${defaultSetlist.id}`);
+        logger.collect(logContext, `No setlists found for project: ${projectId}`);
       }
       
       logger.flushLogs(logContext);

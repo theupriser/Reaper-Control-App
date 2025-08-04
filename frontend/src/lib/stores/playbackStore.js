@@ -11,7 +11,8 @@ import { writable } from 'svelte/store';
 export const playbackState = writable({
   isPlaying: false,
   currentPosition: 0,
-  currentRegionId: null
+  currentRegionId: null,
+  selectedSetlistId: null
 });
 
 /**
@@ -42,14 +43,16 @@ export function updatePlaybackState(data) {
     playbackState.set({
       isPlaying: Boolean(data.isPlaying),
       currentPosition: Number(data.currentPosition) || 0,
-      currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null
+      currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null,
+      selectedSetlistId: data.selectedSetlistId || null
     });
     
     // Log success
     console.log('Successfully updated playback state:', {
       isPlaying: Boolean(data.isPlaying),
       currentPosition: Number(data.currentPosition) || 0,
-      currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null
+      currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null,
+      selectedSetlistId: data.selectedSetlistId || null
     });
     
     return true;
@@ -101,4 +104,29 @@ export function getAutoplayEnabled() {
  */
 export function toggleAutoplay() {
   autoplayEnabled.update(current => !current);
+}
+
+/**
+ * Sets the selected setlist ID
+ * @param {string|null} setlistId - Setlist ID or null for all regions
+ */
+export function setSelectedSetlist(setlistId) {
+  // Update the local store
+  updatePartialPlaybackState({ selectedSetlistId: setlistId });
+  
+  // Log the change
+  console.log(`Setting selected setlist to: ${setlistId || 'null (all regions)'}`);
+  
+  // Import dynamically to avoid circular dependencies
+  import('../services/socketService').then(module => {
+    const socketService = module.default;
+    
+    // Send to backend if socket is connected
+    if (socketService.isConnected()) {
+      socketService.emit('setSelectedSetlist', setlistId);
+      console.log('Sent selected setlist to backend');
+    } else {
+      console.warn('Socket not connected, selected setlist not sent to backend');
+    }
+  });
 }

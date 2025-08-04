@@ -10,6 +10,7 @@
     fetchSetlists, 
     fetchSetlist 
   } from '$lib/stores';
+  import { setSelectedSetlist, playbackState } from '$lib/stores/playbackStore';
   
   // Local state
   // Initialize with empty string to ensure "All Regions" is selected by default in the dropdown
@@ -18,14 +19,24 @@
   /**
    * Refresh regions and fetch setlists on component mount
    * This ensures we have the latest data from Reaper and all available setlists
+   * Also loads the selected setlist from playbackState if available
    */
   onMount(async () => {
     socketControl.refreshRegions();
     await fetchSetlists();
     
+    // Subscribe to playbackState to get the selectedSetlistId
+    const unsubscribe = playbackState.subscribe(state => {
+      if (state.selectedSetlistId) {
+        // If there's a selected setlist in playbackState, load it
+        selectedSetlistId = state.selectedSetlistId;
+        fetchSetlist(state.selectedSetlistId);
+      }
+    });
+    
     // Return a cleanup function
     return () => {
-      // Any cleanup if needed
+      unsubscribe();
     };
   });
   
@@ -33,6 +44,7 @@
    * Handle setlist selection from the dropdown
    * When a setlist is selected, fetch its details
    * When "All Regions" is selected, clear the current setlist
+   * Also store the selected setlist in Reaper extended data
    */
   async function handleSetlistChange(event) {
     const id = event.target.value;
@@ -40,9 +52,13 @@
     
     if (id) {
       await fetchSetlist(id);
+      // Store the selected setlist ID in Reaper extended data
+      setSelectedSetlist(id);
     } else {
       // Clear current setlist to show all regions
       currentSetlist.set(null);
+      // Store null in Reaper extended data to indicate all regions
+      setSelectedSetlist(null);
     }
   }
 </script>

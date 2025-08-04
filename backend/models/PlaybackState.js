@@ -16,6 +16,7 @@ class PlaybackState {
     this.currentPosition = data.currentPosition || 0;
     this.currentRegionId = data.currentRegionId || null;
     this.autoplayEnabled = data.autoplayEnabled !== undefined ? data.autoplayEnabled : true;
+    this.selectedSetlistId = data.selectedSetlistId || null;
   }
 
   /**
@@ -145,7 +146,8 @@ class PlaybackState {
       isPlaying: this.isPlaying,
       currentPosition: this.currentPosition,
       currentRegionId: this.currentRegionId,
-      autoplayEnabled: this.autoplayEnabled
+      autoplayEnabled: this.autoplayEnabled,
+      selectedSetlistId: this.selectedSetlistId
     };
   }
 }

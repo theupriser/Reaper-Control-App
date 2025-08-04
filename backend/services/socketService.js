@@ -57,9 +57,16 @@ class SocketService {
         // Emit project changed event with the new project ID
         this.io.emit('projectChanged', projectId);
         
-        // Also refresh regions for the new project
+        // Refresh regions for the new project
         regionService.fetchRegions().then(() => {
           logger.log('Regions refreshed after project change');
+          
+          // Load the selected setlist for the new project
+          regionService.loadSelectedSetlist().then((setlistId) => {
+            logger.log(`Loaded selected setlist after project change: ${setlistId || 'null (all regions)'}`);
+          }).catch(error => {
+            logger.error('Error loading selected setlist after project change:', error);
+          });
         }).catch(error => {
           logger.error('Error refreshing regions after project change:', error);
         });
@@ -540,6 +547,23 @@ class SocketService {
         logger.flushLogs(logContext);
       } catch (error) {
         logger.error('Error refreshing project ID:', error);
+      }
+    });
+    
+    // Handle set selected setlist
+    socket.on('setSelectedSetlist', async (setlistId) => {
+      try {
+        const logContext = logger.startCollection('setSelectedSetlist-handler');
+        logger.collect(logContext, `Set selected setlist requested: ${setlistId || 'null (all regions)'}`);
+        
+        // Set the selected setlist
+        await regionService.setSelectedSetlist(setlistId);
+        logger.collect(logContext, 'Selected setlist set successfully');
+        
+        // Flush logs
+        logger.flushLogs(logContext);
+      } catch (error) {
+        logger.error('Error setting selected setlist:', error);
       }
     });
   }

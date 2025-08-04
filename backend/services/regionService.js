@@ -18,6 +18,8 @@ class RegionService {
       playbackStateUpdated: [],
       error: []
     };
+    this.setlistSection = 'ReaperControl';
+    this.selectedSetlistKey = 'SelectedSetlistId';
   }
 
   /**
@@ -28,6 +30,9 @@ class RegionService {
     try {
       // Fetch initial regions
       await this.fetchRegions();
+      
+      // Load the selected setlist from Reaper extended data
+      await this.loadSelectedSetlist();
       
       // Start polling for transport state
       this.startPolling();
@@ -301,6 +306,60 @@ class RegionService {
       }
     }
     return null;
+  }
+
+  /**
+   * Set the selected setlist ID and store it in Reaper extended data
+   * @param {string|null} setlistId - Setlist ID or null for all regions
+   * @returns {Promise<boolean>} True if successful
+   */
+  async setSelectedSetlist(setlistId) {
+    try {
+      // Update the playback state
+      this.playbackState.selectedSetlistId = setlistId;
+      
+      // Store in Reaper extended data
+      await reaperService.setProjectExtState(
+        this.setlistSection, 
+        this.selectedSetlistKey, 
+        setlistId || ''
+      );
+      
+      // Emit updated playback state
+      this.emitEvent('playbackStateUpdated', this.playbackState);
+      
+      logger.log(`Selected setlist set to: ${setlistId || 'null (all regions)'}`);
+      return true;
+    } catch (error) {
+      logger.error('Error setting selected setlist:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Load the selected setlist ID from Reaper extended data
+   * @returns {Promise<string|null>} Setlist ID or null if not set
+   */
+  async loadSelectedSetlist() {
+    try {
+      // Get from Reaper extended data
+      const setlistId = await reaperService.getProjectExtState(
+        this.setlistSection, 
+        this.selectedSetlistKey
+      );
+      
+      // Update the playback state
+      this.playbackState.selectedSetlistId = setlistId || null;
+      
+      // Emit updated playback state
+      this.emitEvent('playbackStateUpdated', this.playbackState);
+      
+      logger.log(`Loaded selected setlist: ${setlistId || 'null (all regions)'}`);
+      return setlistId || null;
+    } catch (error) {
+      logger.error('Error loading selected setlist:', error);
+      return null;
+    }
   }
 }
 

@@ -6,6 +6,7 @@
     statusMessage,
     currentSetlist 
   } from '$lib/stores';
+  import { markers, getEffectiveRegionLength } from '$lib/stores/markerStore';
   import { onMount } from 'svelte';
   
   /**
@@ -49,13 +50,23 @@
   }
   
   /**
-   * Calculate duration from start and end times
+   * Calculate duration from start and end times, considering custom length markers
    * @param {number} start - Start time in seconds
    * @param {number} end - End time in seconds
+   * @param {number} regionId - ID of the region
    * @returns {string} Formatted duration string
    */
-  function calculateDuration(start, end) {
-    return formatTime(end - start);
+  function calculateDuration(start, end, regionId) {
+    // Find the region object
+    const region = $regions.find(r => r.id === regionId);
+  
+    if (region) {
+      // Use getEffectiveRegionLength to account for custom length markers
+      return formatTime(getEffectiveRegionLength(region, $markers));
+    } else {
+      // Fallback to simple calculation if region not found
+      return formatTime(end - start);
+    }
   }
   
   /**
@@ -136,7 +147,7 @@
         >
           <div class="region-info">
             <div class="region-name">{item.name}</div>
-            <div class="region-duration">{calculateDuration(item.start, item.end)}</div>
+            <div class="region-duration">{calculateDuration(item.start, item.end, item.regionId)}</div>
           </div>
           
           {#if $playbackState.currentRegionId === item.regionId}

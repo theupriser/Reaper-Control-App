@@ -154,8 +154,32 @@
         // No length marker, use the regular playback state
         useLocalTimer.set(false);
         stopLocalTimer();
-        // Reset hard stop flag
-        atHardStop.set(false);
+        
+        // Check if there's a !1008 marker in the region
+        const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
+        
+        if (has1008Marker) {
+          // If we have a !1008 marker and we're at the end of the region, set hard stop flag
+          const regionEnd = $currentRegion.end;
+          // Increase the tolerance to 0.5 seconds to be more lenient
+          const isAtEnd = Math.abs($playbackState.currentPosition - regionEnd) < 0.5; 
+          // Also check if we're very close to the end (within 99% of region length)
+          const regionLength = $currentRegion.end - $currentRegion.start;
+          const positionInRegion = $playbackState.currentPosition - $currentRegion.start;
+          const isNearEnd = positionInRegion / regionLength > 0.99;
+          
+          // Set hard stop if we're at the end OR near the end, and not playing
+          if ((isAtEnd || isNearEnd) && !$playbackState.isPlaying) {
+            // We're at the end of the region with a !1008 marker and not playing, set hard stop flag
+            atHardStop.set(true);
+          } else if ($playbackState.isPlaying) {
+            // If we're playing, reset the hard stop flag
+            atHardStop.set(false);
+          }
+        } else {
+          // No !1008 marker, reset hard stop flag
+          atHardStop.set(false);
+        }
       }
     } else {
       // No current region, use the regular playback state

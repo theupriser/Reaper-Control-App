@@ -53,8 +53,20 @@ export function findMarkerById(id) {
  * @returns {boolean} True if marker only contains commands
  */
 function isCommandOnlyMarker(name) {
-  // Check if the marker name only contains commands like !1008 or !1007
-  return /^![\d]+$/.test(name.trim());
+  const trimmedName = name.trim();
+  // Check if the marker name only contains numeric commands like !1008 or !1007
+  if (/^![\d]+$/.test(trimmedName)) {
+    return true;
+  }
+  // Check if the marker only contains a !length command
+  if (/^!length:\d+(\.\d+)?$/.test(trimmedName)) {
+    return true;
+  }
+  // Check if the marker only contains both !1008 and !length commands
+  if (/^(!1008\s+!length:\d+(\.\d+)?|!length:\d+(\.\d+)?\s+!1008)$/.test(trimmedName)) {
+    return true;
+  }
+  return false;
 }
 
 /**

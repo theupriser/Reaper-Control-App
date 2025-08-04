@@ -29,6 +29,7 @@
     <nav class="main-nav">
       <a href="/" class="nav-link">Player</a>
       <a href="/setlists" class="nav-link">Setlists</a>
+      <a href="/performer" class="nav-link performer-link">Performer Mode</a>
     </nav>
   </header>
   
@@ -66,7 +67,7 @@
   
   header {
     background-color: #1e1e1e;
-    padding: 1rem;
+    padding: 1rem 1rem 0;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
@@ -113,6 +114,17 @@
     background-color: #333;
   }
   
+  /* Performer Mode link styling */
+  .performer-link {
+    background-color: #4CAF50;
+    color: #000;
+    font-weight: bold;
+  }
+  
+  .performer-link:hover {
+    background-color: #3d9c47;
+  }
+  
   /* Active link styling - will be applied by the router */
   :global(.active-nav-link) {
     background-color: #333;
@@ -134,14 +146,7 @@
     margin: 0 auto;
     width: 100%;
   }
-  
-  footer {
-    background-color: #1e1e1e;
-    padding: 1rem;
-    text-align: center;
-    font-size: 0.8rem;
-  }
-  
+
   .connection-status-container {
     position: fixed;
     top: 3.5rem; /* Adjusted to be below the header */

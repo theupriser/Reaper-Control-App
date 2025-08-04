@@ -1,0 +1,538 @@
+<script>
+  import { onMount } from 'svelte';
+  import { 
+    regions, 
+    currentRegion, 
+    playbackState, 
+    autoplayEnabled,
+    currentSetlist,
+    fetchSetlist
+  } from '$lib/stores';
+  import { socketControl } from '$lib/stores/socket';
+  
+  // Subscribe to playbackState to get the selectedSetlistId and fetch the setlist
+  onMount(() => {
+    const unsubscribe = playbackState.subscribe(state => {
+      if (state.selectedSetlistId) {
+        fetchSetlist(state.selectedSetlistId);
+      } else {
+        currentSetlist.set(null);
+      }
+    });
+    
+    return () => {
+      unsubscribe();
+    };
+  });
+  
+  // Get the next region based on the current region and selected setlist
+  $: nextRegion = $currentRegion ? 
+    $playbackState.selectedSetlistId && $currentSetlist ? 
+      // If a setlist is selected, get the next item from the setlist
+      (() => {
+        const currentItemIndex = $currentSetlist.items.findIndex(item => item.regionId === $currentRegion.id);
+        if (currentItemIndex !== -1 && currentItemIndex < $currentSetlist.items.length - 1) {
+          const nextItem = $currentSetlist.items[currentItemIndex + 1];
+          return $regions.find(region => region.id === nextItem.regionId);
+        }
+        return null;
+      })() :
+      // Otherwise, get the next region from all regions
+      $regions.find(region => {
+        const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
+        return currentIndex !== -1 && currentIndex < $regions.length - 1 ? 
+          region.id === $regions[currentIndex + 1].id : false;
+      }) : null;
+  
+  // Calculate total time based on selected setlist or all regions
+  $: totalRegionsTime = $playbackState.selectedSetlistId && $currentSetlist ? 
+    // If a setlist is selected, calculate total time from setlist items
+    $currentSetlist.items.reduce((total, item) => {
+      const region = $regions.find(r => r.id === item.regionId);
+      return total + (region ? (region.end - region.start) : 0);
+    }, 0) :
+    // Otherwise, calculate from all regions
+    $regions.reduce((total, region) => total + (region.end - region.start), 0);
+  
+  // Calculate elapsed time up to the current region
+  $: elapsedTimeBeforeCurrentRegion = $currentRegion ? 
+    $playbackState.selectedSetlistId && $currentSetlist ? 
+      // If a setlist is selected, calculate elapsed time from setlist items
+      $currentSetlist.items
+        .filter((item, index) => {
+          const currentItemIndex = $currentSetlist.items.findIndex(i => i.regionId === $currentRegion.id);
+          return currentItemIndex !== -1 && index < currentItemIndex;
+        })
+        .reduce((total, item) => {
+          const region = $regions.find(r => r.id === item.regionId);
+          return total + (region ? (region.end - region.start) : 0);
+        }, 0) :
+      // Otherwise, calculate from all regions
+      $regions
+        .filter(region => $regions.findIndex(r => r.id === region.id) < $regions.findIndex(r => r.id === $currentRegion.id))
+        .reduce((total, region) => total + (region.end - region.start), 0) : 0;
+  
+  // Calculate total elapsed time
+  $: totalElapsedTime = $currentRegion ? 
+    elapsedTimeBeforeCurrentRegion + Math.max(0, $playbackState.currentPosition - $currentRegion.start) : 0;
+    
+  // Calculate current song time
+  $: currentSongTime = $currentRegion ? 
+    Math.max(0, $playbackState.currentPosition - $currentRegion.start) : 0;
+    
+  // Calculate song duration
+  $: songDuration = $currentRegion ? 
+    $currentRegion.end - $currentRegion.start : 0;
+  
+  // Format time in seconds to MM:SS format
+  function formatTime(seconds) {
+    if (!seconds && seconds !== 0) return '--:--';
+    
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Format time in seconds to HH:MM:SS format for longer durations
+  function formatLongTime(seconds) {
+    if (!seconds && seconds !== 0) return '--:--:--';
+    
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Toggle play/pause
+  function togglePlay() {
+    socketControl.togglePlay();
+  }
+  
+  // Go to next region
+  function nextRegionHandler() {
+    socketControl.nextRegion();
+  }
+  
+  // Go to previous region
+  function previousRegionHandler() {
+    socketControl.previousRegion();
+  }
+  
+  // Toggle autoplay
+  function toggleAutoplay() {
+    socketControl.toggleAutoplay();
+  }
+  
+  // Handle keyboard shortcuts
+  function handleKeydown(event) {
+    if (event.key === ' ') {
+      // Space bar - toggle play/pause
+      togglePlay();
+      event.preventDefault();
+    } else if (event.key === 'ArrowRight') {
+      // Right arrow - next region
+      nextRegionHandler();
+      event.preventDefault();
+    } else if (event.key === 'ArrowLeft') {
+      // Left arrow - previous region
+      previousRegionHandler();
+      event.preventDefault();
+    } else if (event.key === 'a') {
+      // 'a' key - toggle autoplay
+      toggleAutoplay();
+      event.preventDefault();
+    }
+  }
+  
+  // Add keyboard event listener on mount
+  onMount(() => {
+    window.addEventListener('keydown', handleKeydown);
+    
+    // Clean up on unmount
+    return () => {
+      window.removeEventListener('keydown', handleKeydown);
+    };
+  });
+  
+  // Get current time
+  let currentTime = new Date();
+  
+  // Update current time every second
+  setInterval(() => {
+    currentTime = new Date();
+  }, 1000);
+</script>
+
+<svelte:head>
+  <title>Performer Mode | Reaper Control | </title>
+</svelte:head>
+
+<div class="performer-mode">
+  <div class="current-time">
+    {#if $playbackState.selectedSetlistId && $currentSetlist}
+      <div class="setlist-info">
+        Setlist: {$currentSetlist.name}
+      </div>
+    {/if}
+    <div class="time-display-top">
+      {currentTime.toLocaleTimeString()}
+    </div>
+  </div>
+  
+  <div class="content">
+    <div class="current-song">
+      <h1>{$currentRegion ? $currentRegion.name : 'No song selected'}</h1>
+      
+      <div class="time-display">
+        <div class="song-time">
+          <span class="time-label">Song:</span>
+          <span class="current-time">{formatTime(currentSongTime)}</span>
+          <span class="separator">/</span>
+          <span class="total-time">{formatTime(songDuration)}</span>
+        </div>
+        
+        <div class="total-time">
+          <span class="time-label">Total:</span>
+          <span class="current-time">{formatLongTime(totalElapsedTime)}</span>
+          <span class="separator">/</span>
+          <span class="total-time">{formatLongTime(totalRegionsTime)}</span>
+        </div>
+      </div>
+      
+      <!-- Progress bar -->
+      {#if $currentRegion}
+        <div class="progress-container">
+          <div 
+            class="progress-bar" 
+            style="width: {Math.min(100, Math.max(0, (currentSongTime / songDuration) * 100))}%"
+          ></div>
+        </div>
+      {:else}
+        <div class="progress-container">
+          <div class="progress-bar" style="width: 0%"></div>
+        </div>
+      {/if}
+    </div>
+    
+    <div class="next-song">
+      <h2>{nextRegion ? `Next: ${nextRegion.name}` : 'End of setlist'}</h2>
+      <div class="next-song-duration">
+        {#if nextRegion}
+          Duration: {formatTime(nextRegion.end - nextRegion.start)}
+        {:else}
+          &nbsp;
+        {/if}
+      </div>
+    </div>
+  </div>
+  
+  <div class="controls">
+    <button 
+      class="control-button previous" 
+      on:click={previousRegionHandler}
+      aria-label="Previous song"
+    >
+      <svg viewBox="0 0 24 24" width="36" height="36">
+        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/>
+      </svg>
+    </button>
+    
+    <button 
+      class="control-button play-pause" 
+      on:click={togglePlay}
+      aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
+    >
+      {#if $playbackState.isPlaying}
+        <svg viewBox="0 0 24 24" width="48" height="48">
+          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="currentColor"/>
+        </svg>
+      {:else}
+        <svg viewBox="0 0 24 24" width="48" height="48">
+          <path d="M8 5v14l11-7z" fill="currentColor"/>
+        </svg>
+      {/if}
+    </button>
+    
+    <button 
+      class="control-button next" 
+      on:click={nextRegionHandler}
+      aria-label="Next song"
+    >
+      <svg viewBox="0 0 24 24" width="36" height="36">
+        <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/>
+      </svg>
+    </button>
+  </div>
+  <div class="autoplay-status">
+    <div class="status-indicator {$autoplayEnabled ? 'enabled' : 'disabled'}">
+      Auto-resume: {$autoplayEnabled ? 'ON' : 'OFF'}
+    </div>
+  </div>
+  <div class="exit-button-container">
+    <a href="/" class="exit-button">Exit Performer Mode</a>
+  </div>
+</div>
+
+<style>
+  .performer-mode {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #121212;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 2rem;
+    z-index: 1000;
+  }
+  
+  .current-time {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-size: 1.5rem;
+    font-family: monospace;
+    opacity: 0.7;
+  }
+  
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  
+  .current-song {
+    margin-bottom: 3rem;
+  }
+  
+  h1 {
+    font-size: 4rem;
+    margin: 0 0 1rem 0;
+    line-height: 1.2;
+    text-align: center;
+  }
+  
+  .time-display {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    font-family: monospace;
+  }
+  
+  .song-time, .total-time {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .time-label {
+    opacity: 0.7;
+    margin-right: 0.5rem;
+  }
+  
+  .separator {
+    opacity: 0.5;
+  }
+  
+  .progress-container {
+    width: 100%;
+    height: 12px;
+    background-color: #333;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  
+  .progress-bar {
+    height: 100%;
+    background-color: #4CAF50;
+    transition: width 0.2s ease-out;
+  }
+  
+  .next-song {
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+  
+  h2 {
+    font-size: 2.5rem;
+    margin: 0 0 0.5rem 0;
+    opacity: 0.8;
+  }
+  
+  .next-song-duration {
+    font-size: 1.5rem;
+    opacity: 0.6;
+  }
+  
+  .setlist-info {
+    font-size: 1.2rem;
+    opacity: 0.7;
+    font-style: italic;
+  }
+  
+  .time-display-top {
+    text-align: right;
+  }
+  
+  .autoplay-status {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  .status-indicator {
+    font-size: 1.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: bold;
+  }
+  
+  .status-indicator.enabled {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+  }
+  
+  .status-indicator.disabled {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+  }
+
+  .controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+    margin-bottom: 2rem;
+  }
+  
+  .control-button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+  }
+  
+  .control-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .play-pause {
+    background-color: #333;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+  }
+  
+  .play-pause:hover {
+    background-color: #444;
+  }
+  
+  .exit-button-container {
+    display: flex;
+    justify-content: center;
+  }
+  
+  .exit-button {
+    background-color: #333;
+    color: white;
+    text-decoration: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    font-size: 1rem;
+    transition: background-color 0.2s;
+  }
+  
+  .exit-button:hover {
+    background-color: #444;
+  }
+  
+  /* Responsive styles */
+  @media (max-width: 1024px) {
+    h1 {
+      font-size: 3rem;
+    }
+    
+    h2 {
+      font-size: 2rem;
+    }
+    
+    .time-display {
+      font-size: 1.2rem;
+    }
+    
+    .status-indicator {
+      font-size: 1.2rem;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .performer-mode {
+      padding: 1rem;
+    }
+    
+    h1 {
+      font-size: 2.5rem;
+    }
+    
+    h2 {
+      font-size: 1.5rem;
+    }
+    
+    .time-display {
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    
+    .current-time {
+      font-size: 1.2rem;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .time-display-top {
+      align-self: flex-end;
+      margin-top: 0.5rem;
+    }
+    
+    .play-pause {
+      width: 80px;
+      height: 80px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    h1 {
+      font-size: 2rem;
+    }
+    
+    h2 {
+      font-size: 1.2rem;
+    }
+    
+    .controls {
+      gap: 1rem;
+    }
+    
+    .play-pause {
+      width: 60px;
+      height: 60px;
+    }
+  }
+</style>

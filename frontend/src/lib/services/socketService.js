@@ -10,6 +10,7 @@ import {
   PING_CONFIG, 
   isBrowser 
 } from '../config/socketConfig';
+import logger from '../utils/logger';
 
 import {
   updateRegions,
@@ -40,11 +41,11 @@ let pingTimeout = null;
 function initialize() {
   // Check if we're in a browser environment
   if (!isBrowser()) {
-    console.log('Running in SSR environment, skipping socket initialization');
+    logger.log('Running in SSR environment, skipping socket initialization');
     return createDefaultSocketControl();
   }
   
-  console.log('Initializing socket connection to:', SOCKET_URL);
+  logger.log('Initializing socket connection to:', SOCKET_URL);
   
   // Create the socket connection
   socket = io(SOCKET_URL, SOCKET_OPTIONS);
@@ -90,10 +91,10 @@ function setupBrowserFocusHandling() {
   // Function to check connection and reconnect if needed
   const checkConnectionOnFocus = () => {
     const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] Browser window focused - checking socket connection`);
+    logger.log(`[${timestamp}] Browser window focused - checking socket connection`);
     
     if (socket && !socket.connected) {
-      console.log(`[${timestamp}] Socket is disconnected - attempting to reconnect`);
+      logger.log(`[${timestamp}] Socket is disconnected - attempting to reconnect`);
       
       // Update connection status
       setReconnecting(1);
@@ -101,9 +102,9 @@ function setupBrowserFocusHandling() {
       // Attempt to reconnect
       try {
         socket.connect();
-        console.log(`[${timestamp}] Reconnect attempt initiated`);
+        logger.log(`[${timestamp}] Reconnect attempt initiated`);
       } catch (error) {
-        console.error(`[${timestamp}] Error during reconnection attempt:`, error);
+        logger.error(`[${timestamp}] Error during reconnection attempt:`, error);
         setConnectionError(error.message || 'Error during reconnection');
       }
       
@@ -114,7 +115,7 @@ function setupBrowserFocusHandling() {
         details: 'Attempting to reconnect after browser focus'
       });
     } else {
-      console.log(`[${timestamp}] Socket is already connected or not initialized`);
+      logger.log(`[${timestamp}] Socket is already connected or not initialized`);
     }
   };
   
@@ -123,12 +124,12 @@ function setupBrowserFocusHandling() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] Document visibility changed to visible`);
+      logger.log(`[${timestamp}] Document visibility changed to visible`);
       checkConnectionOnFocus();
     }
   });
   
-  console.log('Browser focus event handlers registered for auto-reconnection');
+  logger.log('Browser focus event handlers registered for auto-reconnection');
 }
 
 /**
@@ -146,7 +147,7 @@ function startPingInterval() {
       // Set a timeout for ping response
       if (pingTimeout) clearTimeout(pingTimeout);
       pingTimeout = setTimeout(() => {
-        console.warn('Ping timeout - no response from server');
+        logger.warn('Ping timeout - no response from server');
         setConnectionError('Ping timeout');
       }, PING_CONFIG.timeout);
       
@@ -154,7 +155,7 @@ function startPingInterval() {
       socket.emit('ping', () => {
         if (pingTimeout) clearTimeout(pingTimeout);
         const latency = Date.now() - startTime;
-        console.log(`Received pong from server (latency: ${latency}ms)`);
+        logger.log(`Received pong from server (latency: ${latency}ms)`);
         
         updatePingInfo(latency);
       });
@@ -174,8 +175,8 @@ function stopPingInterval() {
  * Handles the connect event
  */
 function handleConnect() {
-  console.log('Connected to backend server:', SOCKET_URL);
-  console.log('Socket ID:', socket.id);
+  logger.log('Connected to backend server:', SOCKET_URL);
+  logger.log('Socket ID:', socket.id);
   
   // Update connection status
   setConnected();
@@ -185,7 +186,7 @@ function handleConnect() {
   
   // Refresh regions immediately after connection
   setTimeout(() => {
-    console.log('Refreshing regions after connection...');
+    logger.log('Refreshing regions after connection...');
     socket.emit('refreshRegions');
   }, 500);
 }
@@ -194,7 +195,7 @@ function handleConnect() {
  * Handles the disconnect event
  */
 function handleDisconnect() {
-  console.log('Disconnected from backend server');
+  logger.log('Disconnected from backend server');
   
   // Update connection status
   setDisconnected();
@@ -208,7 +209,7 @@ function handleDisconnect() {
  * @param {number} attemptNumber - The reconnection attempt number
  */
 function handleReconnect(attemptNumber) {
-  console.log(`Reconnected to backend server after ${attemptNumber} attempts`);
+  logger.log(`Reconnected to backend server after ${attemptNumber} attempts`);
   
   // Update connection status
   setReconnected();
@@ -218,7 +219,7 @@ function handleReconnect(attemptNumber) {
   
   // Refresh regions after reconnection
   setTimeout(() => {
-    console.log('Refreshing regions after reconnection...');
+    logger.log('Refreshing regions after reconnection...');
     socket.emit('refreshRegions');
   }, 500);
 }
@@ -228,7 +229,7 @@ function handleReconnect(attemptNumber) {
  * @param {number} attemptNumber - The reconnection attempt number
  */
 function handleReconnectAttempt(attemptNumber) {
-  console.log(`Attempting to reconnect to backend server (attempt ${attemptNumber})`);
+  logger.log(`Attempting to reconnect to backend server (attempt ${attemptNumber})`);
   
   // Update connection status
   setReconnecting(attemptNumber);
@@ -239,7 +240,7 @@ function handleReconnectAttempt(attemptNumber) {
  * @param {Error} error - The reconnection error
  */
 function handleReconnectError(error) {
-  console.error('Error while reconnecting:', error);
+  logger.error('Error while reconnecting:', error);
   
   // Update connection status
   setConnectionError(error.message || 'Reconnection error');
@@ -249,7 +250,7 @@ function handleReconnectError(error) {
  * Handles the reconnect_failed event
  */
 function handleReconnectFailed() {
-  console.error('Failed to reconnect to backend server after multiple attempts');
+  logger.error('Failed to reconnect to backend server after multiple attempts');
   
   // Update connection status
   setConnectionError('Failed to reconnect after multiple attempts');
@@ -282,7 +283,7 @@ function handleConnectError(error) {
  * @param {Error} error - The socket error
  */
 function handleError(error) {
-  console.error('Socket.IO error:', error);
+  logger.error('Socket.IO error:', error);
   
   // Show status message
   setStatusMessage({
@@ -297,8 +298,8 @@ function handleError(error) {
  * @param {Array} data - The regions data
  */
 function handleRegionsUpdate(data) {
-  console.log('Received regions from server:', data);
-  console.log('Regions count:', data ? data.length : 0);
+  logger.log('Received regions from server:', data);
+  logger.log('Regions count:', data ? data.length : 0);
   
   // Update the regions store
   updateRegions(data);
@@ -309,7 +310,7 @@ function handleRegionsUpdate(data) {
  * @param {Object} data - The playback state data
  */
 function handlePlaybackStateUpdate(data) {
-  console.log('Received playback state from server:', data);
+  logger.log('Received playback state from server:', data);
   
   // Update the playback state store
   updatePlaybackState(data);
@@ -320,7 +321,7 @@ function handlePlaybackStateUpdate(data) {
  * @param {Object} data - The status message data
  */
 function handleStatusMessage(data) {
-  console.log('Received status message from server:', data);
+  logger.log('Received status message from server:', data);
   
   // Set the status message
   setStatusMessage(data);
@@ -331,7 +332,7 @@ function handleStatusMessage(data) {
  * @param {string} data - The project ID
  */
 function handleProjectIdUpdate(data) {
-  console.log('Received project ID from server:', data);
+  logger.log('Received project ID from server:', data);
   
   // Update the project ID store
   updateProjectId(data);
@@ -348,7 +349,7 @@ function handleProjectIdUpdate(data) {
  * @param {string} projectId - The new project ID
  */
 function handleProjectChanged(projectId) {
-  console.log('Project changed detected, new project ID:', projectId);
+  logger.log('Project changed detected, new project ID:', projectId);
   
   // Update the project ID store
   updateProjectId(projectId);
@@ -361,7 +362,7 @@ function handleProjectChanged(projectId) {
   
   // Refresh regions for the new project
   setTimeout(() => {
-    console.log('Refreshing regions after project change...');
+    logger.log('Refreshing regions after project change...');
     socket.emit('refreshRegions');
   }, 500);
 }
@@ -372,16 +373,16 @@ function handleProjectChanged(projectId) {
  */
 function createDefaultSocketControl() {
   return {
-    testReconnection: () => console.warn('Socket not initialized - SSR mode'),
-    seekToPosition: () => console.warn('Socket not initialized - SSR mode'),
-    togglePlay: () => console.warn('Socket not initialized - SSR mode'),
-    seekToRegion: () => console.warn('Socket not initialized - SSR mode'),
-    nextRegion: () => console.warn('Socket not initialized - SSR mode'),
-    previousRegion: () => console.warn('Socket not initialized - SSR mode'),
-    seekToCurrentRegionStart: () => console.warn('Socket not initialized - SSR mode'),
-    refreshRegions: () => console.warn('Socket not initialized - SSR mode'),
-    disconnect: () => console.warn('Socket not initialized - SSR mode'),
-    emit: () => console.warn('Socket not initialized - SSR mode'),
+    testReconnection: () => logger.warn('Socket not initialized - SSR mode'),
+    seekToPosition: () => logger.warn('Socket not initialized - SSR mode'),
+    togglePlay: () => logger.warn('Socket not initialized - SSR mode'),
+    seekToRegion: () => logger.warn('Socket not initialized - SSR mode'),
+    nextRegion: () => logger.warn('Socket not initialized - SSR mode'),
+    previousRegion: () => logger.warn('Socket not initialized - SSR mode'),
+    seekToCurrentRegionStart: () => logger.warn('Socket not initialized - SSR mode'),
+    refreshRegions: () => logger.warn('Socket not initialized - SSR mode'),
+    disconnect: () => logger.warn('Socket not initialized - SSR mode'),
+    emit: () => logger.warn('Socket not initialized - SSR mode'),
     isConnected: () => false
   };
 }
@@ -396,11 +397,11 @@ function createSocketControl() {
      * Tests the reconnection logic (for development only)
      */
     testReconnection: () => {
-      console.log('Testing reconnection logic');
+      logger.log('Testing reconnection logic');
       
       // Simulate a disconnection
       if (socket && socket.connected) {
-        console.log('Disconnecting socket for testing');
+        logger.log('Disconnecting socket for testing');
         socket.disconnect();
         
         // Update connection status
@@ -413,9 +414,9 @@ function createSocketControl() {
           details: 'Socket was disconnected for testing reconnection logic'
         });
         
-        console.log('Socket disconnected for testing. Focus the window to trigger reconnection.');
+        logger.log('Socket disconnected for testing. Focus the window to trigger reconnection.');
       } else {
-        console.log('Socket is already disconnected or not initialized');
+        logger.log('Socket is already disconnected or not initialized');
       }
     },
     
@@ -424,7 +425,7 @@ function createSocketControl() {
      */
     refreshProjectId: () => {
       if (socket) {
-        console.log('Requesting project ID refresh');
+        logger.log('Requesting project ID refresh');
         socket.emit('refreshProjectId');
       }
     },

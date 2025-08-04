@@ -224,7 +224,7 @@ class SetlistService {
     // Use current project ID if not provided
     const currentProjectId = projectId || projectService.getProjectId();
     if (!currentProjectId) {
-      logger.warn('No project ID available for getSetlists');
+      logger.error('No project ID available for getSetlists');
       return [];
     }
     
@@ -248,7 +248,7 @@ class SetlistService {
     // Use current project ID if not provided
     const currentProjectId = projectId || projectService.getProjectId();
     if (!currentProjectId) {
-      logger.warn('No project ID available for getSetlist');
+      logger.error('No project ID available for getSetlist');
       return null;
     }
     

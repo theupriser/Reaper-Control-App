@@ -5,6 +5,7 @@
 
 import socketService from './socketService';
 import { TIMEOUTS } from '../config/socketConfig';
+import logger from '../utils/logger';
 import {
   getPlaybackState,
   getAutoplayEnabled,
@@ -23,10 +24,10 @@ import {
  * @param {number} position - The position to seek to in seconds
  */
 export function seekToPosition(position) {
-  console.log('Sending seekToPosition command for position:', position);
+  logger.log('Sending seekToPosition command for position:', position);
   try {
     if (position === undefined || position === null || isNaN(position)) {
-      console.error('Invalid position:', position);
+      logger.error('Invalid position:', position);
       return;
     }
     
@@ -39,7 +40,7 @@ export function seekToPosition(position) {
       setStatusMessage(null);
     }, 1500);
   } catch (error) {
-    console.error('Error sending seekToPosition command:', error);
+    logger.error('Error sending seekToPosition command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to seek to position',
       'There was an error communicating with the server. Please try again.'
@@ -51,21 +52,21 @@ export function seekToPosition(position) {
  * Toggles play/pause with enhanced feedback and error handling
  */
 export function togglePlay() {
-  console.log('Sending togglePlay command');
+  logger.log('Sending togglePlay command');
   try {
     // Send the command to the backend
     socketService.emit('togglePlay');
     
     // Don't update the UI immediately - wait for the backend to confirm
     // This ensures the UI reflects Reaper's actual state
-    console.log('Waiting for backend to confirm playback state change');
+    logger.log('Waiting for backend to confirm playback state change');
     
     // Clear the status message after 1.5 seconds (after backend check completes)
     setTimeout(() => {
       setStatusMessage(null);
     }, 1500);
   } catch (error) {
-    console.error('Error sending togglePlay command:', error);
+    logger.error('Error sending togglePlay command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to toggle playback',
       'There was an error communicating with the server. Please try again.'
@@ -78,10 +79,10 @@ export function togglePlay() {
  * @param {number} regionId - The ID of the region to seek to
  */
 export function seekToRegion(regionId) {
-  console.log('Sending seekToRegion command for region ID:', regionId);
+  logger.log('Sending seekToRegion command for region ID:', regionId);
   try {
     if (regionId === undefined || regionId === null) {
-      console.error('Invalid region ID:', regionId);
+      logger.error('Invalid region ID:', regionId);
       return;
     }
     
@@ -98,7 +99,7 @@ export function seekToRegion(regionId) {
       setStatusMessage(null);
     }, 1500);
   } catch (error) {
-    console.error('Error sending seekToRegion command:', error);
+    logger.error('Error sending seekToRegion command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to seek to region',
       'There was an error communicating with the server. Please try again.'
@@ -110,7 +111,7 @@ export function seekToRegion(regionId) {
  * Navigates to the next region with enhanced feedback and error handling
  */
 export function nextRegion() {
-  console.log('Sending nextRegion command');
+  logger.log('Sending nextRegion command');
   try {
     // Send the next region command to the backend
     // The backend will handle pausing and resuming playback as needed
@@ -121,7 +122,7 @@ export function nextRegion() {
       setStatusMessage(null);
     }, 1500);
   } catch (error) {
-    console.error('Error sending nextRegion command:', error);
+    logger.error('Error sending nextRegion command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to go to next region',
       'There was an error communicating with the server. Please try again.'
@@ -133,7 +134,7 @@ export function nextRegion() {
  * Navigates to the previous region with enhanced feedback and error handling
  */
 export function previousRegion() {
-  console.log('Sending previousRegion command');
+  logger.log('Sending previousRegion command');
   try {
     // Send the previous region command to the backend
     // The backend will handle pausing and resuming playback as needed
@@ -156,7 +157,7 @@ export function previousRegion() {
  * Seeks to the start of the current region with enhanced feedback and error handling
  */
 export function seekToCurrentRegionStart() {
-  console.log('Sending seekToCurrentRegionStart command');
+  logger.log('Sending seekToCurrentRegionStart command');
   try {
     // Send the rewind command to the backend
     // The backend will handle pausing and resuming playback as needed
@@ -179,7 +180,7 @@ export function seekToCurrentRegionStart() {
  * Refreshes the regions list with enhanced feedback and error handling
  */
 export function refreshRegions() {
-  console.log('Sending refreshRegions command');
+  logger.log('Sending refreshRegions command');
   try {
     socketService.emit('refreshRegions');
     
@@ -208,7 +209,7 @@ export function disconnect() {
  * @param {boolean} enabled - The new autoplay setting
  */
 export function toggleAutoplay(enabled) {
-  console.log('Sending toggleAutoplay command:', enabled);
+  logger.log('Sending toggleAutoplay command:', enabled);
   try {
     // If no value is provided, toggle the current value
     if (enabled === undefined) {

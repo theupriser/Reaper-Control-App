@@ -145,7 +145,7 @@ export function previousRegion() {
       setStatusMessage(null);
     }, 1500);
   } catch (error) {
-    console.error('Error sending previousRegion command:', error);
+    logger.error('Error sending previousRegion command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to go to previous region',
       'There was an error communicating with the server. Please try again.'
@@ -168,7 +168,7 @@ export function seekToCurrentRegionStart() {
       setStatusMessage(null);
     }, 1500);
   } catch (error) {
-    console.error('Error sending seekToCurrentRegionStart command:', error);
+    logger.error('Error sending seekToCurrentRegionStart command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to restart current region',
       'There was an error communicating with the server. Please try again.'
@@ -189,7 +189,7 @@ export function refreshRegions() {
       setStatusMessage(null);
     }, TIMEOUTS.statusClear);
   } catch (error) {
-    console.error('Error sending refreshRegions command:', error);
+    logger.error('Error sending refreshRegions command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to refresh regions',
       'There was an error communicating with the server. Please try again.'
@@ -230,7 +230,7 @@ export function toggleAutoplay(enabled) {
       setStatusMessage(null);
     }, 1500);
   } catch (error) {
-    console.error('Error sending toggleAutoplay command:', error);
+    logger.error('Error sending toggleAutoplay command:', error);
     setStatusMessage(createErrorMessage(
       'Failed to toggle autoplay',
       'There was an error communicating with the server. Please try again.'

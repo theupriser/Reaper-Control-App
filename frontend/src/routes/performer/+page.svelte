@@ -76,6 +76,9 @@
   $: totalElapsedTime = $currentRegion ? 
     elapsedTimeBeforeCurrentRegion + Math.max(0, $playbackState.currentPosition - $currentRegion.start) : 0;
     
+  // Calculate total remaining time
+  $: totalRemainingTime = totalRegionsTime - totalElapsedTime;
+    
   // Calculate current song time
   $: currentSongTime = $currentRegion ? 
     Math.max(0, $playbackState.currentPosition - $currentRegion.start) : 0;
@@ -83,6 +86,9 @@
   // Calculate song duration
   $: songDuration = $currentRegion ? 
     $currentRegion.end - $currentRegion.start : 0;
+    
+  // Calculate song remaining time
+  $: songRemainingTime = Math.max(0, songDuration - currentSongTime);
   
   // Format time in seconds to MM:SS format
   function formatTime(seconds) {
@@ -93,14 +99,20 @@
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
   
-  // Format time in seconds to HH:MM:SS format for longer durations
+  // Format time in seconds to HH:MM:SS format for longer durations (omits hours if zero)
   function formatLongTime(seconds) {
-    if (!seconds && seconds !== 0) return '--:--:--';
-    
+    if (!seconds && seconds !== 0) return '--:--';
+  
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  
+    // Only include hours in the output if they are non-zero
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    } else {
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
   }
   
   // Toggle play/pause
@@ -189,6 +201,7 @@
           <span class="current-time">{formatTime(currentSongTime)}</span>
           <span class="separator">/</span>
           <span class="total-time">{formatTime(songDuration)}</span>
+          <span class="remaining-time">({formatTime(songRemainingTime)})</span>
         </div>
         
         <div class="total-time">
@@ -196,6 +209,7 @@
           <span class="current-time">{formatLongTime(totalElapsedTime)}</span>
           <span class="separator">/</span>
           <span class="total-time">{formatLongTime(totalRegionsTime)}</span>
+          <span class="remaining-time">({formatLongTime(totalRemainingTime)})</span>
         </div>
       </div>
       
@@ -340,6 +354,13 @@
   
   .separator {
     opacity: 0.5;
+  }
+  
+  .remaining-time {
+    margin-left: 0.5rem;
+    opacity: 0.6;
+    color: #aaa;
+    font-size: 0.9em;
   }
   
   .progress-container {
@@ -498,6 +519,11 @@
       flex-direction: column;
       gap: 0.5rem;
       align-items: center;
+    }
+    
+    .remaining-time {
+      font-size: 0.85em;
+      margin-left: 0.3rem;
     }
     
     .current-time {

@@ -9,6 +9,7 @@ Remote control application for Reaper DAW.
 - Real-time status updates
 - WebSocket connection monitoring
 - MIDI input control
+- Performer Mode for live performances
 
 ## WebSocket Connection Status
 
@@ -143,3 +144,44 @@ MIDI settings are configured in the `/backend/config/midiConfig.json` file:
 
 - MIDI input device(s) connected to the server
 - Node.js with easymidi library (automatically installed with npm)
+
+## Performer Mode
+
+The application includes a dedicated Performer Mode designed for live performances, providing a fullscreen interface with essential information and controls.
+
+### Performer Mode Features
+
+- Fullscreen, distraction-free interface optimized for live use
+- Large, clear display of current song name and timing information
+- Preview of the next song in the setlist
+- Real-time progress bar for the current song
+- Elapsed and remaining time displays for both current song and total setlist
+- Current time display for stage timing reference
+- Auto-resume toggle for automatic playback continuation
+- Large, touch-friendly transport controls
+- Responsive design that works on various screen sizes
+
+### Accessing Performer Mode
+
+1. Navigate to the main application interface
+2. Click the "Performer Mode" button in the navigation bar
+3. The interface will switch to fullscreen Performer Mode
+4. To exit, click the "Exit Performer Mode" button at the bottom of the screen
+
+### Keyboard Shortcuts
+
+Performer Mode supports the following keyboard shortcuts for quick control:
+
+- **Space bar**: Toggle play/pause
+- **Right arrow**: Go to next song
+- **Left arrow**: Go to previous song
+- **A key**: Toggle auto-resume feature
+
+### Setlist Integration
+
+Performer Mode works with the application's setlist feature:
+
+- If a setlist is selected, it will display songs in the setlist order
+- The "Next" song preview shows the upcoming song from the setlist
+- Total time calculations are based on the current setlist
+- Without a setlist, it works with all regions in the project

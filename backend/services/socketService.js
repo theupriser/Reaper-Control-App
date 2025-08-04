@@ -335,10 +335,14 @@ class SocketService {
     });
     
     // Handle seek to beginning of current region
-    socket.on('seekToCurrentRegionStart', async () => {
+    socket.on('seekToCurrentRegionStart', async (options = {}) => {
       try {
         const logContext = logger.startCollection('seekToCurrentRegionStart-handler');
-        logger.collect(logContext, 'Seek to current region start requested');
+        logger.collect(logContext, 'Seek to current region start requested with options:', options);
+        
+        // Extract forcePlay option (default to false if not provided)
+        const forcePlay = options && options.forcePlay === true;
+        logger.collect(logContext, 'Force play option:', forcePlay);
         
         const currentRegion = regionService.getCurrentRegion();
         if (currentRegion) {
@@ -357,8 +361,9 @@ class SocketService {
           }
           
           // Use the shared setlist navigation service for seeking to region
+          // Pass the forcePlay parameter to ensure playback starts when requested
           logger.collect(logContext, 'Using setlist navigation service for seeking to current region start');
-          const success = await setlistNavigationService.seekToRegionAndPlay(currentRegion);
+          const success = await setlistNavigationService.seekToRegionAndPlay(currentRegion, forcePlay);
           
           if (success) {
             logger.collect(logContext, 'Successfully navigated to current region start');

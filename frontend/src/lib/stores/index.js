@@ -81,5 +81,6 @@ export {
   sortedMarkers,
   refreshMarkers,
   findMarkerById,
-  updateMarkers
+  updateMarkers,
+  getCustomLengthForRegion
 } from './markerStore';

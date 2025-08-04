@@ -155,13 +155,14 @@ export function previousRegion() {
 
 /**
  * Seeks to the start of the current region with enhanced feedback and error handling
+ * @param {boolean} forcePlay - Force playback to start regardless of current playback state
  */
-export function seekToCurrentRegionStart() {
-  logger.log('Sending seekToCurrentRegionStart command');
+export function seekToCurrentRegionStart(forcePlay = false) {
+  logger.log('Sending seekToCurrentRegionStart command with forcePlay:', forcePlay);
   try {
-    // Send the rewind command to the backend
-    // The backend will handle pausing and resuming playback as needed
-    socketService.emit('seekToCurrentRegionStart');
+    // Send the rewind command to the backend with forcePlay parameter
+    // This ensures playback starts even when the local timer is running but actual playback is paused
+    socketService.emit('seekToCurrentRegionStart', { forcePlay });
     
     // Clear the status message after 1.5 seconds
     setTimeout(() => {

@@ -83,7 +83,7 @@ export const sortedMarkers = derived(markers, $markers => {
  * @param {Object} region - Region object
  * @returns {number|null} - Custom length in seconds or null if no !length marker
  */
-function getCustomLengthForRegion(markers, region) {
+export function getCustomLengthForRegion(markers, region) {
   if (!region || !markers || markers.length === 0) return null;
   
   // Find markers that are within the region and have a !length tag
@@ -102,6 +102,40 @@ function getCustomLengthForRegion(markers, region) {
   }
   
   return null;
+}
+
+/**
+ * Check if a marker has the !1008 command
+ * @param {string} name - Marker name
+ * @returns {boolean} True if marker has !1008 command
+ */
+function has1008Command(name) {
+  return name.includes('!1008');
+}
+
+/**
+ * Check if a region has a !1008 marker
+ * @param {Array} markers - List of markers
+ * @param {Object} region - Region object
+ * @returns {boolean} - True if region has a !1008 marker
+ */
+export function has1008MarkerInRegion(markers, region) {
+  if (!region || !markers || markers.length === 0) return false;
+  
+  // Find markers that are within the region
+  const regionMarkers = markers.filter(marker => 
+    marker.position >= region.start && 
+    marker.position <= region.end
+  );
+  
+  // Check each marker for !1008 command
+  for (const marker of regionMarkers) {
+    if (has1008Command(marker.name)) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 /**

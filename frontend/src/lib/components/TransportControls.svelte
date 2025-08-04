@@ -1,9 +1,16 @@
 <script>
   import { socketControl, playbackState, currentRegion, autoplayEnabled, sortedMarkers } from '$lib/stores/socket';
-  import { getEffectiveRegionLength } from '$lib/stores/markerStore';
+  import { getEffectiveRegionLength, getCustomLengthForRegion, has1008MarkerInRegion } from '$lib/stores/markerStore';
   import { markers } from '$lib/stores/markerStore';
   import { writable } from 'svelte/store';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  
+  // Local timer state
+  let localTimer = null;
+  let localPosition = writable(0);
+  let useLocalTimer = writable(false);
+  let timerStartTime = 0;
+  let timerStartPosition = 0;
   
   // Format time in seconds to MM:SS format
   function formatTime(seconds) {
@@ -19,9 +26,205 @@
     socketControl.toggleAutoplay();
   }
   
+  // Function to start the local timer
+  function startLocalTimer(startPosition) {
+    // Clear any existing timer
+    if (localTimer) {
+      clearInterval(localTimer);
+    }
+    
+    // Set the start time and position
+    timerStartTime = Date.now();
+    timerStartPosition = startPosition;
+    
+    // Initialize the local position to match the current playback position
+    // This ensures a smooth transition when the local timer takes over
+    localPosition.set(startPosition);
+    
+    // Start the timer
+    localTimer = setInterval(() => {
+      // Calculate the elapsed time
+      const elapsed = (Date.now() - timerStartTime) / 1000;
+      
+      // Calculate the current position
+      const currentPos = timerStartPosition + elapsed;
+      
+      // Update the local position
+      localPosition.set(currentPos);
+      
+      // Check if we've reached the end of the length marker or if we have a !1008 marker
+      if ($currentRegion) {
+        const customLength = getCustomLengthForRegion($markers, $currentRegion);
+        const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
+
+        // For length markers, set the hard stop flag but continue the timer
+        if (has1008Marker && (customLength !== null && (currentPos - $currentRegion.start) >= customLength)) {
+          // Set the hard stop flag
+          atHardStop.set(true);
+
+          // When hard stop is reached, we should stop at the fake hard stop marker
+          // which is at the end of the custom length
+          const hardStopPosition = $currentRegion.start + customLength;
+          localPosition.set(hardStopPosition);
+        }
+      }
+    }, 100); // Update every 100ms for smooth display
+  }
+  
+  // Variable to track if we've reached a hard stop at a length marker
+  let atHardStop = writable(false);
+  
+  // Function to stop the local timer
+  function stopLocalTimer() {
+    if (localTimer) {
+      clearInterval(localTimer);
+      localTimer = null;
+    }
+  }
+  
+  // Store previous playback state to detect significant changes
+  let previousPlaybackPosition = 0;
+  let previousPlaybackIsPlaying = false;
+  
+  // Function to find the length marker in the current region
+  function findLengthMarkerInRegion(markers, region) {
+    if (!region || !markers || markers.length === 0) return null;
+    
+    // Find markers that are within the region and have a !length tag
+    const lengthMarkers = markers.filter(marker => 
+      marker.position >= region.start && 
+      marker.position <= region.end
+    );
+    
+    // Check each marker for !length tag
+    for (const marker of lengthMarkers) {
+      const length = extractLengthFromMarker(marker.name);
+      if (length !== null) {
+        return marker;
+      }
+    }
+    
+    return null;
+  }
+  
+  // Helper function to extract length from marker name
+  function extractLengthFromMarker(name) {
+    const lengthMatch = name.match(/!length:(\d+(\.\d+)?)/);
+    return lengthMatch ? parseFloat(lengthMatch[1]) : null;
+  }
+  
+  // Watch for changes in playback state and current region
+  $: {
+    if ($currentRegion) {
+      const customLength = getCustomLengthForRegion($markers, $currentRegion);
+      
+      // If there's a length marker, check if we should use the local timer
+      if (customLength !== null) {
+        // Find the actual length marker to get its position
+        const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
+        
+        if (lengthMarker) {
+          // Only start the timer if playback position has passed the marker position
+          if ($playbackState.currentPosition >= lengthMarker.position) {
+            // Check if we're transitioning from regular playback to local timer
+            const wasUsingLocalTimer = $useLocalTimer;
+            
+            // Set the flag to use local timer
+            useLocalTimer.set(true);
+            
+            // If we're just transitioning to local timer or the timer isn't running, start it
+            if (!wasUsingLocalTimer || !localTimer) {
+              // Initialize with current playback position for smooth transition
+              startLocalTimer($playbackState.currentPosition);
+            } else {
+              // Only restart timer if position changed significantly (e.g., due to seeking)
+              // We don't restart on play/pause changes since timer should continue regardless
+              const positionChanged = Math.abs($playbackState.currentPosition - previousPlaybackPosition) > 0.5;
+              
+              if (positionChanged) {
+                startLocalTimer($playbackState.currentPosition);
+                // Reset hard stop flag when seeking
+                atHardStop.set(false);
+              }
+            }
+          } else {
+            // Playback hasn't reached the length marker yet, use regular playback state
+            useLocalTimer.set(false);
+            stopLocalTimer();
+            // Reset hard stop flag
+            atHardStop.set(false);
+          }
+        }
+      } else {
+        // No length marker, use the regular playback state
+        useLocalTimer.set(false);
+        stopLocalTimer();
+        // Reset hard stop flag
+        atHardStop.set(false);
+      }
+    } else {
+      // No current region, use the regular playback state
+      useLocalTimer.set(false);
+      stopLocalTimer();
+      // Reset hard stop flag
+      atHardStop.set(false);
+    }
+    
+    // If playback state changes from stopped to playing, reset hard stop flag
+    if ($playbackState.isPlaying && !previousPlaybackIsPlaying) {
+      atHardStop.set(false);
+    }
+    
+    // Update previous state values
+    previousPlaybackPosition = $playbackState.currentPosition;
+    previousPlaybackIsPlaying = $playbackState.isPlaying;
+  }
+  
+  // Store previous region ID to detect actual region changes
+  let previousRegionId = null;
+  
+  // Watch for changes in the current region
+  $: if ($currentRegion) {
+    // Only reset timer if the region ID actually changed
+    if (previousRegionId !== $currentRegion.id) {
+      previousRegionId = $currentRegion.id;
+      
+      // Check if the new region has a length marker
+      const customLength = getCustomLengthForRegion($markers, $currentRegion);
+      if (customLength !== null) {
+        // Find the actual length marker to get its position
+        const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
+        
+        if (lengthMarker && $playbackState.currentPosition >= lengthMarker.position) {
+          // Check if we're transitioning from regular playback to local timer
+          const wasUsingLocalTimer = $useLocalTimer;
+          
+          // Set the flag to use local timer
+          useLocalTimer.set(true);
+          
+          // Initialize with current playback position for smooth transition
+          localPosition.set($playbackState.currentPosition);
+          startLocalTimer($playbackState.currentPosition);
+        } else {
+          // Playback hasn't reached the length marker yet
+          useLocalTimer.set(false);
+          stopLocalTimer();
+        }
+      } else {
+        useLocalTimer.set(false);
+        stopLocalTimer();
+      }
+    }
+  }
+  
   // Initialize markers when component is mounted
   onMount(() => {
     socketControl.refreshMarkers();
+  });
+  
+  // Clean up the timer when the component is destroyed
+  onDestroy(() => {
+    stopLocalTimer();
   });
   
   // Progress bar click handling
@@ -67,6 +270,29 @@
     // Seek to the clicked position
     socketControl.seekToPosition(clickedTime);
     
+    // Check if we should use the local timer based on the clicked position
+    const customLength = getCustomLengthForRegion($markers, $currentRegion);
+    if (customLength !== null) {
+      // Find the actual length marker to get its position
+      const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
+      
+      if (lengthMarker && clickedTime >= lengthMarker.position) {
+        // Clicked position is past the length marker, use local timer
+        const wasUsingLocalTimer = $useLocalTimer;
+        useLocalTimer.set(true);
+        
+        // Update the local position immediately for a smooth transition
+        localPosition.set(clickedTime);
+        
+        // Restart the timer from the clicked position
+        startLocalTimer(clickedTime);
+      } else {
+        // Clicked position is before the length marker
+        useLocalTimer.set(false);
+        stopLocalTimer();
+      }
+    }
+    
     // Hide the popover after 2 seconds
     setTimeout(() => {
       popoverVisible.set(false);
@@ -86,7 +312,13 @@
     
     <div class="time-display">
       {#if $currentRegion}
-        <span class="current-time">{formatTime(Math.max(0, $playbackState.currentPosition - $currentRegion.start))}</span>
+        <span class="current-time">
+          {#if $useLocalTimer}
+            {formatTime(Math.max(0, $localPosition - $currentRegion.start))}
+          {:else}
+            {formatTime(Math.max(0, $playbackState.currentPosition - $currentRegion.start))}
+          {/if}
+        </span>
         <span class="separator">/</span>
         <span class="total-time">{formatTime(getEffectiveRegionLength($currentRegion, $markers))}</span>
       {:else}
@@ -100,8 +332,17 @@
     <div class="progress-container" on:click={handleProgressBarClick}>
       <div 
         class="progress-bar" 
-        style="width: {Math.min(100, Math.max(0, (($playbackState.currentPosition - $currentRegion.start) / getEffectiveRegionLength($currentRegion, $markers)) * 100))}%"
+        style="width: {Math.min(100, Math.max(0, ((($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start) / getEffectiveRegionLength($currentRegion, $markers)) * 100))}%"
       ></div>
+      
+      <!-- Hard stop message -->
+      {#if $atHardStop && !$playbackState.isPlaying}
+        <div class="hard-stop-marker">
+          <div class="hard-stop-message">
+            Press play to continue
+          </div>
+        </div>
+      {/if}
       
       <!-- Markers -->
       {#each $sortedMarkers as marker}
@@ -117,6 +358,21 @@
           </div>
         {/if}
       {/each}
+      
+      <!-- Fake marker for length marker end position or !1008 marker -->
+      {#if $currentRegion}
+        {#if getCustomLengthForRegion($markers, $currentRegion) !== null || has1008MarkerInRegion($markers, $currentRegion)}
+          <div 
+            class="marker hard-stop-marker-indicator"
+            style="left: 100%"
+            title="Hard stop point"
+          >
+            <div class="marker-tooltip">
+              Hard stop point
+            </div>
+          </div>
+        {/if}
+      {/if}
       
       <!-- Time popover -->
       {#if $popoverVisible}
@@ -159,7 +415,7 @@
     
     <button 
       class="control-button restart" 
-      on:click={() => socketControl.seekToCurrentRegionStart()}
+      on:click={() => socketControl.seekToCurrentRegionStart($useLocalTimer)}
       aria-label="Restart current region"
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
@@ -274,6 +530,18 @@
     width: 5px;
   }
   
+  /* Hard stop marker indicator styles */
+  .hard-stop-marker-indicator {
+    background-color: #ff5252;
+    width: 4px;
+    height: 20px;
+    top: -7px;
+  }
+  
+  .hard-stop-marker-indicator:hover {
+    width: 6px;
+  }
+  
   .marker-tooltip {
     position: absolute;
     top: -30px;
@@ -305,6 +573,32 @@
     border-width: 5px;
     border-style: solid;
     border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+  }
+  
+  /* Hard stop marker styles */
+  .hard-stop-marker {
+    position: absolute;
+    top: -40px;
+    right: 0;
+    width: auto;
+    z-index: 10;
+  }
+  
+  .hard-stop-message {
+    background-color: #ff5252;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    animation: pulse 1.5s infinite;
+  }
+  
+  @keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
   }
   
   /* Time popover styles */

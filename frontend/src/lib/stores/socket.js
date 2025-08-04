@@ -16,7 +16,9 @@ export {
   statusMessage,
   autoplayEnabled,
   connectionStatus,
-  currentRegion
+  currentRegion,
+  markers,
+  sortedMarkers
 } from './index';
 
 // Import the transport service
@@ -33,6 +35,7 @@ export const socketControl = {
   previousRegion: transportService.previousRegion,
   seekToCurrentRegionStart: transportService.seekToCurrentRegionStart,
   refreshRegions: transportService.refreshRegions,
+  refreshMarkers: () => socketService.emit('refreshMarkers'),
   toggleAutoplay: transportService.toggleAutoplay,
   disconnect: transportService.disconnect,
   

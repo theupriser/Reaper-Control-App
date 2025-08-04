@@ -6,6 +6,7 @@
 const logger = require('../utils/logger');
 const reaperService = require('./reaperService');
 const regionService = require('./regionService');
+const markerService = require('./markerService');
 const projectService = require('./projectService');
 const setlistNavigationService = require('./setlistNavigationService');
 
@@ -25,13 +26,20 @@ class SocketService {
   }
 
   /**
-   * Set up event listeners for region and playback state updates
+   * Set up event listeners for region, marker, and playback state updates
    */
   setupEventListeners() {
     // Listen for region updates
     regionService.on('regionsUpdated', (regions) => {
       if (this.io) {
         this.io.emit('regions', regions);
+      }
+    });
+
+    // Listen for marker updates
+    markerService.on('markersUpdated', (markers) => {
+      if (this.io) {
+        this.io.emit('markers', markers);
       }
     });
 
@@ -103,6 +111,7 @@ class SocketService {
     }
   
     socket.emit('regions', regionService.getRegions());
+    socket.emit('markers', markerService.getMarkers());
     socket.emit('playbackState', regionService.getPlaybackState());
   
     // Send project ID if available
@@ -419,6 +428,15 @@ class SocketService {
         await regionService.fetchRegions();
       } catch (error) {
         logger.error('Error refreshing regions:', error);
+      }
+    });
+    
+    // Handle refresh markers
+    socket.on('refreshMarkers', async () => {
+      try {
+        await markerService.fetchMarkers();
+      } catch (error) {
+        logger.error('Error refreshing markers:', error);
       }
     });
     

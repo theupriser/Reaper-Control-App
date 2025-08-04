@@ -93,6 +93,15 @@ class Web {
           logger.flushLogs(this.logContext);
         }
         return result;
+      } else if (command === '/MARKER') {
+        // For marker commands, request the marker list
+        const response = await this.sendRequest('MARKER');
+        const result = this.formatMarkerListResponse(response);
+        // Flush logs after important marker operations
+        if (this.logContext) {
+          logger.flushLogs(this.logContext);
+        }
+        return result;
       } else if (command === '/TRANSPORT') {
         // For transport commands, request the transport state
         const response = await this.sendRequest('TRANSPORT');
@@ -366,6 +375,59 @@ class Web {
     }
   }
   
+  /**
+   * Format a marker list response
+   * @private
+   * @param {string} response - The raw response from Reaper
+   * @returns {string} The formatted response
+   */
+  formatMarkerListResponse(response) {
+    if (this.logContext) {
+      logger.collect(this.logContext, 'Web Adapter: Formatting marker list response');
+    }
+    
+    // Initialize the formatted response
+    let formattedResponse = 'MARKER_LIST\n';
+    
+    try {
+      // Split the response into lines
+      const lines = response.split('\n');
+      
+      // Process each line
+      for (const line of lines) {
+        // Skip empty lines
+        if (!line.trim()) continue;
+        
+        // Parse the line
+        const parts = line.split('\t');
+        
+        // Check if this is a marker line
+        if (parts[0] === 'MARKER') {
+          // Add the marker to the formatted response
+          formattedResponse += line + '\n';
+        }
+      }
+      
+      // Add the end marker
+      formattedResponse += 'MARKER_LIST_END';
+      
+      if (this.logContext) {
+        logger.collect(this.logContext, 'Web Adapter: Formatted marker list response:', formattedResponse);
+      }
+      return formattedResponse;
+    } catch (error) {
+      if (this.logContext) {
+        logger.collectError(this.logContext, 'Web Adapter: Error formatting marker list response:', error);
+      } else {
+        // Always log errors, even without detailed logging
+        logger.error('Web Adapter: Error formatting marker list response:', error);
+      }
+      
+      // Return an empty marker list in case of error
+      return 'MARKER_LIST\nMARKER_LIST_END';
+    }
+  }
+
   formatTransportResponse(response) {
     let detailedLogContext = null;
     

@@ -1,6 +1,9 @@
 <script>
-  import { socketControl, playbackState, currentRegion, autoplayEnabled } from '$lib/stores/socket';
+  import { socketControl, playbackState, currentRegion, autoplayEnabled, sortedMarkers } from '$lib/stores/socket';
+  import { getEffectiveRegionLength } from '$lib/stores/markerStore';
+  import { markers } from '$lib/stores/markerStore';
   import { writable } from 'svelte/store';
+  import { onMount } from 'svelte';
   
   // Format time in seconds to MM:SS format
   function formatTime(seconds) {
@@ -15,6 +18,11 @@
   function toggleAutoplay() {
     socketControl.toggleAutoplay();
   }
+  
+  // Initialize markers when component is mounted
+  onMount(() => {
+    socketControl.refreshMarkers();
+  });
   
   // Progress bar click handling
   let popoverVisible = writable(false);
@@ -33,7 +41,7 @@
     const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
     
     // Calculate the time position based on the percentage
-    const regionDuration = $currentRegion.end - $currentRegion.start;
+    const regionDuration = getEffectiveRegionLength($currentRegion, $markers);
     const clickedTime = $currentRegion.start + (percentage * regionDuration);
     
     // Calculate popover position, ensuring it stays within viewport
@@ -80,7 +88,7 @@
       {#if $currentRegion}
         <span class="current-time">{formatTime(Math.max(0, $playbackState.currentPosition - $currentRegion.start))}</span>
         <span class="separator">/</span>
-        <span class="total-time">{formatTime($currentRegion.end - $currentRegion.start)}</span>
+        <span class="total-time">{formatTime(getEffectiveRegionLength($currentRegion, $markers))}</span>
       {:else}
         <span class="current-time">{formatTime($playbackState.currentPosition)}</span>
       {/if}
@@ -92,8 +100,23 @@
     <div class="progress-container" on:click={handleProgressBarClick}>
       <div 
         class="progress-bar" 
-        style="width: {Math.min(100, Math.max(0, (($playbackState.currentPosition - $currentRegion.start) / ($currentRegion.end - $currentRegion.start)) * 100))}%"
+        style="width: {Math.min(100, Math.max(0, (($playbackState.currentPosition - $currentRegion.start) / getEffectiveRegionLength($currentRegion, $markers)) * 100))}%"
       ></div>
+      
+      <!-- Markers -->
+      {#each $sortedMarkers as marker}
+        {#if marker.position >= $currentRegion.start && marker.position <= $currentRegion.end}
+          <div 
+            class="marker"
+            style="left: {((marker.position - $currentRegion.start) / getEffectiveRegionLength($currentRegion, $markers)) * 100}%"
+            title={marker.name}
+          >
+            <div class="marker-tooltip">
+              {marker.name}
+            </div>
+          </div>
+        {/if}
+      {/each}
       
       <!-- Time popover -->
       {#if $popoverVisible}
@@ -222,7 +245,7 @@
     height: 6px;
     background-color: #4a4a4a;
     border-radius: 3px;
-    margin-bottom: 1rem;
+    margin: 10px 0 20px 0;
     overflow: visible;
     position: relative;
     cursor: pointer;
@@ -233,6 +256,55 @@
     background-color: #4CAF50;
     border-radius: 3px;
     transition: width 0.2s ease-out;
+  }
+  
+  /* Marker styles */
+  .marker {
+    position: absolute;
+    top: -5px;
+    width: 3px;
+    height: 16px;
+    background-color: #FFC107;
+    transform: translateX(-50%);
+    z-index: 5;
+    cursor: pointer;
+  }
+  
+  .marker:hover {
+    width: 5px;
+  }
+  
+  .marker-tooltip {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  }
+  
+  .marker:hover .marker-tooltip {
+    opacity: 1;
+  }
+  
+  .marker-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
   }
   
   /* Time popover styles */

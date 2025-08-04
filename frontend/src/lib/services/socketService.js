@@ -24,7 +24,8 @@ import {
   setReconnected,
   setConnectionError,
   updatePingInfo,
-  updateProjectId
+  updateProjectId,
+  updateMarkers
 } from '../stores';
 
 // Socket instance
@@ -76,6 +77,7 @@ function setupEventListeners() {
   
   // Data events
   socket.on('regions', handleRegionsUpdate);
+  socket.on('markers', handleMarkersUpdate);
   socket.on('playbackState', handlePlaybackStateUpdate);
   socket.on('status', handleStatusMessage);
   socket.on('projectId', handleProjectIdUpdate);
@@ -303,6 +305,18 @@ function handleRegionsUpdate(data) {
   
   // Update the regions store
   updateRegions(data);
+}
+
+/**
+ * Handles the markers update event
+ * @param {Array} data - The markers data
+ */
+function handleMarkersUpdate(data) {
+  logger.log('Received markers from server:', data);
+  logger.log('Markers count:', data ? data.length : 0);
+  
+  // Update the markers store
+  updateMarkers(data);
 }
 
 /**

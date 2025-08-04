@@ -68,6 +68,14 @@ class ReaperService {
   }
 
   /**
+   * Get all markers from Reaper
+   * @returns {Promise<string>} Raw marker list response
+   */
+  async getMarkers() {
+    return this.sendCommand('/MARKER');
+  }
+
+  /**
    * Get transport state from Reaper
    * @returns {Promise<string>} Raw transport state response
    */

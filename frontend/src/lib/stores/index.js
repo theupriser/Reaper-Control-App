@@ -74,3 +74,12 @@ export {
   clearError as clearSetlistError,
   resetSetlistStore
 } from './setlistStore';
+
+// Re-export from marker store
+export {
+  markers,
+  sortedMarkers,
+  refreshMarkers,
+  findMarkerById,
+  updateMarkers
+} from './markerStore';

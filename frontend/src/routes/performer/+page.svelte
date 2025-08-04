@@ -6,9 +6,11 @@
     playbackState, 
     autoplayEnabled,
     currentSetlist,
-    fetchSetlist
+    fetchSetlist,
+    sortedMarkers
   } from '$lib/stores';
   import { socketControl } from '$lib/stores/socket';
+  import { markers, getEffectiveRegionLength } from '$lib/stores/markerStore';
   
   // Subscribe to playbackState to get the selectedSetlistId and fetch the setlist
   onMount(() => {
@@ -49,10 +51,10 @@
     // If a setlist is selected, calculate total time from setlist items
     $currentSetlist.items.reduce((total, item) => {
       const region = $regions.find(r => r.id === item.regionId);
-      return total + (region ? (region.end - region.start) : 0);
+      return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
     }, 0) :
     // Otherwise, calculate from all regions
-    $regions.reduce((total, region) => total + (region.end - region.start), 0);
+    $regions.reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
   
   // Calculate elapsed time up to the current region
   $: elapsedTimeBeforeCurrentRegion = $currentRegion ? 
@@ -65,12 +67,12 @@
         })
         .reduce((total, item) => {
           const region = $regions.find(r => r.id === item.regionId);
-          return total + (region ? (region.end - region.start) : 0);
+          return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
         }, 0) :
       // Otherwise, calculate from all regions
       $regions
         .filter(region => $regions.findIndex(r => r.id === region.id) < $regions.findIndex(r => r.id === $currentRegion.id))
-        .reduce((total, region) => total + (region.end - region.start), 0) : 0;
+        .reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0) : 0;
   
   // Calculate total elapsed time
   $: totalElapsedTime = $currentRegion ? 
@@ -85,7 +87,7 @@
     
   // Calculate song duration
   $: songDuration = $currentRegion ? 
-    $currentRegion.end - $currentRegion.start : 0;
+    getEffectiveRegionLength($currentRegion, $markers) : 0;
     
   // Calculate song remaining time
   $: songRemainingTime = Math.max(0, songDuration - currentSongTime);
@@ -220,6 +222,21 @@
             class="progress-bar" 
             style="width: {Math.min(100, Math.max(0, (currentSongTime / songDuration) * 100))}%"
           ></div>
+          
+          <!-- Markers -->
+          {#each $sortedMarkers as marker}
+            {#if marker.position >= $currentRegion.start && marker.position <= $currentRegion.end}
+              <div 
+                class="marker"
+                style="left: {((marker.position - $currentRegion.start) / songDuration) * 100}%"
+                title={marker.name}
+              >
+                <div class="marker-tooltip">
+                  {marker.name}
+                </div>
+              </div>
+            {/if}
+          {/each}
         </div>
       {:else}
         <div class="progress-container">
@@ -232,7 +249,7 @@
       <h2>{nextRegion ? `Next: ${nextRegion.name}` : 'End of setlist'}</h2>
       <div class="next-song-duration">
         {#if nextRegion}
-          Duration: {formatTime(nextRegion.end - nextRegion.start)}
+          Duration: {formatTime(getEffectiveRegionLength(nextRegion, $markers))}
         {:else}
           &nbsp;
         {/if}
@@ -369,12 +386,61 @@
     background-color: #333;
     border-radius: 6px;
     overflow: hidden;
+    position: relative;
   }
   
   .progress-bar {
     height: 100%;
     background-color: #4CAF50;
     transition: width 0.2s ease-out;
+  }
+  
+  .marker {
+    position: absolute;
+    top: -8px;
+    width: 4px;
+    height: 28px;
+    background-color: #FFC107;
+    transform: translateX(-50%);
+    cursor: pointer;
+    z-index: 2;
+  }
+  
+  .marker:hover {
+    width: 6px;
+  }
+  
+  .marker-tooltip {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  }
+  
+  .marker:hover .marker-tooltip {
+    opacity: 1;
+  }
+  
+  .marker-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
   }
   
   .next-song {

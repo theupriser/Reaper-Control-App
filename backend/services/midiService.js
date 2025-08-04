@@ -155,9 +155,7 @@ class MidiService {
           await this.handleRefreshRegions();
           break;
         case 'toggleAutoplay':
-          // For simplicity, we'll toggle autoplay on when this note is received
-          // In a real implementation, you might want to use the velocity to determine the state
-          this.handleToggleAutoplay(true);
+          this.handleToggleAutoplay();
           break;
         default:
           logger.log(`Unknown event name: ${eventName}`);
@@ -349,12 +347,20 @@ class MidiService {
 
   /**
    * Handle toggleAutoplay event
-   * @param {boolean} enabled - Whether autoplay should be enabled
+   * @param {boolean} [enabled] - Whether autoplay should be enabled. If not provided, toggles the current value.
    */
   handleToggleAutoplay(enabled) {
     try {
       const playbackState = regionService.getPlaybackState();
-      playbackState.autoplayEnabled = enabled;
+      
+      // If enabled parameter is not provided, toggle the current value
+      if (enabled === undefined) {
+        playbackState.autoplayEnabled = !playbackState.autoplayEnabled;
+        logger.log(`MIDI toggleAutoplay event: Toggled autoplay to ${playbackState.autoplayEnabled}`);
+      } else {
+        playbackState.autoplayEnabled = enabled;
+        logger.log(`MIDI toggleAutoplay event: Set autoplay to ${enabled}`);
+      }
       
       // Emit updated playback state
       regionService.emitEvent('playbackStateUpdated', playbackState);

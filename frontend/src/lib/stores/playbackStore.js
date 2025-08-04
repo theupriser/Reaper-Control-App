@@ -47,12 +47,19 @@ export function updatePlaybackState(data) {
       selectedSetlistId: data.selectedSetlistId || null
     });
     
+    // Update the autoplayEnabled store if the value is present in the data
+    if (data.autoplayEnabled !== undefined) {
+      autoplayEnabled.set(Boolean(data.autoplayEnabled));
+      console.log('Updated autoplayEnabled from backend:', Boolean(data.autoplayEnabled));
+    }
+    
     // Log success
     console.log('Successfully updated playback state:', {
       isPlaying: Boolean(data.isPlaying),
       currentPosition: Number(data.currentPosition) || 0,
       currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null,
-      selectedSetlistId: data.selectedSetlistId || null
+      selectedSetlistId: data.selectedSetlistId || null,
+      autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : undefined
     });
     
     return true;

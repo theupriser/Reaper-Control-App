@@ -11,7 +11,7 @@
   /**
    * Computed property to determine which items to display
    * If a setlist is selected, display its items
-   * Otherwise, display all regions
+   * Otherwise, display all regions with consistent structure
    */
   $: displayItems = $currentSetlist 
     ? $currentSetlist.items.map(item => {
@@ -26,7 +26,14 @@
           end: region ? region.end : 0
         };
       })
-    : $regions;
+    : $regions.map(region => ({
+        // For regions, use the region's id as both id and regionId
+        id: region.id,
+        regionId: region.id,
+        name: region.name,
+        start: region.start,
+        end: region.end
+      }));
   
   /**
    * Format time in seconds to MM:SS format

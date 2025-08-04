@@ -9,6 +9,7 @@ const path = require('path');
 const logger = require('../utils/logger');
 const reaperService = require('./reaperService');
 const regionService = require('./regionService');
+const setlistNavigationService = require('./setlistNavigationService');
 
 class MidiService {
   constructor() {
@@ -171,8 +172,8 @@ class MidiService {
    */
   async handleTogglePlay() {
     try {
-      const playbackState = regionService.getPlaybackState();
-      await reaperService.togglePlay(playbackState.isPlaying);
+      // Use the shared setlist navigation service for toggle play
+      await setlistNavigationService.handleTogglePlay();
     } catch (error) {
       logger.error('Error handling MIDI togglePlay event:', error);
     }
@@ -316,36 +317,8 @@ class MidiService {
    */
   async handleNextRegion() {
     try {
-      const nextRegion = regionService.getNextRegion();
-      if (!nextRegion) {
-        return;
-      }
-      
-      const playbackState = regionService.getPlaybackState();
-      const isPlaying = playbackState.isPlaying;
-      const isAutoplayEnabled = playbackState.autoplayEnabled;
-      
-      // If currently playing, pause first
-      if (isPlaying) {
-        await reaperService.togglePlay(true); // Pause
-        
-        // Wait a short time for pause to take effect
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Add a small offset to ensure position is clearly within the region
-      const positionWithOffset = nextRegion.start + 0.001;
-      
-      // Send the seek command
-      await reaperService.seekToPosition(positionWithOffset);
-      
-      // If was playing and autoplay is enabled, resume playback
-      if (isPlaying && isAutoplayEnabled) {
-        // Wait a short time for seek to take effect
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        await reaperService.togglePlay(false); // Resume
-      }
+      // Use the shared setlist navigation service for next region
+      await setlistNavigationService.navigateToNext();
     } catch (error) {
       logger.error('Error handling MIDI nextRegion event:', error);
     }
@@ -356,36 +329,8 @@ class MidiService {
    */
   async handlePreviousRegion() {
     try {
-      const prevRegion = regionService.getPreviousRegion();
-      if (!prevRegion) {
-        return;
-      }
-      
-      const playbackState = regionService.getPlaybackState();
-      const isPlaying = playbackState.isPlaying;
-      const isAutoplayEnabled = playbackState.autoplayEnabled;
-      
-      // If currently playing, pause first
-      if (isPlaying) {
-        await reaperService.togglePlay(true); // Pause
-        
-        // Wait a short time for pause to take effect
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Add a small offset to ensure position is clearly within the region
-      const positionWithOffset = prevRegion.start + 0.001;
-      
-      // Send the seek command
-      await reaperService.seekToPosition(positionWithOffset);
-      
-      // If was playing and autoplay is enabled, resume playback
-      if (isPlaying && isAutoplayEnabled) {
-        // Wait a short time for seek to take effect
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        await reaperService.togglePlay(false); // Resume
-      }
+      // Use the shared setlist navigation service for previous region
+      await setlistNavigationService.navigateToPrevious();
     } catch (error) {
       logger.error('Error handling MIDI previousRegion event:', error);
     }

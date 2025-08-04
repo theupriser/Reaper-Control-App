@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const reaperService = require('./reaperService');
 const regionService = require('./regionService');
 const projectService = require('./projectService');
+const setlistNavigationService = require('./setlistNavigationService');
 
 class SocketService {
   constructor() {
@@ -180,10 +181,10 @@ class SocketService {
         logger.collect(logContext, 'Current playback state:', 
           JSON.stringify(playbackState.toJSON()));
         
-        // Send toggle command to Reaper
-        logger.collect(logContext, 'Sending toggle command to Reaper, current isPlaying:', playbackState.isPlaying);
-        await reaperService.togglePlay(playbackState.isPlaying);
-        logger.collect(logContext, 'Toggle command sent successfully');
+        // Use the shared setlist navigation service for toggle play
+        logger.collect(logContext, 'Using setlist navigation service for toggle play');
+        await setlistNavigationService.handleTogglePlay();
+        logger.collect(logContext, 'Toggle play handled successfully');
         
         // Add a delayed check for play/pause state after 1 second
         // Always check the state after toggling, regardless of whether we're playing or pausing
@@ -295,39 +296,23 @@ class SocketService {
           logger.collect(logContext, 'Found region:', 
             `ID=${region.id}, Name=${region.name}, Start=${region.start}, End=${region.end}`);
           
-          // Get current playback state and autoplay setting
+          // Get the current playback state to check if a setlist is selected
           const playbackState = regionService.getPlaybackState();
-          const isPlaying = playbackState.isPlaying;
-          const isAutoplayEnabled = playbackState.autoplayEnabled;
           
-          logger.collect(logContext, 'Current state:', 
-            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
+          // Update the current region ID in the playback state
+          // This ensures the region is tracked correctly even when "all regions" is selected
+          playbackState.currentRegionId = region.id;
+          regionService.emitEvent('playbackStateUpdated', playbackState);
+          logger.collect(logContext, 'Updated current region ID in playback state');
           
-          // If currently playing, pause first
-          if (isPlaying) {
-            logger.collect(logContext, 'Pausing before seeking to region');
-            await reaperService.togglePlay(true); // Pause
-            
-            // Wait a short time for pause to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
+          // Use the shared setlist navigation service for seeking to region
+          logger.collect(logContext, 'Using setlist navigation service for seeking to region');
+          const success = await setlistNavigationService.seekToRegionAndPlay(region);
           
-          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
-          // This prevents issues with selection when regions are adjacent
-          const positionWithOffset = region.start + 0.001;
-          
-          // Send the seek command
-          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
-          await reaperService.seekToPosition(positionWithOffset);
-          
-          // If was playing and autoplay is enabled, resume playback
-          if (isPlaying && isAutoplayEnabled) {
-            logger.collect(logContext, 'Autoplay enabled, resuming playback');
-            
-            // Wait a short time for seek to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            await reaperService.togglePlay(false); // Resume
+          if (success) {
+            logger.collect(logContext, 'Successfully navigated to region');
+          } else {
+            logger.collect(logContext, 'Failed to navigate to region');
           }
         } else {
           logger.collect(logContext, 'Region not found:', regionId);
@@ -351,38 +336,25 @@ class SocketService {
           logger.collect(logContext, 'Found current region:', 
             `ID=${currentRegion.id}, Name=${currentRegion.name}, Start=${currentRegion.start}, End=${currentRegion.end}`);
           
-          // Get current playback state and autoplay setting
+          // Get the current playback state
           const playbackState = regionService.getPlaybackState();
-          const isPlaying = playbackState.isPlaying;
-          const isAutoplayEnabled = playbackState.autoplayEnabled;
           
-          logger.collect(logContext, 'Current state:', 
-            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
-          
-          // If currently playing, pause first
-          if (isPlaying) {
-            logger.collect(logContext, 'Pausing before seeking to current region start');
-            await reaperService.togglePlay(true); // Pause
-            
-            // Wait a short time for pause to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
+          // Ensure the current region ID is set correctly
+          // This is redundant since getCurrentRegion already uses this ID, but it's good for consistency
+          if (playbackState.currentRegionId !== currentRegion.id) {
+            playbackState.currentRegionId = currentRegion.id;
+            regionService.emitEvent('playbackStateUpdated', playbackState);
+            logger.collect(logContext, 'Updated current region ID in playback state');
           }
           
-          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
-          const positionWithOffset = currentRegion.start + 0.001;
+          // Use the shared setlist navigation service for seeking to region
+          logger.collect(logContext, 'Using setlist navigation service for seeking to current region start');
+          const success = await setlistNavigationService.seekToRegionAndPlay(currentRegion);
           
-          // Send the seek command
-          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
-          await reaperService.seekToPosition(positionWithOffset);
-          
-          // If was playing and autoplay is enabled, resume playback
-          if (isPlaying && isAutoplayEnabled) {
-            logger.collect(logContext, 'Autoplay enabled, resuming playback');
-            
-            // Wait a short time for seek to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            await reaperService.togglePlay(false); // Resume
+          if (success) {
+            logger.collect(logContext, 'Successfully navigated to current region start');
+          } else {
+            logger.collect(logContext, 'Failed to navigate to current region start');
           }
         } else {
           logger.collect(logContext, 'No current region found');
@@ -401,46 +373,14 @@ class SocketService {
         const logContext = logger.startCollection('nextRegion-handler');
         logger.collect(logContext, 'Next region requested');
         
-        const nextRegion = regionService.getNextRegion();
-        if (nextRegion) {
-          logger.collect(logContext, 'Found next region:', 
-            `ID=${nextRegion.id}, Name=${nextRegion.name}, Start=${nextRegion.start}, End=${nextRegion.end}`);
-          
-          // Get current playback state and autoplay setting
-          const playbackState = regionService.getPlaybackState();
-          const isPlaying = playbackState.isPlaying;
-          const isAutoplayEnabled = playbackState.autoplayEnabled;
-          
-          logger.collect(logContext, 'Current state:', 
-            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
-          
-          // If currently playing, pause first
-          if (isPlaying) {
-            logger.collect(logContext, 'Pausing before going to next region');
-            await reaperService.togglePlay(true); // Pause
-            
-            // Wait a short time for pause to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          
-          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
-          const positionWithOffset = nextRegion.start + 0.001;
-          
-          // Send the seek command
-          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
-          await reaperService.seekToPosition(positionWithOffset);
-          
-          // If was playing and autoplay is enabled, resume playback
-          if (isPlaying && isAutoplayEnabled) {
-            logger.collect(logContext, 'Autoplay enabled, resuming playback');
-            
-            // Wait a short time for seek to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            await reaperService.togglePlay(false); // Resume
-          }
+        // Use the shared setlist navigation service for next region
+        logger.collect(logContext, 'Using setlist navigation service for next region');
+        const success = await setlistNavigationService.navigateToNext();
+        
+        if (success) {
+          logger.collect(logContext, 'Successfully navigated to next region/setlist item');
         } else {
-          logger.collect(logContext, 'No next region found');
+          logger.collect(logContext, 'No next region/setlist item found or navigation failed');
         }
         
         // Flush logs
@@ -456,46 +396,14 @@ class SocketService {
         const logContext = logger.startCollection('previousRegion-handler');
         logger.collect(logContext, 'Previous region requested');
         
-        const prevRegion = regionService.getPreviousRegion();
-        if (prevRegion) {
-          logger.collect(logContext, 'Found previous region:', 
-            `ID=${prevRegion.id}, Name=${prevRegion.name}, Start=${prevRegion.start}, End=${prevRegion.end}`);
-          
-          // Get current playback state and autoplay setting
-          const playbackState = regionService.getPlaybackState();
-          const isPlaying = playbackState.isPlaying;
-          const isAutoplayEnabled = playbackState.autoplayEnabled;
-          
-          logger.collect(logContext, 'Current state:', 
-            `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
-          
-          // If currently playing, pause first
-          if (isPlaying) {
-            logger.collect(logContext, 'Pausing before going to previous region');
-            await reaperService.togglePlay(true); // Pause
-            
-            // Wait a short time for pause to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          
-          // Add a small offset (1ms = 0.001s) to ensure position is clearly within the region
-          const positionWithOffset = prevRegion.start + 0.001;
-          
-          // Send the seek command
-          logger.collect(logContext, 'Sending seek command for position:', positionWithOffset);
-          await reaperService.seekToPosition(positionWithOffset);
-          
-          // If was playing and autoplay is enabled, resume playback
-          if (isPlaying && isAutoplayEnabled) {
-            logger.collect(logContext, 'Autoplay enabled, resuming playback');
-            
-            // Wait a short time for seek to take effect
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            await reaperService.togglePlay(false); // Resume
-          }
+        // Use the shared setlist navigation service for previous region
+        logger.collect(logContext, 'Using setlist navigation service for previous region');
+        const success = await setlistNavigationService.navigateToPrevious();
+        
+        if (success) {
+          logger.collect(logContext, 'Successfully navigated to previous region/setlist item');
         } else {
-          logger.collect(logContext, 'No previous region found');
+          logger.collect(logContext, 'No previous region/setlist item found or navigation failed');
         }
         
         // Flush logs

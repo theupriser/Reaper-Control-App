@@ -35,6 +35,28 @@ class ReaperService extends baseService {
       await this.reaper.connect();
       this.isConnected = true;
       this.logWithContext(context, 'Connected to Reaper successfully');
+      
+      // Check if Reaper is playing and pause it if it is
+      try {
+        this.logWithContext(context, 'Checking playback state to ensure Reaper is not playing...');
+        const transportState = await this.getTransportState();
+        const parts = transportState.split('\t');
+        
+        if (parts.length >= 2) {
+          const playstate = parseInt(parts[1]);
+          if (playstate === 1) {
+            this.logWithContext(context, 'Reaper is playing, pausing to prevent automatic playback');
+            // Send pause command (ID 1008)
+            await this.sendCommand('/1008');
+            this.logWithContext(context, 'Successfully paused Reaper');
+          } else {
+            this.logWithContext(context, 'Reaper is not playing, no need to pause');
+          }
+        }
+      } catch (stateError) {
+        this.logErrorWithContext(context, 'Error checking playback state, continuing anyway', stateError);
+      }
+      
       this.flushLogs(context);
       return true;
     } catch (error) {

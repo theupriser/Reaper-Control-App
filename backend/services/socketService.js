@@ -251,18 +251,30 @@ class SocketService {
     });
     
     // Handle seek to position
-    socket.on('seekToPosition', async (position) => {
+    socket.on('seekToPosition', async (data) => {
       try {
         const logContext = logger.startCollection('seekToPosition-handler');
-        logger.collect(logContext, 'Seek to position requested:', position);
         
-        // Get current playback state and autoplay setting
+        // Handle both old format (position as number) and new format (object with position and isMarkerClick)
+        let position, isMarkerClick;
+        if (typeof data === 'object' && data !== null) {
+          position = data.position;
+          isMarkerClick = data.isMarkerClick === true;
+          logger.collect(logContext, 'Seek to position requested:', position, 'isMarkerClick:', isMarkerClick);
+        } else {
+          position = data;
+          isMarkerClick = false; // Default to false for backward compatibility
+          logger.collect(logContext, 'Seek to position requested (legacy format):', position);
+        }
+        
+        // Get current playback state and settings
         const playbackState = regionService.getPlaybackState();
         const isPlaying = playbackState.isPlaying;
         const isAutoplayEnabled = playbackState.autoplayEnabled;
+        const isCountInEnabled = playbackState.countInEnabled;
         
         logger.collect(logContext, 'Current state:', 
-          `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}`);
+          `isPlaying=${isPlaying}, autoplayEnabled=${isAutoplayEnabled}, countInEnabled=${isCountInEnabled}, isMarkerClick=${isMarkerClick}`);
         
         // If currently playing, pause first
         if (isPlaying) {
@@ -273,9 +285,35 @@ class SocketService {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         
+        let positionToSeek = position;
+        
+        // Only apply count-in if it's enabled AND the click was on a marker
+        const shouldUseCountIn = isCountInEnabled && isMarkerClick;
+        
+        // If count-in should be used, position the cursor before the marker
+        // Calculate the actual duration based on the current time signature and BPM
+        if (shouldUseCountIn) {
+          try {
+            // Get the duration of 2 bars in seconds based on the current time signature and BPM
+            const countInDuration = await reaperService.calculateBarsToSeconds(2);
+            
+            // Calculate position 2 bars before the marker
+            // Ensure we don't go before the start of the project (negative time)
+            positionToSeek = Math.max(0, position - countInDuration);
+            logger.log(`Count-in enabled for marker click, positioning cursor 2 bars (${countInDuration.toFixed(2)}s) before marker at ${positionToSeek.toFixed(2)}s`);
+          } catch (error) {
+            // Fallback to default calculation if there's an error
+            logger.error('Error calculating count-in position, using default:', error);
+            positionToSeek = Math.max(0, position - 4); // Default to 4 seconds (2 bars at 4/4 and 120 BPM)
+            logger.log(`Count-in enabled for marker click (fallback), positioning cursor 2 bars (4s) before marker at ${positionToSeek}s`);
+          }
+        } else if (isCountInEnabled && !isMarkerClick) {
+          logger.log('Count-in enabled but click was not on a marker, not using count-in');
+        }
+        
         // Send the seek command
-        logger.collect(logContext, 'Sending seek command for position:', position);
-        await reaperService.seekToPosition(position);
+        logger.collect(logContext, 'Sending seek command for position:', positionToSeek);
+        await reaperService.seekToPosition(positionToSeek);
         
         // If was playing and autoplay is enabled, resume playback
         if (isPlaying && isAutoplayEnabled) {
@@ -284,7 +322,14 @@ class SocketService {
           // Wait a short time for seek to take effect
           await new Promise(resolve => setTimeout(resolve, 100));
           
-          await reaperService.togglePlay(false); // Resume
+          // If count-in should be used, use playWithCountIn, otherwise use normal togglePlay
+          if (shouldUseCountIn) {
+            logger.collect(logContext, 'Count-in enabled for marker click, using playWithCountIn');
+            await reaperService.playWithCountIn();
+          } else {
+            logger.collect(logContext, 'Count-in not used, using normal togglePlay');
+            await reaperService.togglePlay(false); // Resume without count-in
+          }
         }
         
         // Flush logs
@@ -314,9 +359,13 @@ class SocketService {
           regionService.emitEvent('playbackStateUpdated', playbackState);
           logger.collect(logContext, 'Updated current region ID in playback state');
           
+          // Always disable count-in for region selection (only enable for marker selection)
+          const countInEnabled = false;
+          logger.collect(logContext, 'Count-in is disabled for region selection');
+          
           // Use the shared setlist navigation service for seeking to region
           logger.collect(logContext, 'Using setlist navigation service for seeking to region');
-          const success = await setlistNavigationService.seekToRegionAndPlay(region);
+          const success = await setlistNavigationService.seekToRegionAndPlay(region, null, countInEnabled);
           
           if (success) {
             logger.collect(logContext, 'Successfully navigated to region');
@@ -457,6 +506,21 @@ class SocketService {
         logger.log(`Autoplay ${enabled ? 'enabled' : 'disabled'}`);
       } catch (error) {
         logger.error('Error toggling autoplay:', error);
+      }
+    });
+    
+    // Handle toggle count-in
+    socket.on('toggleCountIn', (enabled) => {
+      try {
+        const playbackState = regionService.getPlaybackState();
+        playbackState.countInEnabled = enabled;
+        
+        // Emit updated playback state
+        regionService.emitEvent('playbackStateUpdated', playbackState);
+        
+        logger.log(`Count-in ${enabled ? 'enabled' : 'disabled'}`);
+      } catch (error) {
+        logger.error('Error toggling count-in:', error);
       }
     });
     

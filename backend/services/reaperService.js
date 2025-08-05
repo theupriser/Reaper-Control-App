@@ -18,6 +18,10 @@ class ReaperService {
     });
     
     this.isConnected = false;
+    
+    // Store for recent beat positions and timestamps for BPM calculation
+    // We'll keep only the latest 4 beat positions for more accurate BPM calculation
+    this.beatPositions = [];
   }
 
   /**
@@ -82,6 +86,176 @@ class ReaperService {
   async getTransportState() {
     return this.sendCommand('/TRANSPORT');
   }
+  
+  /**
+   * Get beat position and time signature from Reaper
+   * @returns {Promise<string>} Raw beat position response
+   */
+  async getBeatPosition() {
+    return this.sendCommand('/BEATPOS');
+  }
+  
+  /**
+   * Get the current BPM from Reaper by calculating it from the BEATPOS response
+   * Uses the latest 4 beat positions for more accurate BPM calculation
+   * @returns {Promise<number>} Current BPM
+   */
+  async getBPM() {
+    try {
+      // Get the beat position data from Reaper
+      const beatPosResponse = await this.getBeatPosition();
+
+      // Parse the response
+      const parts = beatPosResponse.split('\t');
+
+      // BEATPOS response format:
+      // BEATPOS \t playstate \t position_seconds \t full_beat_position \t measure_cnt \t beats_in_measure \t ts_numerator \t ts_denominator
+      if (parts.length >= 4 && parts[0] === 'BEATPOS') {
+        // Extract position in seconds and beat position
+        const positionSeconds = parseFloat(parts[2]);
+        const beatPosition = parseFloat(parts[3]);
+        const timestamp = Date.now();
+
+        // Store the current beat position with timestamp
+        this.beatPositions.push({
+          positionSeconds,
+          beatPosition,
+          timestamp
+        });
+
+        // Keep only the latest 2 beat positions
+        if (this.beatPositions.length > 2) {
+          this.beatPositions = this.beatPositions.slice(-2);
+        }
+
+        // If we have at least 2 beat positions, calculate BPM based on the difference
+        if (this.beatPositions.length >= 2) {
+          // Get the oldest and newest beat positions
+          const oldest = this.beatPositions[0];
+          const newest = this.beatPositions[this.beatPositions.length - 1];
+
+          // Calculate the difference in beat position and seconds
+          const beatDiff = newest.beatPosition - oldest.beatPosition;
+          const secondsDiff = newest.positionSeconds - oldest.positionSeconds;
+
+          // Calculate BPM: (beats / seconds) * 60
+          // This gives us the tempo in beats per minute
+          const bpm = (beatDiff / secondsDiff) * 60;
+
+          // Round to 2 decimal places for display purposes
+          const roundedBpm = Math.round(bpm * 100) / 100;
+
+          logger.log(`Calculated BPM from ${this.beatPositions.length} beat positions: ${roundedBpm}`);
+          return roundedBpm;
+        } else {
+          // If we only have one beat position, calculate BPM using the traditional method
+          const bpm = (beatPosition / positionSeconds) * 60;
+          const roundedBpm = Math.round(bpm * 100) / 100;
+          
+          logger.log(`Calculated BPM from single beat position: ${roundedBpm}`);
+          return roundedBpm;
+        }
+      } else {
+        // Default to 120 BPM if we can't parse the response
+        logger.warn('Could not parse BPM from BEATPOS response, defaulting to 120');
+        return 120;
+      }
+    } catch (error) {
+      logger.error('Error calculating BPM from BEATPOS:', error);
+      // Default to 120 BPM in case of error
+      return 120;
+    }
+  }
+  
+  /**
+   * Reset the beat positions array
+   * This should be called when the region changes or when the tempo changes significantly
+   */
+  resetBeatPositions() {
+    logger.log('Resetting beat positions array');
+    this.beatPositions = [];
+  }
+  
+  /**
+   * Get the current time signature from Reaper
+   * @returns {Promise<{numerator: number, denominator: number}>} Time signature as an object
+   */
+  async getTimeSignature() {
+    try {
+      const beatPosResponse = await this.getBeatPosition();
+      const parts = beatPosResponse.split('\t');
+      
+      // BEATPOS response format:
+      // BEATPOS \t playstate \t position_seconds \t full_beat_position \t measure_cnt \t beats_in_measure \t ts_numerator \t ts_denominator
+      if (parts.length >= 8 && parts[0] === 'BEATPOS') {
+        const numerator = parseInt(parts[6]);
+        const denominator = parseInt(parts[7]);
+        
+        logger.log(`Got time signature from Reaper: ${numerator}/${denominator}`);
+        
+        return {
+          numerator,
+          denominator
+        };
+      } else {
+        // Default to 4/4 if we can't parse the response
+        logger.warn('Could not parse time signature from BEATPOS response, defaulting to 4/4');
+        return {
+          numerator: 4,
+          denominator: 4
+        };
+      }
+    } catch (error) {
+      logger.error('Error getting time signature:', error);
+      // Default to 4/4 in case of error
+      return {
+        numerator: 4,
+        denominator: 4
+      };
+    }
+  }
+  
+  /**
+   * Calculate the duration of a specified number of bars in seconds
+   * based on the current time signature and BPM
+   * @param {number} bars - Number of bars to calculate
+   * @param {number} [defaultBpm=120] - Default BPM to use if not available from Reaper
+   * @returns {Promise<number>} Duration in seconds
+   */
+  async calculateBarsToSeconds(bars, defaultBpm = 120) {
+    try {
+      // Get the current time signature
+      const timeSignature = await this.getTimeSignature();
+      
+      // Get the current BPM from Reaper
+      const bpm = await this.getBPM();
+      
+      // Calculate beats per bar based on time signature
+      const beatsPerBar = timeSignature.numerator;
+      
+      // Calculate seconds per beat based on BPM
+      // Formula: 60 seconds / BPM = duration of one beat in seconds
+      const secondsPerBeat = 60 / bpm;
+      
+      // Calculate total seconds
+      // Formula: bars * beats per bar * seconds per beat
+      const totalSeconds = bars * beatsPerBar * secondsPerBeat;
+      
+      logger.log(`Calculated ${bars} bars at time signature ${timeSignature.numerator}/${timeSignature.denominator} and ${bpm} BPM: ${totalSeconds.toFixed(2)} seconds`);
+      
+      return totalSeconds;
+    } catch (error) {
+      logger.error('Error calculating bars to seconds:', error);
+      
+      // Default calculation assuming 4/4 time at default BPM
+      // 4 beats per bar * (60 / BPM) seconds per beat * number of bars
+      const defaultSeconds = 4 * (60 / defaultBpm) * bars;
+      
+      logger.warn(`Using default calculation for ${bars} bars: ${defaultSeconds.toFixed(2)} seconds`);
+      
+      return defaultSeconds;
+    }
+  }
 
   /**
    * Toggle play/pause
@@ -95,6 +269,25 @@ class ReaperService {
     } else {
       // If currently paused/stopped, send play command (ID 1007)
       await this.sendCommand('/1007');
+    }
+  }
+  
+  /**
+   * Start playback with count-in
+   * @returns {Promise<void>}
+   */
+  async playWithCountIn() {
+    try {
+      // Enable count-in (ID 40363)
+      await this.sendCommand('/40363');
+      
+      // Start playback (ID 1007)
+      await this.sendCommand('/1007');
+      
+      logger.log('Started playback with count-in');
+    } catch (error) {
+      logger.error('Error starting playback with count-in:', error);
+      throw error;
     }
   }
 

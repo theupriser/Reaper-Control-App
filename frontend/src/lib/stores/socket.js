@@ -15,6 +15,7 @@ export {
   playbackState,
   statusMessage,
   autoplayEnabled,
+  countInEnabled,
   connectionStatus,
   currentRegion,
   markers,
@@ -37,6 +38,7 @@ export const socketControl = {
   refreshRegions: transportService.refreshRegions,
   refreshMarkers: () => socketService.emit('refreshMarkers'),
   toggleAutoplay: transportService.toggleAutoplay,
+  toggleCountIn: transportService.toggleCountIn,
   disconnect: transportService.disconnect,
   
   // Project functions

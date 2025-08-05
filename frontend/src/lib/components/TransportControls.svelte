@@ -1,5 +1,5 @@
 <script>
-  import { socketControl, playbackState, currentRegion, autoplayEnabled, sortedMarkers } from '$lib/stores/socket';
+  import { socketControl, playbackState, currentRegion, autoplayEnabled, countInEnabled, sortedMarkers } from '$lib/stores/socket';
   import { getEffectiveRegionLength, getCustomLengthForRegion, has1008MarkerInRegion } from '$lib/stores/markerStore';
   import { markers } from '$lib/stores/markerStore';
   import { writable } from 'svelte/store';
@@ -24,6 +24,11 @@
   // Toggle autoplay function
   function toggleAutoplay() {
     socketControl.toggleAutoplay();
+  }
+  
+  // Toggle count-in function
+  function toggleCountIn() {
+    socketControl.toggleCountIn();
   }
   
   // Function to start the local timer
@@ -267,9 +272,41 @@
     // Calculate the percentage of the click position
     const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
     
-    // Calculate the time position based on the percentage
-    const regionDuration = getEffectiveRegionLength($currentRegion, $markers);
-    const clickedTime = $currentRegion.start + (percentage * regionDuration);
+    // Check if the click is near a marker
+    let finalPosition;
+    let isNearMarker = false;
+    const clickThreshold = 10; // Pixel threshold for considering a click "on" a marker
+    
+    // Find markers within the current region
+    const markersInRegion = $sortedMarkers.filter(marker => 
+      marker.position >= $currentRegion.start && 
+      marker.position <= $currentRegion.end
+    );
+    
+    // Check if click is near any marker
+    for (const marker of markersInRegion) {
+      // Calculate marker's pixel position in the progress bar
+      const regionDuration = getEffectiveRegionLength($currentRegion, $markers);
+      const markerPercentage = (marker.position - $currentRegion.start) / regionDuration;
+      const markerPixelPosition = markerPercentage * containerWidth;
+      
+      // Check if click is within threshold of marker
+      if (Math.abs(clickX - markerPixelPosition) <= clickThreshold) {
+        // Click is near a marker, use exact marker position
+        finalPosition = marker.position;
+        isNearMarker = true;
+        
+        // Log that we're using exact marker position
+        console.log(`Click near marker "${marker.name}" at position ${marker.position}s, using exact marker position`);
+        break;
+      }
+    }
+    
+    // If not near a marker, calculate position based on click percentage
+    if (!isNearMarker) {
+      const regionDuration = getEffectiveRegionLength($currentRegion, $markers);
+      finalPosition = $currentRegion.start + (percentage * regionDuration);
+    }
     
     // Calculate popover position, ensuring it stays within viewport
     let popoverX = clickX;
@@ -288,30 +325,31 @@
       x: popoverX, 
       y: rect.top - 30 // Position above the progress bar
     });
-    popoverTime.set(clickedTime - $currentRegion.start); // Time relative to region start
+    popoverTime.set(finalPosition - $currentRegion.start); // Time relative to region start
     popoverVisible.set(true);
     
-    // Seek to the clicked position
-    socketControl.seekToPosition(clickedTime);
+    // Seek to the position (either marker position or calculated position)
+    // Pass isNearMarker flag to indicate whether the click was on a marker
+    socketControl.seekToPosition(finalPosition, isNearMarker);
     
-    // Check if we should use the local timer based on the clicked position
+    // Check if we should use the local timer based on the position
     const customLength = getCustomLengthForRegion($markers, $currentRegion);
     if (customLength !== null) {
       // Find the actual length marker to get its position
       const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
       
-      if (lengthMarker && clickedTime >= lengthMarker.position) {
-        // Clicked position is past the length marker, use local timer
+      if (lengthMarker && finalPosition >= lengthMarker.position) {
+        // Position is past the length marker, use local timer
         const wasUsingLocalTimer = $useLocalTimer;
         useLocalTimer.set(true);
         
         // Update the local position immediately for a smooth transition
-        localPosition.set(clickedTime);
+        localPosition.set(finalPosition);
         
-        // Restart the timer from the clicked position
-        startLocalTimer(clickedTime);
+        // Restart the timer from the position
+        startLocalTimer(finalPosition);
       } else {
-        // Clicked position is before the length marker
+        // Position is before the length marker
         useLocalTimer.set(false);
         stopLocalTimer();
       }
@@ -334,20 +372,27 @@
       {/if}
     </div>
     
-    <div class="time-display">
-      {#if $currentRegion}
-        <span class="current-time">
-          {#if $useLocalTimer}
-            {formatTime(Math.max(0, $localPosition - $currentRegion.start))}
-          {:else}
-            {formatTime(Math.max(0, $playbackState.currentPosition - $currentRegion.start))}
-          {/if}
-        </span>
-        <span class="separator">/</span>
-        <span class="total-time">{formatTime(getEffectiveRegionLength($currentRegion, $markers))}</span>
-      {:else}
-        <span class="current-time">{formatTime($playbackState.currentPosition)}</span>
-      {/if}
+    <div class="info-display">
+      <div class="time-display">
+        {#if $currentRegion}
+          <span class="current-time">
+            {#if $useLocalTimer}
+              {formatTime(Math.max(0, $localPosition - $currentRegion.start))}
+            {:else}
+              {formatTime(Math.max(0, $playbackState.currentPosition - $currentRegion.start))}
+            {/if}
+          </span>
+          <span class="separator">/</span>
+          <span class="total-time">{formatTime(getEffectiveRegionLength($currentRegion, $markers))}</span>
+        {:else}
+          <span class="current-time">{formatTime($playbackState.currentPosition)}</span>
+        {/if}
+      </div>
+      
+      <div class="bpm-display">
+        <span class="bpm-value">{Math.round($playbackState.bpm)}</span>
+        <span class="bpm-label">BPM</span>
+      </div>
     </div>
   </div>
   
@@ -414,16 +459,30 @@
     </div>
   {/if}
   
-  <div class="autoplay-toggle">
-    <label class="toggle-switch">
-      <input 
-        type="checkbox" 
-        checked={$autoplayEnabled} 
-        on:change={toggleAutoplay}
-      />
-      <span class="toggle-slider"></span>
-    </label>
-    <span class="toggle-label">Auto-resume playback</span>
+  <div class="toggle-container">
+    <div class="toggle-item">
+      <label class="toggle-switch">
+        <input 
+          type="checkbox" 
+          checked={$autoplayEnabled} 
+          on:change={toggleAutoplay}
+        />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label">Auto-resume playback</span>
+    </div>
+    
+    <div class="toggle-item">
+      <label class="toggle-switch">
+        <input 
+          type="checkbox" 
+          checked={$countInEnabled} 
+          on:change={toggleCountIn}
+        />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label">Count-in when pressing marker</span>
+    </div>
   </div>
   
   <div class="controls">
@@ -507,11 +566,38 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+  }
+  
+  .info-display {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.3rem;
   }
   
   .time-display {
     font-family: monospace;
     font-size: 1rem;
+  }
+  
+  .bpm-display {
+    display: inline;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  
+  .bpm-value {
+    font-family: monospace;
+    font-size: 1rem;
+    font-weight: bold;
+    color: #4CAF50;
+  }
+  
+  .bpm-label {
+    font-size: 0.8rem;
+    opacity: 0.7;
+    text-transform: uppercase;
   }
   
   .separator {
@@ -656,12 +742,18 @@
     to { opacity: 1; transform: translate(-50%, -100%); }
   }
   
-  /* Autoplay toggle styles */
-  .autoplay-toggle {
+  /* Toggle container styles */
+  .toggle-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .toggle-item {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    margin-bottom: 1rem;
   }
   
   .toggle-switch {
@@ -762,6 +854,13 @@
       gap: 0.5rem;
     }
     
+    .info-display {
+      width: 100%;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
     .progress-container {
       height: 5px;
       margin-bottom: 0.8rem;
@@ -772,9 +871,12 @@
       font-size: 0.7rem;
     }
     
-    .autoplay-toggle {
-      justify-content: flex-start;
+    .toggle-container {
       margin-top: 0.5rem;
+    }
+    
+    .toggle-item {
+      justify-content: flex-start;
     }
     
     .toggle-label {
@@ -788,6 +890,14 @@
     .play-pause {
       width: 50px;
       height: 50px;
+    }
+    
+    .bpm-value {
+      font-size: 0.9rem;
+    }
+    
+    .bpm-label {
+      font-size: 0.7rem;
     }
   }
   

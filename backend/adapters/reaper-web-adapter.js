@@ -102,6 +102,15 @@ class Web {
           logger.flushLogs(this.logContext);
         }
         return result;
+      } else if (command === '/BEATPOS') {
+        // For beat position commands, request the beat position
+        const response = await this.sendRequest('BEATPOS');
+        const result = this.formatBeatPosResponse(response);
+        // Flush logs after important beat position operations
+        if (this.logContext) {
+          logger.flushLogs(this.logContext);
+        }
+        return result;
       } else if (command === '/TRANSPORT') {
         // For transport commands, request the transport state
         const response = await this.sendRequest('TRANSPORT');
@@ -508,6 +517,96 @@ class Web {
       
       // Return a default transport state in case of error
       return 'TRANSPORT\t0\t0\t0\t0:00\t1.1.00';
+    }
+  }
+  
+  /**
+   * Format a beat position response
+   * @private
+   * @param {string} response - The raw response from Reaper
+   * @returns {string} The formatted response
+   */
+  formatBeatPosResponse(response) {
+    let detailedLogContext = null;
+    
+    // Only create log context if WEB_ADAPTER_LOG is enabled
+    if (process.env.WEB_ADAPTER_LOG === 'true') {
+      detailedLogContext = logger.startCollection('format-beatpos-response');
+      logger.collect(detailedLogContext, 'Web Adapter: Formatting beat position response');
+      logger.collect(detailedLogContext, 'Raw response from Reaper:', response);
+    }
+    
+    try {
+      // Split the response into lines
+      const lines = response.split('\n');
+      if (detailedLogContext) {
+        logger.collect(detailedLogContext, 'Response split into lines, count:', lines.length);
+      }
+      
+      // Find the BEATPOS line
+      let beatPosLineFound = false;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Skip empty lines
+        if (!line.trim()) {
+          if (detailedLogContext) {
+            logger.collect(detailedLogContext, `Line ${i}: Empty line, skipping`);
+          }
+          continue;
+        }
+        
+        // Parse the line
+        const parts = line.split('\t');
+        if (detailedLogContext) {
+          logger.collect(detailedLogContext, `Line ${i}: Split into ${parts.length} parts:`, parts);
+        }
+        
+        // Check if this is a BEATPOS line
+        if (parts[0] === 'BEATPOS') {
+          beatPosLineFound = true;
+          
+          if (detailedLogContext) {
+            logger.collect(detailedLogContext, `Line ${i}: Found BEATPOS line:`, line);
+            logger.collect(detailedLogContext, 'BEATPOS parts:', parts);
+            
+            // Log the time signature specifically
+            if (parts.length > 6) {
+              const tsNumerator = parseInt(parts[6]);
+              const tsDenominator = parseInt(parts[7]);
+              logger.collect(detailedLogContext, 'Time signature:', `${tsNumerator}/${tsDenominator}`);
+            }
+            
+            logger.flushLogs(detailedLogContext);
+          }
+          
+          return line;
+        }
+      }
+      
+      // If no BEATPOS line was found, return a default response
+      if (!beatPosLineFound) {
+        if (detailedLogContext) {
+          logger.collect(detailedLogContext, 'Web Adapter: No BEATPOS line found in response');
+          logger.collect(detailedLogContext, 'Returning default BEATPOS response');
+          logger.flushLogs(detailedLogContext);
+        }
+        // Default to 4/4 time signature
+        return 'BEATPOS\t0\t0\t0\t0\t4\t4\t4';
+      }
+    } catch (error) {
+      if (detailedLogContext) {
+        logger.collectError(detailedLogContext, 'Web Adapter: Error formatting BEATPOS response:', error);
+        logger.collect(detailedLogContext, 'Returning default BEATPOS response due to error');
+        logger.flushLogs(detailedLogContext);
+      } else {
+        // Always log errors, even without detailed logging
+        logger.error('Web Adapter: Error formatting BEATPOS response:', error);
+      }
+      
+      // Return a default BEATPOS state in case of error (4/4 time signature)
+      return 'BEATPOS\t0\t0\t0\t0\t4\t4\t4';
     }
   }
 }

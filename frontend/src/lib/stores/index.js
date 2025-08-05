@@ -17,11 +17,14 @@ export {
 export {
   playbackState,
   autoplayEnabled,
+  countInEnabled,
   updatePlaybackState,
   updatePartialPlaybackState,
   getPlaybackState,
   getAutoplayEnabled,
-  toggleAutoplay
+  toggleAutoplay,
+  getCountInEnabled,
+  toggleCountIn
 } from './playbackStore';
 
 // Re-export from status store

@@ -16,24 +16,28 @@ import {
   getNextRegion,
   getPreviousRegion,
   toggleAutoplay as toggleAutoplayStore,
-  autoplayEnabled
+  autoplayEnabled,
+  getCountInEnabled,
+  toggleCountIn as toggleCountInStore,
+  countInEnabled
 } from '../stores';
 
 /**
  * Seeks to a specific position with enhanced feedback and error handling
  * @param {number} position - The position to seek to in seconds
+ * @param {boolean} isMarkerClick - Whether the seek was triggered by clicking on a marker
  */
-export function seekToPosition(position) {
-  logger.log('Sending seekToPosition command for position:', position);
+export function seekToPosition(position, isMarkerClick = false) {
+  logger.log('Sending seekToPosition command for position:', position, 'isMarkerClick:', isMarkerClick);
   try {
     if (position === undefined || position === null || isNaN(position)) {
       logger.error('Invalid position:', position);
       return;
     }
     
-    // Send the seek command to the backend
+    // Send the seek command to the backend with isMarkerClick flag
     // The backend will handle pausing and resuming playback as needed
-    socketService.emit('seekToPosition', position);
+    socketService.emit('seekToPosition', { position, isMarkerClick });
     
     // Clear the status message after 1.5 seconds
     setTimeout(() => {
@@ -239,6 +243,40 @@ export function toggleAutoplay(enabled) {
   }
 }
 
+/**
+ * Toggles the count-in setting with enhanced feedback and error handling
+ * @param {boolean} enabled - The new count-in setting
+ */
+export function toggleCountIn(enabled) {
+  logger.log('Sending toggleCountIn command:', enabled);
+  try {
+    // If no value is provided, toggle the current value
+    if (enabled === undefined) {
+      const currentValue = getCountInEnabled();
+      enabled = !currentValue;
+      toggleCountInStore();
+    } else {
+      // If a specific value is provided, set it directly
+      // This requires updating the store manually since toggleCountInStore only toggles
+      countInEnabled.set(enabled);
+    }
+    
+    // Send the command to the backend
+    socketService.emit('toggleCountIn', enabled);
+    
+    // Clear the status message after 1.5 seconds
+    setTimeout(() => {
+      setStatusMessage(null);
+    }, 1500);
+  } catch (error) {
+    logger.error('Error sending toggleCountIn command:', error);
+    setStatusMessage(createErrorMessage(
+      'Failed to toggle count-in',
+      'There was an error communicating with the server. Please try again.'
+    ));
+  }
+}
+
 // Export all transport functions as a single object for compatibility
 export const transportService = {
   seekToPosition,
@@ -249,5 +287,6 @@ export const transportService = {
   seekToCurrentRegionStart,
   refreshRegions,
   toggleAutoplay,
+  toggleCountIn,
   disconnect
 };

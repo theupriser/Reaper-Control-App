@@ -268,7 +268,8 @@ class SetlistNavigationService {
         if (nextItem) {
           const region = regionService.findRegionById(nextItem.regionId);
           if (region) {
-            await this.seekToRegionAndPlay(region);
+            // Always disable count-in for next button navigation, regardless of the global setting
+            await this.seekToRegionAndPlay(region, null, false);
             return true;
           }
         }
@@ -277,7 +278,8 @@ class SetlistNavigationService {
         // No setlist selected, use normal navigation
         const nextRegion = regionService.getNextRegion();
         if (nextRegion) {
-          await this.seekToRegionAndPlay(nextRegion);
+          // Always disable count-in for next button navigation, regardless of the global setting
+          await this.seekToRegionAndPlay(nextRegion, null, false);
           return true;
         }
         return false;
@@ -303,7 +305,8 @@ class SetlistNavigationService {
         if (prevItem) {
           const region = regionService.findRegionById(prevItem.regionId);
           if (region) {
-            await this.seekToRegionAndPlay(region);
+            // Always disable count-in for previous button navigation, regardless of the global setting
+            await this.seekToRegionAndPlay(region, null, false);
             return true;
           }
         }
@@ -312,7 +315,8 @@ class SetlistNavigationService {
         // No setlist selected, use normal navigation
         const prevRegion = regionService.getPreviousRegion();
         if (prevRegion) {
-          await this.seekToRegionAndPlay(prevRegion);
+          // Always disable count-in for previous button navigation, regardless of the global setting
+          await this.seekToRegionAndPlay(prevRegion, null, false);
           return true;
         }
         return false;
@@ -327,14 +331,16 @@ class SetlistNavigationService {
    * Seek to a region and optionally start playback
    * @param {Region} region - Region to seek to
    * @param {boolean} autoplay - Whether to start playback after seeking (defaults to current autoplay setting)
+   * @param {boolean} countIn - Whether to use count-in before playback (defaults to current countIn setting)
    * @returns {Promise<boolean>} True if successful
    */
-  async seekToRegionAndPlay(region, autoplay = null) {
+  async seekToRegionAndPlay(region, autoplay = null, countIn = null) {
     try {
-      // Get current playback state and autoplay setting
+      // Get current playback state and settings
       const playbackState = regionService.getPlaybackState();
       const isPlaying = playbackState.isPlaying;
       const isAutoplayEnabled = autoplay !== null ? autoplay : playbackState.autoplayEnabled;
+      const isCountInEnabled = countIn !== null ? countIn : playbackState.countInEnabled;
       
       // If currently playing, pause first
       if (isPlaying) {
@@ -342,16 +348,43 @@ class SetlistNavigationService {
         await new Promise(resolve => setTimeout(resolve, 150));
       }
 
-      // Add a small offset to ensure position is clearly within the region
-      const positionWithOffset = region.start + 0.001;
+      let positionToSeek;
+      
+      // If count-in is enabled, position the cursor 2 bars before the marker
+      // Calculate the actual duration of 2 bars based on the current time signature and BPM
+      if (isCountInEnabled) {
+        try {
+          // Get the duration of 2 bars in seconds based on the current time signature
+          const countInDuration = await reaperService.calculateBarsToSeconds(2);
+          
+          // Calculate position 2 bars before region start
+          // Ensure we don't go before the start of the project (negative time)
+          positionToSeek = Math.max(0, region.start - countInDuration);
+          logger.log(`Count-in enabled, positioning cursor 2 bars (${countInDuration.toFixed(2)}s) before region at ${positionToSeek.toFixed(2)}s`);
+        } catch (error) {
+          // Fallback to default calculation if there's an error
+          logger.error('Error calculating count-in position, using default:', error);
+          positionToSeek = Math.max(0, region.start - 4); // Default to 4 seconds (2 bars at 4/4 and 120 BPM)
+          logger.log(`Count-in enabled (fallback), positioning cursor 2 bars (4s) before region at ${positionToSeek}s`);
+        }
+      } else {
+        // Add a small offset to ensure position is clearly within the region
+        positionToSeek = region.start + 0.001;
+      }
       
       // Send the seek command
-      await reaperService.seekToPosition(positionWithOffset);
+      await reaperService.seekToPosition(positionToSeek);
 
       // If was playing and autoplay is enabled, resume playback
       if ((isPlaying || autoplay === true) && isAutoplayEnabled) {
         await new Promise(resolve => setTimeout(resolve, 150));
-        await reaperService.togglePlay(false); // Resume
+        
+        // If count-in is enabled, use playWithCountIn, otherwise use normal togglePlay
+        if (isCountInEnabled) {
+          await reaperService.playWithCountIn();
+        } else {
+          await reaperService.togglePlay(false); // Resume without count-in
+        }
       }
 
       // Restart the polling mechanism

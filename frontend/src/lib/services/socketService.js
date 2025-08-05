@@ -324,8 +324,6 @@ function handleMarkersUpdate(data) {
  * @param {Object} data - The playback state data
  */
 function handlePlaybackStateUpdate(data) {
-  logger.log('Received playback state from server:', data);
-  
   // Update the playback state store
   updatePlaybackState(data);
 }

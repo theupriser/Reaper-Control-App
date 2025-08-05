@@ -16,17 +16,24 @@ class PlaybackState {
     this.currentPosition = data.currentPosition || 0;
     this.currentRegionId = data.currentRegionId || null;
     this.autoplayEnabled = data.autoplayEnabled !== undefined ? data.autoplayEnabled : true;
+    this.countInEnabled = data.countInEnabled !== undefined ? data.countInEnabled : false;
     this.selectedSetlistId = data.selectedSetlistId || null;
+    this.bpm = data.bpm || 120; // Default to 120 BPM if not provided
+    this.timeSignature = {
+      numerator: data.timeSignature?.numerator || 4,
+      denominator: data.timeSignature?.denominator || 4
+    }; // Default to 4/4 if not provided
   }
 
   /**
    * Update the playback state from a transport response
    * @param {string} transportResponse - Raw transport response from Reaper
    * @param {Array} regions - Array of Region objects
-   * @returns {boolean} True if the state changed
+   * @returns {Promise<boolean>} True if the state changed
    */
-  updateFromTransportResponse(transportResponse, regions) {
+  async updateFromTransportResponse(transportResponse, regions) {
     const logger = require('../utils/logger');
+    const reaperService = require('../services/reaperService');
     let logContext = null;
     
     // Only collect logs if PLAYBACK_STATE_LOG is enabled
@@ -52,10 +59,11 @@ class PlaybackState {
     const wasPlaying = this.isPlaying;
     const previousPosition = this.currentPosition;
     const previousRegionId = this.currentRegionId;
+    const previousBpm = this.bpm;
     
     if (logContext) {
       logger.collect(logContext, 'Previous state:', 
-        `isPlaying=${wasPlaying}, position=${previousPosition}, regionId=${previousRegionId}`);
+        `isPlaying=${wasPlaying}, position=${previousPosition}, regionId=${previousRegionId}, bpm=${previousBpm}`);
     }
 
     // Update play state and position
@@ -67,24 +75,57 @@ class PlaybackState {
     this.isPlaying = playstate === 1;
     this.currentPosition = parseFloat(parts[2]);
     
+    // Only update BPM and time signature when Reaper is playing
+    if (this.isPlaying) {
+      // Get current BPM from Reaper
+      try {
+        this.bpm = await reaperService.getBPM();
+        if (logContext) {
+          logger.collect(logContext, 'Updated BPM:', this.bpm);
+        }
+        
+        // Get current time signature from Reaper
+        const timeSignature = await reaperService.getTimeSignature();
+        this.timeSignature = timeSignature;
+        if (logContext) {
+          logger.collect(logContext, 'Updated time signature:', `${this.timeSignature.numerator}/${this.timeSignature.denominator}`);
+        }
+      } catch (error) {
+        logger.error('Error getting BPM or time signature:', error);
+        // Keep the previous values if there's an error
+      }
+    } else if (logContext) {
+      logger.collect(logContext, 'Skipping BPM and time signature update because Reaper is not playing');
+    }
+    
     if (logContext) {
       logger.collect(logContext, 'Updated state (before region check):', 
-        `isPlaying=${this.isPlaying}, position=${this.currentPosition}`);
+        `isPlaying=${this.isPlaying}, position=${this.currentPosition}, bpm=${this.bpm}`);
     }
 
     // Find current region based on position
     this.currentRegionId = this.findCurrentRegionId(regions);
     
+    // Check if region has changed and reset beat positions if it has
+    if (previousRegionId !== this.currentRegionId) {
+      if (logContext) {
+        logger.collect(logContext, 'Region changed, resetting beat positions');
+      }
+      // Reset beat positions when region changes to ensure accurate BPM calculation
+      reaperService.resetBeatPositions();
+    }
+    
     if (logContext) {
       logger.collect(logContext, 'Final updated state:', 
-        `isPlaying=${this.isPlaying}, position=${this.currentPosition}, regionId=${this.currentRegionId}`);
+        `isPlaying=${this.isPlaying}, position=${this.currentPosition}, regionId=${this.currentRegionId}, bpm=${this.bpm}`);
     }
 
     // Check if anything changed
     const changed = (
       wasPlaying !== this.isPlaying ||
       previousPosition !== this.currentPosition ||
-      previousRegionId !== this.currentRegionId
+      previousRegionId !== this.currentRegionId ||
+      previousBpm !== this.bpm
     );
     
     if (logContext) {
@@ -147,7 +188,10 @@ class PlaybackState {
       currentPosition: this.currentPosition,
       currentRegionId: this.currentRegionId,
       autoplayEnabled: this.autoplayEnabled,
-      selectedSetlistId: this.selectedSetlistId
+      countInEnabled: this.countInEnabled,
+      selectedSetlistId: this.selectedSetlistId,
+      bpm: this.bpm,
+      timeSignature: this.timeSignature
     };
   }
 }

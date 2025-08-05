@@ -12,13 +12,23 @@ export const playbackState = writable({
   isPlaying: false,
   currentPosition: 0,
   currentRegionId: null,
-  selectedSetlistId: null
+  selectedSetlistId: null,
+  bpm: 120, // Default BPM value
+  timeSignature: {
+    numerator: 4,
+    denominator: 4
+  } // Default time signature (4/4)
 });
 
 /**
  * Store for autoplay toggle
  */
 export const autoplayEnabled = writable(true);
+
+/**
+ * Store for count-in toggle
+ */
+export const countInEnabled = writable(false);
 
 /**
  * Updates the playback state with new data
@@ -44,13 +54,19 @@ export function updatePlaybackState(data) {
       isPlaying: Boolean(data.isPlaying),
       currentPosition: Number(data.currentPosition) || 0,
       currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null,
-      selectedSetlistId: data.selectedSetlistId || null
+      selectedSetlistId: data.selectedSetlistId || null,
+      bpm: data.bpm !== undefined ? Number(data.bpm) : 120, // Use received BPM or default to 120
+      timeSignature: data.timeSignature || { numerator: 4, denominator: 4 } // Use received time signature or default to 4/4
     });
     
     // Update the autoplayEnabled store if the value is present in the data
     if (data.autoplayEnabled !== undefined) {
       autoplayEnabled.set(Boolean(data.autoplayEnabled));
-      console.log('Updated autoplayEnabled from backend:', Boolean(data.autoplayEnabled));
+    }
+    
+    // Update the countInEnabled store if the value is present in the data
+    if (data.countInEnabled !== undefined) {
+      countInEnabled.set(Boolean(data.countInEnabled));
     }
     
     // Log success
@@ -59,7 +75,10 @@ export function updatePlaybackState(data) {
       currentPosition: Number(data.currentPosition) || 0,
       currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null,
       selectedSetlistId: data.selectedSetlistId || null,
-      autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : undefined
+      bpm: data.bpm !== undefined ? Number(data.bpm) : 120,
+      timeSignature: data.timeSignature || { numerator: 4, denominator: 4 },
+      autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : undefined,
+      countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : undefined
     });
     
     return true;
@@ -111,6 +130,26 @@ export function getAutoplayEnabled() {
  */
 export function toggleAutoplay() {
   autoplayEnabled.update(current => !current);
+}
+
+/**
+ * Gets the current count-in setting
+ * @returns {boolean} - The current count-in setting
+ */
+export function getCountInEnabled() {
+  let enabled;
+  const unsubscribe = countInEnabled.subscribe(value => {
+    enabled = value;
+  });
+  unsubscribe();
+  return enabled;
+}
+
+/**
+ * Toggles the count-in setting
+ */
+export function toggleCountIn() {
+  countInEnabled.update(current => !current);
 }
 
 /**

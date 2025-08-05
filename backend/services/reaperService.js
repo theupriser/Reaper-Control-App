@@ -4,10 +4,10 @@
  */
 
 const { Web } = require('../adapters/reaper-web-adapter');
-const BaseService = require('./BaseService');
+const baseService = require('./baseService');
 const { bpmCalculator } = require('../utils/bpmUtils');
 
-class ReaperService extends BaseService {
+class ReaperService extends baseService {
   constructor(config = {}) {
     super('ReaperService');
     

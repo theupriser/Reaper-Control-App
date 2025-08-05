@@ -5,7 +5,7 @@
 
 const logger = require('../utils/logger');
 
-class BaseService {
+class baseService {
   constructor(serviceName) {
     this.serviceName = serviceName;
     this.eventListeners = {};
@@ -117,4 +117,4 @@ class BaseService {
   }
 }
 
-module.exports = BaseService;
+module.exports = baseService;

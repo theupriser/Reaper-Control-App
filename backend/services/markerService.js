@@ -3,11 +3,11 @@
  * Handles fetching, parsing, and managing markers from Reaper
  */
 
-const BaseService = require('./BaseService');
+const baseService = require('./baseService');
 const reaperService = require('./reaperService');
 const Marker = require('../models/Marker');
 
-class MarkerService extends BaseService {
+class MarkerService extends baseService {
   constructor() {
     super('MarkerService');
     this.markers = [];

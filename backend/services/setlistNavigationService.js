@@ -3,14 +3,14 @@
  * Handles navigation within setlists and provides shared logic for MIDI and Socket services
  */
 
-const BaseService = require('./BaseService');
+const baseService = require('./baseService');
 const regionService = require('./regionService');
 const setlistService = require('./setlistService');
 const reaperService = require('./reaperService');
 const markerService = require('./markerService');
 const { getBpmForRegion, extractBpmFromMarker } = require('../utils/bpmUtils');
 
-class SetlistNavigationService extends BaseService {
+class SetlistNavigationService extends baseService {
   constructor() {
     super('SetlistNavigationService');
     

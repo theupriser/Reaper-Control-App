@@ -207,6 +207,87 @@ export function _toggleAutoplay() {
 }
 
 /**
+ * Toggle count-in
+ */
+export function _toggleCountIn() {
+  socketControl.toggleCountIn();
+}
+
+/**
+ * Handle progress bar click
+ * @param {MouseEvent} event - The mouse event
+ */
+export function _handleProgressBarClick(event) {
+  if (!currentRegion.get()) return;
+  
+  // Get the click position relative to the progress container
+  const rect = event.currentTarget.getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const containerWidth = rect.width;
+  
+  // Calculate the percentage of the click position
+  const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
+  
+  // Check if the click is near a marker
+  let finalPosition;
+  let isNearMarker = false;
+  const clickThreshold = 10; // Pixel threshold for considering a click "on" a marker
+  
+  // Get current values from stores
+  const currentRegionValue = currentRegion.get();
+  const sortedMarkersValue = sortedMarkers.get();
+  const markersValue = markers.get();
+  
+  // Find markers within the current region
+  const markersInRegion = sortedMarkersValue.filter(marker => 
+    marker.position >= currentRegionValue.start && 
+    marker.position <= currentRegionValue.end
+  );
+  
+  // Check if click is near any marker
+  for (const marker of markersInRegion) {
+    // Calculate marker's pixel position in the progress bar
+    const regionDuration = getEffectiveRegionLength(currentRegionValue, markersValue);
+    const markerPercentage = (marker.position - currentRegionValue.start) / regionDuration;
+    const markerPixelPosition = markerPercentage * containerWidth;
+    
+    // Check if click is within threshold of marker
+    if (Math.abs(clickX - markerPixelPosition) <= clickThreshold) {
+      // Click is near a marker, use exact marker position
+      finalPosition = marker.position;
+      isNearMarker = true;
+      
+      // Log that we're using exact marker position
+      console.log(`Click near marker "${marker.name}" at position ${marker.position}s, using exact marker position`);
+      break;
+    }
+  }
+  
+  // If not near a marker, calculate position based on click percentage
+  if (!isNearMarker) {
+    const regionDuration = getEffectiveRegionLength(currentRegionValue, markersValue);
+    finalPosition = currentRegionValue.start + (percentage * regionDuration);
+  }
+  
+  // Seek to the position (either marker position or calculated position)
+  // Pass isNearMarker flag to indicate whether the click was on a marker
+  socketControl.seekToPosition(finalPosition, isNearMarker);
+}
+
+// Helper function to get the current value of a store
+function get(store) {
+  let value;
+  const unsubscribe = store.subscribe(v => { value = v; });
+  unsubscribe();
+  return value;
+}
+
+// Add get method to stores
+currentRegion.get = () => get(currentRegion);
+sortedMarkers.get = () => get(sortedMarkers);
+markers.get = () => get(markers);
+
+/**
  * Handle keyboard shortcuts
  * @param {KeyboardEvent} event - The keyboard event
  */

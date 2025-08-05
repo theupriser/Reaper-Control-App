@@ -5,6 +5,7 @@
     currentRegion, 
     playbackState, 
     autoplayEnabled,
+    countInEnabled,
     currentSetlist,
     sortedMarkers
   } from '$lib/stores';
@@ -32,6 +33,8 @@
     _nextRegionHandler as nextRegionHandler,
     _previousRegionHandler as previousRegionHandler,
     _toggleAutoplay as toggleAutoplay,
+    _toggleCountIn as toggleCountIn,
+    _handleProgressBarClick as handleProgressBarClick,
     _initializePage as initializePage,
     _updateTimer as updateTimer,
     _updateTimerOnRegionChange as updateTimerOnRegionChange
@@ -106,7 +109,7 @@
       
       <!-- Progress bar -->
       {#if $currentRegion}
-        <div class="progress-container">
+        <div class="progress-container" on:click={handleProgressBarClick}>
           <div 
             class="progress-bar" 
             style="width: {Math.min(100, Math.max(0, (($useLocalTimer ? $localPosition - $currentRegion.start : $playbackState.currentPosition - $currentRegion.start) / $songDuration) * 100))}%"
@@ -199,9 +202,16 @@
       </svg>
     </button>
   </div>
-  <div class="autoplay-status">
-    <div class="status-indicator {$autoplayEnabled ? 'enabled' : 'disabled'}">
-      Auto-resume: {$autoplayEnabled ? 'ON' : 'OFF'}
+  <div class="toggle-container">
+    <div class="toggle-item">
+      <div class="status-indicator {$autoplayEnabled ? 'enabled' : 'disabled'}" on:click={toggleAutoplay}>
+        Auto-resume: {$autoplayEnabled ? 'ON' : 'OFF'}
+      </div>
+    </div>
+    <div class="toggle-item">
+      <div class="status-indicator {$countInEnabled ? 'enabled' : 'disabled'}" on:click={toggleCountIn}>
+        Count-in when pressing marker: {$countInEnabled ? 'ON' : 'OFF'}
+      </div>
     </div>
   </div>
   <div class="exit-button-container">
@@ -292,6 +302,7 @@
     border-radius: 6px;
     overflow: visible;
     position: relative;
+    cursor: pointer;
   }
   
   .progress-bar {
@@ -386,12 +397,20 @@
     text-align: right;
   }
   
-  .autoplay-status {
+  .toggle-container {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     gap: 1rem;
     margin-bottom: 2rem;
+  }
+  
+  .toggle-item {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    max-width: 500px;
   }
   
   .status-indicator {
@@ -399,6 +418,14 @@
     padding: 0.5rem 1rem;
     border-radius: 4px;
     font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.1s;
+    width: 100%;
+    text-align: center;
+  }
+  
+  .status-indicator:active {
+    transform: scale(0.98);
   }
   
   .status-indicator.enabled {

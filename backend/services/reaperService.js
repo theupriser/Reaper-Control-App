@@ -98,6 +98,7 @@ class ReaperService {
   /**
    * Get the current BPM from Reaper by calculating it from the BEATPOS response
    * Uses the latest 4 beat positions for more accurate BPM calculation
+   * If initialBpm is set (from !bpm marker), it will be used until we have enough beat positions
    * @returns {Promise<number>} Current BPM
    */
   async getBPM() {
@@ -144,35 +145,86 @@ class ReaperService {
 
           // Round to 2 decimal places for display purposes
           const roundedBpm = Math.round(bpm * 100) / 100;
+          
+          // Check if the calculated BPM is NaN, Infinity, -Infinity, or an extreme value
+          if (isNaN(roundedBpm) || !isFinite(roundedBpm) || roundedBpm > 999 || roundedBpm <= 0) {
+            // If we have an initial BPM from a marker, use that
+            if (this.initialBpm !== null && this.initialBpm > 0) {
+              logger.log(`Calculated BPM is invalid (${roundedBpm}), using initial BPM from marker: ${this.initialBpm}`);
+              return this.initialBpm;
+            }
+            // Otherwise use default BPM of 120
+            logger.log(`Calculated BPM is invalid (${roundedBpm}) and no marker BPM available, using default BPM: 120`);
+            return 120;
+          }
 
           logger.log(`Calculated BPM from ${this.beatPositions.length} beat positions: ${roundedBpm}`);
           return roundedBpm;
         } else {
-          // If we only have one beat position, calculate BPM using the traditional method
+          // If we only have one beat position, check if we have an initial BPM from a marker
+          if (this.initialBpm !== null && this.initialBpm > 0) {
+            logger.log(`Using initial BPM from marker: ${this.initialBpm}`);
+            return this.initialBpm;
+          }
+        
+          // Otherwise calculate BPM using the traditional method
           const bpm = (beatPosition / positionSeconds) * 60;
           const roundedBpm = Math.round(bpm * 100) / 100;
           
+          // Check if the calculated BPM is NaN, Infinity, -Infinity, or an extreme value
+          if (isNaN(roundedBpm) || !isFinite(roundedBpm) || roundedBpm > 999 || roundedBpm <= 0) {
+            // If we have an initial BPM from a marker, use that
+            if (this.initialBpm !== null && this.initialBpm > 0) {
+              logger.log(`Calculated BPM from single beat position is invalid (${roundedBpm}), using initial BPM from marker: ${this.initialBpm}`);
+              return this.initialBpm;
+            }
+            // Otherwise use default BPM of 120
+            logger.log(`Calculated BPM from single beat position is invalid (${roundedBpm}) and no marker BPM available, using default BPM: 120`);
+            return 120;
+          }
+        
           logger.log(`Calculated BPM from single beat position: ${roundedBpm}`);
           return roundedBpm;
         }
       } else {
-        // Default to 120 BPM if we can't parse the response
-        logger.warn('Could not parse BPM from BEATPOS response, defaulting to 120');
-        return 120;
+        // Check if we have an initial BPM from a marker
+        if (this.initialBpm !== null && this.initialBpm > 0) {
+          logger.log(`Using initial BPM from marker (fallback): ${this.initialBpm}`);
+          return this.initialBpm;
+        }
+      
+        // Return 0 if we can't parse the response and have no initial BPM
+        logger.warn('Could not parse BPM from BEATPOS response, returning 0');
+        return 0;
       }
     } catch (error) {
       logger.error('Error calculating BPM from BEATPOS:', error);
-      // Default to 120 BPM in case of error
-      return 120;
+    
+      // Check if we have an initial BPM from a marker
+      if (this.initialBpm !== null && this.initialBpm > 0) {
+        logger.log(`Using initial BPM from marker (error fallback): ${this.initialBpm}`);
+        return this.initialBpm;
+      }
+    
+      // Return 0 in case of error and no initial BPM
+      return 0;
     }
   }
   
   /**
    * Reset the beat positions array
    * This should be called when the region changes or when the tempo changes significantly
+   * @param {number} [initialBpm=null] - Optional initial BPM to use (from !bpm marker)
    */
-  resetBeatPositions() {
-    logger.log('Resetting beat positions array');
+  resetBeatPositions(initialBpm = null) {
+    if (initialBpm !== null && initialBpm > 0) {
+      logger.log(`Resetting beat positions array with initial BPM: ${initialBpm}`);
+      // Store the initial BPM for use in getBPM until we have enough beat positions
+      this.initialBpm = initialBpm;
+    } else {
+      logger.log('Resetting beat positions array');
+      this.initialBpm = null;
+    }
     this.beatPositions = [];
   }
   
@@ -191,15 +243,13 @@ class ReaperService {
         const numerator = parseInt(parts[6]);
         const denominator = parseInt(parts[7]);
         
-        logger.log(`Got time signature from Reaper: ${numerator}/${denominator}`);
-        
         return {
           numerator,
           denominator
         };
       } else {
         // Default to 4/4 if we can't parse the response
-        logger.warn('Could not parse time signature from BEATPOS response, defaulting to 4/4');
+        logger.error('Could not parse time signature from BEATPOS response, defaulting to 4/4');
         return {
           numerator: 4,
           denominator: 4
@@ -219,16 +269,22 @@ class ReaperService {
    * Calculate the duration of a specified number of bars in seconds
    * based on the current time signature and BPM
    * @param {number} bars - Number of bars to calculate
-   * @param {number} [defaultBpm=120] - Default BPM to use if not available from Reaper
+   * @param {number} [defaultBpm=90] - Default BPM to use if not available from Reaper
    * @returns {Promise<number>} Duration in seconds
    */
-  async calculateBarsToSeconds(bars, defaultBpm = 120) {
+  async calculateBarsToSeconds(bars, defaultBpm = 90) {
     try {
       // Get the current time signature
       const timeSignature = await this.getTimeSignature();
       
       // Get the current BPM from Reaper
-      const bpm = await this.getBPM();
+      let bpm = await this.getBPM();
+      
+      // If BPM is 0 or invalid, use the default BPM
+      if (!bpm || bpm <= 0) {
+        logger.warn(`Invalid BPM (${bpm}), using default BPM: ${defaultBpm}`);
+        bpm = defaultBpm;
+      }
       
       // Calculate beats per bar based on time signature
       const beatsPerBar = timeSignature.numerator;
@@ -251,7 +307,7 @@ class ReaperService {
       // 4 beats per bar * (60 / BPM) seconds per beat * number of bars
       const defaultSeconds = 4 * (60 / defaultBpm) * bars;
       
-      logger.warn(`Using default calculation for ${bars} bars: ${defaultSeconds.toFixed(2)} seconds`);
+      logger.error(`Using default calculation for ${bars} bars: ${defaultSeconds.toFixed(2)} seconds`);
       
       return defaultSeconds;
     }

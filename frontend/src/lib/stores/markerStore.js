@@ -62,8 +62,24 @@ function isCommandOnlyMarker(name) {
   if (/^!length:\d+(\.\d+)?$/.test(trimmedName)) {
     return true;
   }
+  // Check if the marker only contains a !bpm command
+  if (/^!bpm:\d+(\.\d+)?$/.test(trimmedName)) {
+    return true;
+  }
   // Check if the marker only contains both !1008 and !length commands
   if (/^(!1008\s+!length:\d+(\.\d+)?|!length:\d+(\.\d+)?\s+!1008)$/.test(trimmedName)) {
+    return true;
+  }
+  // Check if the marker only contains both !1008 and !bpm commands
+  if (/^(!1008\s+!bpm:\d+(\.\d+)?|!bpm:\d+(\.\d+)?\s+!1008)$/.test(trimmedName)) {
+    return true;
+  }
+  // Check if the marker only contains both !length and !bpm commands
+  if (/^(!length:\d+(\.\d+)?\s+!bpm:\d+(\.\d+)?|!bpm:\d+(\.\d+)?\s+!length:\d+(\.\d+)?)$/.test(trimmedName)) {
+    return true;
+  }
+  // Check if the marker only contains !1008, !length, and !bpm commands in any order
+  if (/^(!1008\s+!length:\d+(\.\d+)?\s+!bpm:\d+(\.\d+)?|!1008\s+!bpm:\d+(\.\d+)?\s+!length:\d+(\.\d+)?|!length:\d+(\.\d+)?\s+!1008\s+!bpm:\d+(\.\d+)?|!length:\d+(\.\d+)?\s+!bpm:\d+(\.\d+)?\s+!1008|!bpm:\d+(\.\d+)?\s+!1008\s+!length:\d+(\.\d+)?|!bpm:\d+(\.\d+)?\s+!length:\d+(\.\d+)?\s+!1008)$/.test(trimmedName)) {
     return true;
   }
   return false;
@@ -77,6 +93,16 @@ function isCommandOnlyMarker(name) {
 function extractLengthFromMarker(name) {
   const lengthMatch = name.match(/!length:(\d+(\.\d+)?)/);
   return lengthMatch ? parseFloat(lengthMatch[1]) : null;
+}
+
+/**
+ * Extract BPM from !bpm marker
+ * @param {string} name - Marker name
+ * @returns {number|null} BPM value or null if not a BPM marker
+ */
+function extractBpmFromMarker(name) {
+  const bpmMatch = name.match(/!bpm:(\d+(\.\d+)?)/);
+  return bpmMatch ? parseFloat(bpmMatch[1]) : null;
 }
 
 /**
@@ -148,6 +174,32 @@ export function has1008MarkerInRegion(markers, region) {
   }
   
   return false;
+}
+
+/**
+ * Get the BPM for a region if a !bpm marker is present
+ * @param {Array} markers - List of markers
+ * @param {Object} region - Region object
+ * @returns {number|null} - BPM value or null if no !bpm marker
+ */
+export function getBpmForRegion(markers, region) {
+  if (!region || !markers || markers.length === 0) return null;
+  
+  // Find markers that are within the region and have a !bpm tag
+  const regionMarkers = markers.filter(marker => 
+    marker.position >= region.start && 
+    marker.position <= region.end
+  );
+  
+  // Check each marker for !bpm tag
+  for (const marker of regionMarkers) {
+    const bpm = extractBpmFromMarker(marker.name);
+    if (bpm !== null) {
+      return bpm;
+    }
+  }
+  
+  return null;
 }
 
 /**

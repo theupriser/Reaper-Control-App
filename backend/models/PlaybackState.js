@@ -3,6 +3,9 @@
  * Represents the current playback state of Reaper
  */
 
+const markerService = require('../services/markerService');
+const logger = require('../utils/logger');
+
 class PlaybackState {
   /**
    * Create a new PlaybackState
@@ -18,7 +21,7 @@ class PlaybackState {
     this.autoplayEnabled = data.autoplayEnabled !== undefined ? data.autoplayEnabled : true;
     this.countInEnabled = data.countInEnabled !== undefined ? data.countInEnabled : false;
     this.selectedSetlistId = data.selectedSetlistId || null;
-    this.bpm = data.bpm || 120; // Default to 120 BPM if not provided
+    this.bpm = data.bpm || null; // Initialize to 0, will be updated with actual BPM from Reaper
     this.timeSignature = {
       numerator: data.timeSignature?.numerator || 4,
       denominator: data.timeSignature?.denominator || 4
@@ -75,27 +78,23 @@ class PlaybackState {
     this.isPlaying = playstate === 1;
     this.currentPosition = parseFloat(parts[2]);
     
-    // Only update BPM and time signature when Reaper is playing
-    if (this.isPlaying) {
-      // Get current BPM from Reaper
-      try {
-        this.bpm = await reaperService.getBPM();
-        if (logContext) {
-          logger.collect(logContext, 'Updated BPM:', this.bpm);
-        }
-        
-        // Get current time signature from Reaper
-        const timeSignature = await reaperService.getTimeSignature();
-        this.timeSignature = timeSignature;
-        if (logContext) {
-          logger.collect(logContext, 'Updated time signature:', `${this.timeSignature.numerator}/${this.timeSignature.denominator}`);
-        }
-      } catch (error) {
-        logger.error('Error getting BPM or time signature:', error);
-        // Keep the previous values if there's an error
+    // Always update time signature and BPM regardless of play state
+    try {
+      // Get current time signature from Reaper (always update regardless of play state)
+      const timeSignature = await reaperService.getTimeSignature();
+      this.timeSignature = timeSignature;
+      if (logContext) {
+        logger.collect(logContext, 'Updated time signature:', `${this.timeSignature.numerator}/${this.timeSignature.denominator}`);
       }
-    } else if (logContext) {
-      logger.collect(logContext, 'Skipping BPM and time signature update because Reaper is not playing');
+      
+      // Always update BPM regardless of isPlaying state
+      this.bpm = await reaperService.getBPM();
+      if (logContext) {
+        logger.collect(logContext, 'Updated BPM:', this.bpm);
+      }
+    } catch (error) {
+      logger.error('Error getting BPM or time signature:', error);
+      // Keep the previous values if there's an error
     }
     
     if (logContext) {
@@ -111,8 +110,27 @@ class PlaybackState {
       if (logContext) {
         logger.collect(logContext, 'Region changed, resetting beat positions');
       }
-      // Reset beat positions when region changes to ensure accurate BPM calculation
-      reaperService.resetBeatPositions();
+      
+      // Get the current region
+      const currentRegion = regions.find(region => region.id === this.currentRegionId);
+      
+      // Check if the region has a !bpm marker
+      const bpm = this._getBpmForRegion(currentRegion);
+      
+      // Reset beat positions when region changes, passing the BPM from marker if available
+      reaperService.resetBeatPositions(bpm);
+      
+      if (bpm !== null) {
+        if (logContext) {
+          logger.collect(logContext, `Reset beat positions with initial BPM from marker: ${bpm}`);
+        }
+        logger.log(`Reset beat positions when changing to region ${currentRegion?.name} with initial BPM: ${bpm}`);
+      } else {
+        if (logContext) {
+          logger.collect(logContext, 'Reset beat positions without initial BPM');
+        }
+        logger.log(`Reset beat positions when changing to region ${currentRegion?.name} without initial BPM`);
+      }
     }
     
     if (logContext) {
@@ -176,6 +194,48 @@ class PlaybackState {
     );
 
     return currentRegion ? currentRegion.id : null;
+  }
+
+  /**
+   * Extract BPM from a marker name
+   * @param {string} name - Marker name
+   * @returns {number|null} BPM value or null if not a BPM marker
+   * @private
+   */
+  _extractBpmFromMarker(name) {
+    const bpmMatch = name.match(/!bpm:(\d+(\.\d+)?)/);
+    return bpmMatch ? parseFloat(bpmMatch[1]) : null;
+  }
+
+  /**
+   * Get the BPM for a region if a !bpm marker is present
+   * @param {Object} region - Region object
+   * @returns {number|null} - BPM value or null if no !bpm marker
+   * @private
+   */
+  _getBpmForRegion(region) {
+    if (!region) return null;
+    
+    // Get all markers
+    const markers = markerService.getMarkers();
+    if (!markers || markers.length === 0) return null;
+    
+    // Find markers that are within the region
+    const regionMarkers = markers.filter(marker => 
+      marker.position >= region.start && 
+      marker.position <= region.end
+    );
+    
+    // Check each marker for !bpm tag
+    for (const marker of regionMarkers) {
+      const bpm = this._extractBpmFromMarker(marker.name);
+      if (bpm !== null) {
+        logger.log(`Found !bpm marker in region ${region.name} with BPM: ${bpm}`);
+        return bpm;
+      }
+    }
+    
+    return null;
   }
 
   /**

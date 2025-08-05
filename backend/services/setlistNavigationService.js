@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const regionService = require('./regionService');
 const setlistService = require('./setlistService');
 const reaperService = require('./reaperService');
+const markerService = require('./markerService');
 
 class SetlistNavigationService {
   constructor() {
@@ -125,6 +126,17 @@ class SetlistNavigationService {
           if (nextSetlistItem) {
             const region = regionService.findRegionById(nextSetlistItem.regionId);
             if (region) {
+              // Check if the region has a !bpm marker
+              const bpm = this._getBpmForRegion(region);
+              
+              // Reset BPM when automatically transitioning to the next song
+              reaperService.resetBeatPositions(bpm);
+              if (bpm !== null) {
+                logger.log(`Reset beat positions for BPM calculation when automatically transitioning to next song with initial BPM: ${bpm}`);
+              } else {
+                logger.log('Reset beat positions for BPM calculation when automatically transitioning to next song');
+              }
+              
               await this.seekToRegionAndPlay(region, true);
             }
           }
@@ -172,6 +184,17 @@ class SetlistNavigationService {
         if (nextSetlistItem) {
           const region = regionService.findRegionById(nextSetlistItem.regionId);
           if (region) {
+            // Check if the region has a !bpm marker
+            const bpm = this._getBpmForRegion(region);
+            
+            // Reset BPM when automatically transitioning to the next song
+            reaperService.resetBeatPositions(bpm);
+            if (bpm !== null) {
+              logger.log(`Reset beat positions for BPM calculation when transitioning to next song after end detection with initial BPM: ${bpm}`);
+            } else {
+              logger.log('Reset beat positions for BPM calculation when transitioning to next song after end detection');
+            }
+            
             await this.seekToRegionAndPlay(region, true);
           }
         }
@@ -269,6 +292,7 @@ class SetlistNavigationService {
           const region = regionService.findRegionById(nextItem.regionId);
           if (region) {
             // Always disable count-in for next button navigation, regardless of the global setting
+            // seekToRegionAndPlay will check for !bpm markers and set the BPM accordingly
             await this.seekToRegionAndPlay(region, null, false);
             return true;
           }
@@ -279,6 +303,7 @@ class SetlistNavigationService {
         const nextRegion = regionService.getNextRegion();
         if (nextRegion) {
           // Always disable count-in for next button navigation, regardless of the global setting
+          // seekToRegionAndPlay will check for !bpm markers and set the BPM accordingly
           await this.seekToRegionAndPlay(nextRegion, null, false);
           return true;
         }
@@ -306,6 +331,7 @@ class SetlistNavigationService {
           const region = regionService.findRegionById(prevItem.regionId);
           if (region) {
             // Always disable count-in for previous button navigation, regardless of the global setting
+            // seekToRegionAndPlay will check for !bpm markers and set the BPM accordingly
             await this.seekToRegionAndPlay(region, null, false);
             return true;
           }
@@ -316,6 +342,7 @@ class SetlistNavigationService {
         const prevRegion = regionService.getPreviousRegion();
         if (prevRegion) {
           // Always disable count-in for previous button navigation, regardless of the global setting
+          // seekToRegionAndPlay will check for !bpm markers and set the BPM accordingly
           await this.seekToRegionAndPlay(prevRegion, null, false);
           return true;
         }
@@ -325,6 +352,48 @@ class SetlistNavigationService {
       logger.error('Error navigating to previous:', error);
       return false;
     }
+  }
+
+  /**
+   * Extract BPM from a marker name
+   * @param {string} name - Marker name
+   * @returns {number|null} BPM value or null if not a BPM marker
+   * @private
+   */
+  _extractBpmFromMarker(name) {
+    const bpmMatch = name.match(/!bpm:(\d+(\.\d+)?)/);
+    return bpmMatch ? parseFloat(bpmMatch[1]) : null;
+  }
+
+  /**
+   * Get the BPM for a region if a !bpm marker is present
+   * @param {Object} region - Region object
+   * @returns {number|null} - BPM value or null if no !bpm marker
+   * @private
+   */
+  _getBpmForRegion(region) {
+    if (!region) return null;
+    
+    // Get all markers
+    const markers = markerService.getMarkers();
+    if (!markers || markers.length === 0) return null;
+    
+    // Find markers that are within the region
+    const regionMarkers = markers.filter(marker => 
+      marker.position >= region.start && 
+      marker.position <= region.end
+    );
+    
+    // Check each marker for !bpm tag
+    for (const marker of regionMarkers) {
+      const bpm = this._extractBpmFromMarker(marker.name);
+      if (bpm !== null) {
+        logger.log(`Found !bpm marker in region ${region.name} with BPM: ${bpm}`);
+        return bpm;
+      }
+    }
+    
+    return null;
   }
 
   /**
@@ -341,6 +410,17 @@ class SetlistNavigationService {
       const isPlaying = playbackState.isPlaying;
       const isAutoplayEnabled = autoplay !== null ? autoplay : playbackState.autoplayEnabled;
       const isCountInEnabled = countIn !== null ? countIn : playbackState.countInEnabled;
+      
+      // Check if the region has a !bpm marker
+      const bpm = this._getBpmForRegion(region);
+      
+      // Reset BPM when changing to a new region/song, passing the BPM from marker if available
+      reaperService.resetBeatPositions(bpm);
+      if (bpm !== null) {
+        logger.log(`Reset beat positions for BPM calculation when seeking to region ${region.name} with initial BPM: ${bpm}`);
+      } else {
+        logger.log('Reset beat positions for BPM calculation when seeking to region:', region.name);
+      }
       
       // If currently playing, pause first
       if (isPlaying) {
@@ -413,6 +493,17 @@ class SetlistNavigationService {
           const firstItem = setlist.items[0];
           const region = regionService.findRegionById(firstItem.regionId);
           if (region) {
+            // Check if the region has a !bpm marker
+            const bpm = this._getBpmForRegion(region);
+            
+            // Reset BPM when starting playback from the first item in a setlist
+            reaperService.resetBeatPositions(bpm);
+            if (bpm !== null) {
+              logger.log(`Reset beat positions for BPM calculation when starting playback from first setlist item with initial BPM: ${bpm}`);
+            } else {
+              logger.log('Reset beat positions for BPM calculation when starting playback from first setlist item');
+            }
+            
             await this.seekToRegionAndPlay(region, true);
             return true;
           }

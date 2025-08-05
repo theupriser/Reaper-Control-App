@@ -185,3 +185,75 @@ Performer Mode works with the application's setlist feature:
 - The "Next" song preview shows the upcoming song from the setlist
 - Total time calculations are based on the current setlist
 - Without a setlist, it works with all regions in the project
+
+## Interactive Timeline and Markers
+
+The application provides an interactive timeline that allows you to navigate through your project by clicking on the progress bar and markers.
+
+### Marker Clicking
+
+You can click directly on markers in the progress bar to jump to specific positions:
+
+- Clicking near a marker (within 10 pixels) will seek to the exact marker position
+- Clicking elsewhere on the progress bar will seek to the corresponding position based on the percentage
+- A time popover appears when hovering over the progress bar, showing the position you're about to seek to
+
+### Count-in Feature
+
+The application includes a count-in feature that can be used when clicking on markers:
+
+- **Toggle**: Enable/disable using the "Count-in when pressing marker" switch in the transport controls
+- **Functionality**: When enabled and you click on a marker, playback will start with a count-in
+- **How it works**: The cursor is positioned 2 bars before the marker and then playback starts
+- **Purpose**: This helps musicians prepare for the upcoming section with a rhythmic count-in
+
+This feature is specifically designed for marker clicks and is not used for region selection or navigation buttons.
+
+## Custom Markers
+
+The application supports special markers that can be added to region names in Reaper to provide additional functionality:
+
+### !length Marker
+
+The `!length` marker allows you to specify a custom length for a region, overriding the actual region length in Reaper.
+
+`Important! Only use once!`
+
+- **Format**: `!length:123.45` (where the number is the length in seconds)
+- **Usage**: Add this marker to a region name in Reaper
+- **Example**: `Intro !length:30` (sets a custom length of 30 seconds for the region)
+
+This is useful when you want the application to use a different duration than the actual region length, such as for timing calculations or automatic playback transitions. This marker is mostly combined with the `!1008` marker. Reaper-control will add the length of this marker to the total length of the set and makes sure the timeline continues running when reaper has stopped playing. Use this purely for time speculation and foresight.
+
+### !bpm Marker
+
+The `!bpm` marker allows you to specify the tempo (Beats Per Minute) for a region.
+
+`Important! Only use once!`
+
+- **Format**: `!bpm:120` (where the number is the BPM value)
+- **Usage**: Add this marker to a region name in Reaper
+- **Example**: `Verse !bpm:128.5` (sets the tempo to 128.5 BPM for the region)
+
+When navigating to a region with a !bpm marker, the application will automatically set Reaper's tempo to the specified value.
+Put this before a song, just after the beginning of the region `.001` seconds in the Reaper timeline is enough offset. This makes sure it's visible in the region.
+
+### Combined Usage
+
+These markers can be used together in the same region name:
+
+- **Example**: `Chorus !length:45 !bpm:140` (sets both a custom length of 45 seconds and a tempo of 140 BPM)
+
+The markers can appear anywhere in the region name and in any order.
+
+## Reaper Markers
+
+### !1008 Marker
+
+The `!1008` marker indicates that playback should stop at the end of the region rather than continuing to the next region.
+
+- **Format**: `!1008`
+- **Usage**: Add this marker to a region name in Reaper
+- **Example**: `Verse !1008` (forces playback to stop at the end of the region)
+
+This is useful for regions that should not automatically transition to the next region, such as the end of a song or a section that requires manual control.

@@ -6,408 +6,64 @@
     playbackState, 
     autoplayEnabled,
     currentSetlist,
-    fetchSetlist,
-    sortedMarkers,
-    getCustomLengthForRegion
+    sortedMarkers
   } from '$lib/stores';
-  import { socketControl } from '$lib/stores/socket';
-  import { markers, getEffectiveRegionLength, has1008MarkerInRegion } from '$lib/stores/markerStore';
-  import { writable } from 'svelte/store';
-
-  // Local timer state
-  let localTimer = null;
-  let localPosition = writable(0);
-  let useLocalTimer = writable(false);
-  let timerStartTime = 0;
-  let timerStartPosition = 0;
-  
-  // Variable to track if we've reached a hard stop at a length marker
-  let atHardStop = writable(false);
-
-  // Function to start the local timer
-  function startLocalTimer(startPosition) {
-    // Clear any existing timer
-    if (localTimer) {
-      clearInterval(localTimer);
-    }
-  
-    // Set the start time and position
-    timerStartTime = Date.now();
-    timerStartPosition = startPosition;
-  
-    // Initialize the local position to match the current playback position
-    // This ensures a smooth transition when the local timer takes over
-    localPosition.set(startPosition);
-  
-    // Start the timer
-    localTimer = setInterval(() => {
-      // Calculate the elapsed time
-      const elapsed = (Date.now() - timerStartTime) / 1000;
+  import { markers, has1008MarkerInRegion, getCustomLengthForRegion, getEffectiveRegionLength } from '$lib/stores/markerStore';
+  import { 
+    // Stores
+    _localPosition as localPosition,
+    _useLocalTimer as useLocalTimer,
+    _atHardStop as atHardStop,
+    _currentTime as currentTime,
     
-      // Calculate the current position
-      const currentPos = timerStartPosition + elapsed;
+    // Derived stores
+    _nextRegion as nextRegion,
+    _totalRegionsTime as totalRegionsTime,
+    _totalElapsedTime as totalElapsedTime,
+    _totalRemainingTime as totalRemainingTime,
+    _currentSongTime as currentSongTime,
+    _songDuration as songDuration,
+    _songRemainingTime as songRemainingTime,
     
-      // Update the local position
-      localPosition.set(currentPos);
+    // Functions
+    _formatTime as formatTime,
+    _formatLongTime as formatLongTime,
+    _togglePlay as togglePlay,
+    _nextRegionHandler as nextRegionHandler,
+    _previousRegionHandler as previousRegionHandler,
+    _toggleAutoplay as toggleAutoplay,
+    _initializePage as initializePage,
+    _updateTimer as updateTimer,
+    _updateTimerOnRegionChange as updateTimerOnRegionChange
+  } from './+page.js';
+  
+  // Initialize the page on mount
+  onMount(() => {
+    const cleanup = initializePage();
     
-      // Check if we've reached the end of the length marker or if we have a !1008 marker
-      if ($currentRegion) {
-        const customLength = getCustomLengthForRegion($markers, $currentRegion);
-        const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
-        
-        // For length markers, set the hard stop flag and stop the timer at the custom length
-        if (has1008Marker && (customLength !== null && (currentPos - $currentRegion.start) >= customLength)) {
-          // Set the hard stop flag
-          atHardStop.set(true);
-          
-          // When hard stop is reached, we should stop at the fake hard stop marker
-          // which is at the end of the custom length
-          const hardStopPosition = $currentRegion.start + customLength;
-          localPosition.set(hardStopPosition);
-        }
-      }
-    }, 100); // Update every 100ms for smooth display
-  }
-
-  // Function to stop the local timer
-  function stopLocalTimer() {
-    if (localTimer) {
-      clearInterval(localTimer);
-      localTimer = null;
-    }
-  }
-
-  // Store previous playback state to detect significant changes
-  let previousPlaybackPosition = 0;
-  let previousPlaybackIsPlaying = false;
-
-  // Function to find the length marker in the current region
-  function findLengthMarkerInRegion(markers, region) {
-    if (!region || !markers || markers.length === 0) return null;
+    // Set up an interval to update the current time
+    const timeInterval = setInterval(() => {
+      currentTime.set(new Date());
+    }, 1000);
+    
+    // Return a cleanup function
+    return () => {
+      cleanup();
+      clearInterval(timeInterval);
+    };
+  });
   
-    // Find markers that are within the region and have a !length tag
-    const lengthMarkers = markers.filter(marker => 
-      marker.position >= region.start && 
-      marker.position <= region.end
-    );
-  
-    // Check each marker for !length tag
-    for (const marker of lengthMarkers) {
-      const length = extractLengthFromMarker(marker.name);
-      if (length !== null) {
-        return marker;
-      }
-    }
-  
-    return null;
-  }
-
-  // Helper function to extract length from marker name
-  function extractLengthFromMarker(name) {
-    const lengthMatch = name.match(/!length:(\d+(\.\d+)?)/);
-    return lengthMatch ? parseFloat(lengthMatch[1]) : null;
-  }
-
-  // Watch for changes in playback state and current region
+  // Watch for changes in playback state and current region to update the timer
   $: {
-    if ($currentRegion) {
-      const customLength = getCustomLengthForRegion($markers, $currentRegion);
-    
-      // If there's a length marker, check if we should use the local timer
-      if (customLength !== null) {
-        // Find the actual length marker to get its position
-        const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
-      
-        if (lengthMarker) {
-          // Only start the timer if playback position has passed the marker position
-          if ($playbackState.currentPosition >= lengthMarker.position) {
-            // Check if we're transitioning from regular playback to local timer
-            const wasUsingLocalTimer = $useLocalTimer;
-          
-            // Set the flag to use local timer
-            useLocalTimer.set(true);
-          
-            // If we're just transitioning to local timer or the timer isn't running, start it
-            if (!wasUsingLocalTimer || !localTimer) {
-              // Initialize with current playback position for smooth transition
-              startLocalTimer($playbackState.currentPosition);
-            } else {
-              // Only restart timer if position changed significantly (e.g., due to seeking)
-              // We don't restart on play/pause changes since timer should continue regardless
-              const positionChanged = Math.abs($playbackState.currentPosition - previousPlaybackPosition) > 0.5;
-            
-              if (positionChanged) {
-                startLocalTimer($playbackState.currentPosition);
-                // Reset hard stop flag when seeking
-                atHardStop.set(false);
-              }
-            }
-          } else {
-            // Playback hasn't reached the length marker yet, use regular playback state
-            useLocalTimer.set(false);
-            stopLocalTimer();
-            // Reset hard stop flag
-            atHardStop.set(false);
-          }
-        }
-      } else {
-        // No length marker, use the regular playback state
-        useLocalTimer.set(false);
-        stopLocalTimer();
-        
-        // Check if there's a !1008 marker in the region
-        const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
-        
-        if (has1008Marker) {
-          // If we have a !1008 marker and we're at the end of the region, set hard stop flag
-          const regionEnd = $currentRegion.end;
-          // Increase the tolerance to 0.5 seconds to be more lenient
-          const isAtEnd = Math.abs($playbackState.currentPosition - regionEnd) < 0.5; 
-          // Also check if we're very close to the end (within 99% of region length)
-          const regionLength = $currentRegion.end - $currentRegion.start;
-          const positionInRegion = $playbackState.currentPosition - $currentRegion.start;
-          const isNearEnd = positionInRegion / regionLength > 0.99;
-          
-          // Set hard stop if we're at the end OR near the end, and not playing
-          if ((isAtEnd || isNearEnd) && !$playbackState.isPlaying) {
-            // We're at the end of the region with a !1008 marker and not playing, set hard stop flag
-            atHardStop.set(true);
-          } else if ($playbackState.isPlaying) {
-            // If we're playing, reset the hard stop flag
-            atHardStop.set(false);
-          }
-        } else {
-          // No !1008 marker, reset hard stop flag
-          atHardStop.set(false);
-        }
-      }
-    } else {
-      // No current region, use the regular playback state
-      useLocalTimer.set(false);
-      stopLocalTimer();
-      // Reset hard stop flag
-      atHardStop.set(false);
+    if ($playbackState || $currentRegion) {
+      updateTimer();
     }
-    
-    // If playback state changes from stopped to playing, reset hard stop flag
-    if ($playbackState.isPlaying && !previousPlaybackIsPlaying) {
-      atHardStop.set(false);
-    }
-  
-    // Update previous state values
-    previousPlaybackPosition = $playbackState.currentPosition;
-    previousPlaybackIsPlaying = $playbackState.isPlaying;
   }
-
-  // Store previous region ID to detect actual region changes
-  let previousRegionId = null;
-
-  // Watch for changes in the current region
+  
+  // Watch for changes in the current region to update the timer
   $: if ($currentRegion) {
-    // Only reset timer if the region ID actually changed
-    if (previousRegionId !== $currentRegion.id) {
-      previousRegionId = $currentRegion.id;
-    
-      // Check if the new region has a length marker
-      const customLength = getCustomLengthForRegion($markers, $currentRegion);
-      if (customLength !== null) {
-        // Find the actual length marker to get its position
-        const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
-      
-        if (lengthMarker && $playbackState.currentPosition >= lengthMarker.position) {
-          // Check if we're transitioning from regular playback to local timer
-          const wasUsingLocalTimer = $useLocalTimer;
-        
-          // Set the flag to use local timer
-          useLocalTimer.set(true);
-        
-          // Initialize with current playback position for smooth transition
-          localPosition.set($playbackState.currentPosition);
-          startLocalTimer($playbackState.currentPosition);
-        } else {
-          // Playback hasn't reached the length marker yet
-          useLocalTimer.set(false);
-          stopLocalTimer();
-          // Reset hard stop flag
-          atHardStop.set(false);
-        }
-      } else {
-        useLocalTimer.set(false);
-        stopLocalTimer();
-        // Reset hard stop flag
-        atHardStop.set(false);
-      }
-    }
+    updateTimerOnRegionChange();
   }
-
-  // Subscribe to playbackState to get the selectedSetlistId and fetch the setlist
-  onMount(() => {
-    const unsubscribe = playbackState.subscribe(state => {
-      if (state.selectedSetlistId) {
-        fetchSetlist(state.selectedSetlistId);
-      } else {
-        currentSetlist.set(null);
-      }
-    });
-  
-    return () => {
-      unsubscribe();
-    };
-  });
-
-  // Clean up the timer when the component is destroyed
-  onDestroy(() => {
-    stopLocalTimer();
-  });
-  
-  // Get the next region based on the current region and selected setlist
-  $: nextRegion = $currentRegion ? 
-    $playbackState.selectedSetlistId && $currentSetlist ? 
-      // If a setlist is selected, get the next item from the setlist
-      (() => {
-        const currentItemIndex = $currentSetlist.items.findIndex(item => item.regionId === $currentRegion.id);
-        if (currentItemIndex !== -1 && currentItemIndex < $currentSetlist.items.length - 1) {
-          const nextItem = $currentSetlist.items[currentItemIndex + 1];
-          return $regions.find(region => region.id === nextItem.regionId);
-        }
-        return null;
-      })() :
-      // Otherwise, get the next region from all regions
-      $regions.find(region => {
-        const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
-        return currentIndex !== -1 && currentIndex < $regions.length - 1 ? 
-          region.id === $regions[currentIndex + 1].id : false;
-      }) : null;
-  
-  // Calculate total time based on selected setlist or all regions
-  $: totalRegionsTime = $playbackState.selectedSetlistId && $currentSetlist ? 
-    // If a setlist is selected, calculate total time from setlist items
-    $currentSetlist.items.reduce((total, item) => {
-      const region = $regions.find(r => r.id === item.regionId);
-      return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
-    }, 0) :
-    // Otherwise, calculate from all regions
-    $regions.reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
-  
-  // Calculate elapsed time up to the current region
-  $: elapsedTimeBeforeCurrentRegion = $currentRegion ? 
-    $playbackState.selectedSetlistId && $currentSetlist ? 
-      // If a setlist is selected, calculate elapsed time from setlist items
-      $currentSetlist.items
-        .filter((item, index) => {
-          const currentItemIndex = $currentSetlist.items.findIndex(i => i.regionId === $currentRegion.id);
-          return currentItemIndex !== -1 && index < currentItemIndex;
-        })
-        .reduce((total, item) => {
-          const region = $regions.find(r => r.id === item.regionId);
-          return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
-        }, 0) :
-      // Otherwise, calculate from all regions
-      $regions
-        .filter(region => $regions.findIndex(r => r.id === region.id) < $regions.findIndex(r => r.id === $currentRegion.id))
-        .reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0) : 0;
-  
-  // Calculate total elapsed time
-  $: totalElapsedTime = $currentRegion ? 
-    elapsedTimeBeforeCurrentRegion + Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start) : 0;
-    
-  // Calculate total remaining time
-  $: totalRemainingTime = totalRegionsTime - totalElapsedTime;
-    
-  // Calculate current song time
-  $: currentSongTime = $currentRegion ? 
-    Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start) : 0;
-    
-  // Calculate song duration
-  $: songDuration = $currentRegion ? 
-    getEffectiveRegionLength($currentRegion, $markers) : 0;
-    
-  // Calculate song remaining time
-  $: songRemainingTime = Math.max(0, songDuration - currentSongTime);
-  
-  // Format time in seconds to MM:SS format
-  function formatTime(seconds) {
-    if (!seconds && seconds !== 0) return '--:--';
-    
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  
-  // Format time in seconds to HH:MM:SS format for longer durations (omits hours if zero)
-  function formatLongTime(seconds) {
-    if (!seconds && seconds !== 0) return '--:--';
-  
-    const hours = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-  
-    // Only include hours in the output if they are non-zero
-    if (hours > 0) {
-      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    } else {
-      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-  }
-  
-  // Toggle play/pause
-  function togglePlay() {
-    socketControl.togglePlay();
-  }
-  
-  // Go to next region
-  function nextRegionHandler() {
-    socketControl.nextRegion();
-  }
-  
-  // Go to previous region
-  function previousRegionHandler() {
-    socketControl.previousRegion();
-  }
-  
-  // Toggle autoplay
-  function toggleAutoplay() {
-    socketControl.toggleAutoplay();
-  }
-  
-  // Handle keyboard shortcuts
-  function handleKeydown(event) {
-    if (event.key === ' ') {
-      // Space bar - toggle play/pause
-      togglePlay();
-      event.preventDefault();
-    } else if (event.key === 'ArrowRight') {
-      // Right arrow - next region
-      nextRegionHandler();
-      event.preventDefault();
-    } else if (event.key === 'ArrowLeft') {
-      // Left arrow - previous region
-      previousRegionHandler();
-      event.preventDefault();
-    } else if (event.key === 'a') {
-      // 'a' key - toggle autoplay
-      toggleAutoplay();
-      event.preventDefault();
-    }
-  }
-  
-  // Add keyboard event listener on mount
-  onMount(() => {
-    window.addEventListener('keydown', handleKeydown);
-    
-    // Clean up on unmount
-    return () => {
-      window.removeEventListener('keydown', handleKeydown);
-    };
-  });
-  
-  // Get current time
-  let currentTime = new Date();
-  
-  // Update current time every second
-  setInterval(() => {
-    currentTime = new Date();
-  }, 1000);
 </script>
 
 <svelte:head>
@@ -422,7 +78,7 @@
       </div>
     {/if}
     <div class="time-display-top">
-      {currentTime.toLocaleTimeString()}
+      {$currentTime.toLocaleTimeString()}
     </div>
   </div>
   
@@ -433,18 +89,18 @@
       <div class="time-display">
         <div class="song-time">
           <span class="time-label">Song:</span>
-          <span class="current-time">{formatTime(currentSongTime)}</span>
+          <span class="current-time">{formatTime($currentSongTime)}</span>
           <span class="separator">/</span>
-          <span class="total-time">{formatTime(songDuration)}</span>
-          <span class="remaining-time">({formatTime(songRemainingTime)})</span>
+          <span class="total-time">{formatTime($songDuration)}</span>
+          <span class="remaining-time">({formatTime($songRemainingTime)})</span>
         </div>
         
         <div class="total-time">
           <span class="time-label">Total:</span>
-          <span class="current-time">{formatLongTime(totalElapsedTime)}</span>
+          <span class="current-time">{formatLongTime($totalElapsedTime)}</span>
           <span class="separator">/</span>
-          <span class="total-time">{formatLongTime(totalRegionsTime)}</span>
-          <span class="remaining-time">({formatLongTime(totalRemainingTime)})</span>
+          <span class="total-time">{formatLongTime($totalRegionsTime)}</span>
+          <span class="remaining-time">({formatLongTime($totalRemainingTime)})</span>
         </div>
       </div>
       
@@ -453,7 +109,7 @@
         <div class="progress-container">
           <div 
             class="progress-bar" 
-            style="width: {Math.min(100, Math.max(0, (($useLocalTimer ? $localPosition - $currentRegion.start : $playbackState.currentPosition - $currentRegion.start) / songDuration) * 100))}%"
+            style="width: {Math.min(100, Math.max(0, (($useLocalTimer ? $localPosition - $currentRegion.start : $playbackState.currentPosition - $currentRegion.start) / $songDuration) * 100))}%"
           ></div>
           
           <!-- Markers -->
@@ -461,7 +117,7 @@
             {#if marker.position >= $currentRegion.start && marker.position <= $currentRegion.end}
               <div 
                 class="marker"
-                style="left: {((marker.position - $currentRegion.start) / songDuration) * 100}%"
+                style="left: {((marker.position - $currentRegion.start) / $songDuration) * 100}%"
                 title={marker.name}
               >
                 <div class="marker-tooltip">
@@ -492,10 +148,10 @@
     </div>
     
     <div class="next-song">
-      <h2>{nextRegion ? `Next: ${nextRegion.name}` : 'End of setlist'}</h2>
+      <h2>{$nextRegion ? `Next: ${$nextRegion.name}` : 'End of setlist'}</h2>
       <div class="next-song-duration">
-        {#if nextRegion}
-          Duration: {formatTime(getEffectiveRegionLength(nextRegion, $markers))}
+        {#if $nextRegion}
+          Duration: {formatTime(getEffectiveRegionLength($nextRegion, $markers))}
         {:else}
           &nbsp;
         {/if}

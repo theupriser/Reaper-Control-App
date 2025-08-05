@@ -6,143 +6,40 @@
     currentSetlist, 
     setlistLoading, 
     setlistError,
-    fetchSetlists, 
-    fetchSetlist, 
-    createSetlist, 
-    updateSetlist, 
-    deleteSetlist, 
-    addSetlistItem, 
-    removeSetlistItem, 
-    moveSetlistItem,
     clearSetlistError
   } from '$lib/stores';
   import { socketControl } from '$lib/stores/socket';
+  import {
+    // State stores
+    _newSetlistName as newSetlistName,
+    _editingSetlistId as editingSetlistId,
+    _editingSetlistName as editingSetlistName,
+    _showConfirmDelete as showConfirmDelete,
+    _setlistToDelete as setlistToDelete,
+    _processingAddButtons as processingAddButtons,
+    _processingRemoveButtons as processingRemoveButtons,
+    
+    // Functions
+    _initializePage as initializePage,
+    _handleCreateSetlist as handleCreateSetlist,
+    _startEditingSetlist as startEditingSetlist,
+    _cancelEditingSetlist as cancelEditingSetlist,
+    _saveSetlistEdits as saveSetlistEdits,
+    _confirmDeleteSetlist as confirmDeleteSetlist,
+    _cancelDelete as cancelDelete,
+    _handleDeleteSetlist as handleDeleteSetlist,
+    _selectSetlist as selectSetlist,
+    _addRegionToSetlist as addRegionToSetlist,
+    _removeItemFromSetlist as removeItemFromSetlist,
+    _moveItemUp as moveItemUp,
+    _moveItemDown as moveItemDown,
+    _isRegionInSetlist as isRegionInSetlist
+  } from './+page.js';
   
-  // Local state
-  let newSetlistName = '';
-  let editingSetlistId = null;
-  let editingSetlistName = '';
-  let showConfirmDelete = false;
-  let setlistToDelete = null;
-  
-  // Button processing states
-  let processingAddButtons = new Set();
-  let processingRemoveButtons = new Set();
-  
-  // Fetch setlists and regions on mount
-  onMount(async () => {
-    await fetchSetlists();
-    socketControl.refreshRegions();
+  // Initialize the page on mount
+  onMount(() => {
+    initializePage();
   });
-  
-  // Handle creating a new setlist
-  async function handleCreateSetlist() {
-    if (!newSetlistName.trim()) return;
-    
-    await createSetlist(newSetlistName);
-    newSetlistName = '';
-  }
-  
-  // Start editing a setlist
-  function startEditingSetlist(setlist) {
-    editingSetlistId = setlist.id;
-    editingSetlistName = setlist.name;
-  }
-  
-  // Cancel editing a setlist
-  function cancelEditingSetlist() {
-    editingSetlistId = null;
-    editingSetlistName = '';
-  }
-  
-  // Save setlist edits
-  async function saveSetlistEdits() {
-    if (!editingSetlistName.trim()) return;
-    
-    await updateSetlist(editingSetlistId, editingSetlistName);
-    editingSetlistId = null;
-    editingSetlistName = '';
-  }
-  
-  // Show delete confirmation
-  function confirmDeleteSetlist(setlist) {
-    setlistToDelete = setlist;
-    showConfirmDelete = true;
-  }
-  
-  // Cancel delete
-  function cancelDelete() {
-    setlistToDelete = null;
-    showConfirmDelete = false;
-  }
-  
-  // Delete setlist
-  async function handleDeleteSetlist() {
-    if (!setlistToDelete) return;
-    
-    await deleteSetlist(setlistToDelete.id);
-    setlistToDelete = null;
-    showConfirmDelete = false;
-  }
-  
-  // Select a setlist
-  async function selectSetlist(id) {
-    await fetchSetlist(id);
-  }
-  
-  // Add a region to the current setlist
-  async function addRegionToSetlist(regionId, regionName) {
-    if (!$currentSetlist) return;
-    
-    // Set processing state
-    processingAddButtons.add(regionId);
-    processingAddButtons = processingAddButtons; // Trigger reactivity
-    
-    try {
-      await addSetlistItem($currentSetlist.id, regionId, regionName);
-    } finally {
-      // Clear processing state
-      processingAddButtons.delete(regionId);
-      processingAddButtons = processingAddButtons; // Trigger reactivity
-    }
-  }
-  
-  // Remove an item from the current setlist
-  async function removeItemFromSetlist(itemId) {
-    if (!$currentSetlist) return;
-    
-    // Set processing state
-    processingRemoveButtons.add(itemId);
-    processingRemoveButtons = processingRemoveButtons; // Trigger reactivity
-    
-    try {
-      await removeSetlistItem($currentSetlist.id, itemId);
-    } finally {
-      // Clear processing state
-      processingRemoveButtons.delete(itemId);
-      processingRemoveButtons = processingRemoveButtons; // Trigger reactivity
-    }
-  }
-  
-  // Move an item up in the setlist
-  async function moveItemUp(itemId, currentPosition) {
-    if (!$currentSetlist || currentPosition <= 0) return;
-    
-    await moveSetlistItem($currentSetlist.id, itemId, currentPosition - 1);
-  }
-  
-  // Move an item down in the setlist
-  async function moveItemDown(itemId, currentPosition) {
-    if (!$currentSetlist || currentPosition >= $currentSetlist.items.length - 1) return;
-    
-    await moveSetlistItem($currentSetlist.id, itemId, currentPosition + 1);
-  }
-  
-  // Check if a region is already in the current setlist
-  function isRegionInSetlist(regionId) {
-    if (!$currentSetlist) return false;
-    return $currentSetlist.items.some(item => item.regionId === regionId);
-  }
 </script>
 
 <div class="setlist-editor-container">
@@ -166,13 +63,13 @@
         <div class="form-group">
           <input 
             type="text" 
-            bind:value={newSetlistName} 
+            bind:value={$newSetlistName} 
             placeholder="Enter setlist name"
             disabled={$setlistLoading}
           />
           <button 
-            on:click={handleCreateSetlist} 
-            disabled={!newSetlistName.trim() || $setlistLoading}
+            on:click={() => handleCreateSetlist($newSetlistName)} 
+            disabled={!$newSetlistName.trim() || $setlistLoading}
           >
             Create
           </button>
@@ -192,15 +89,15 @@
           <ul>
             {#each $setlists as setlist (setlist.id)}
               <li class={$currentSetlist && $currentSetlist.id === setlist.id ? 'active' : ''}>
-                {#if editingSetlistId === setlist.id}
+                {#if $editingSetlistId === setlist.id}
                   <div class="edit-form">
                     <input 
                       type="text" 
-                      bind:value={editingSetlistName} 
+                      bind:value={$editingSetlistName} 
                       placeholder="Setlist name"
                     />
                     <div class="edit-actions">
-                      <button on:click={saveSetlistEdits}>Save</button>
+                      <button on:click={() => saveSetlistEdits($editingSetlistId, $editingSetlistName)}>Save</button>
                       <button on:click={cancelEditingSetlist}>Cancel</button>
                     </div>
                   </div>
@@ -264,7 +161,7 @@
                       </button>
                       <button 
                         on:click={() => removeItemFromSetlist(item.id)}
-                        class="remove-button {processingRemoveButtons.has(item.id) ? 'processing' : ''}"
+                        class="remove-button {$processingRemoveButtons.has(item.id) ? 'processing' : ''}"
                       >
                         Remove
                       </button>
@@ -300,7 +197,7 @@
                     </div>
                     <button 
                       on:click={() => addRegionToSetlist(region.id, region.name)}
-                      class="add-button {processingAddButtons.has(region.id) ? 'processing' : ''}"
+                      class="add-button {$processingAddButtons.has(region.id) ? 'processing' : ''}"
                     >
                       Add
                     </button>
@@ -320,14 +217,14 @@
   </div>
   
   <!-- Delete confirmation modal -->
-  {#if showConfirmDelete}
+  {#if $showConfirmDelete}
     <div class="modal-overlay">
       <div class="modal">
         <h3>Confirm Delete</h3>
-        <p>Are you sure you want to delete the setlist "{setlistToDelete.name}"?</p>
+        <p>Are you sure you want to delete the setlist "{$setlistToDelete.name}"?</p>
         <p class="warning">This action cannot be undone.</p>
         <div class="modal-actions">
-          <button on:click={handleDeleteSetlist} class="delete-button">Delete</button>
+          <button on:click={() => handleDeleteSetlist($setlistToDelete.id)} class="delete-button">Delete</button>
           <button on:click={cancelDelete}>Cancel</button>
         </div>
       </div>

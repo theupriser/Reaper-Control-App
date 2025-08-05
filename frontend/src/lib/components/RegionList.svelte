@@ -141,7 +141,7 @@
   {:else}
     <div class="region-list">
       {#each displayItems as item (item.id)}
-        <div 
+        <div
           class="region-item {$playbackState.currentRegionId === item.regionId ? 'active' : ''}"
           on:click={() => selectRegion(item.regionId)}
         >
@@ -149,7 +149,7 @@
             <div class="region-name">{item.name}</div>
             <div class="region-duration">{calculateDuration(item.start, item.end, item.regionId)}</div>
           </div>
-          
+
           {#if $playbackState.currentRegionId === item.regionId}
             <div class="playing-indicator">
               {#if $playbackState.isPlaying}

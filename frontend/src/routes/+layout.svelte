@@ -1,12 +1,12 @@
 <script>
   import { onMount } from 'svelte';
-  import { socketControl } from '$lib/stores/socket';
   import { projectId } from '$lib/stores';
   import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
+  import { _initializeApp } from './+layout.js';
   
-  // Refresh the project ID when the app is mounted
+  // Initialize the app when mounted
   onMount(() => {
-    socketControl.refreshProjectId();
+    _initializeApp();
   });
 </script>
 

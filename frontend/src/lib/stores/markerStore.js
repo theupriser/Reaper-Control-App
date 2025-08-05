@@ -108,7 +108,7 @@ export function getCustomLengthForRegion(markers, region) {
   for (const marker of lengthMarkers) {
     const length = extractLengthFromMarker(marker.name);
     if (length !== null) {
-      console.log(`Found custom length marker: "${marker.name}" at position ${marker.position}, setting region length to ${length} seconds`);
+      // Removed console.log to prevent spam during playback
       return length;
     }
   }

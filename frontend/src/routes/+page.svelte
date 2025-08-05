@@ -2,45 +2,12 @@
   import TransportControls from '$lib/components/TransportControls.svelte';
   import RegionList from '$lib/components/RegionList.svelte';
   import { onMount } from 'svelte';
-  import { socketControl } from '$lib/stores/socket';
-  import { 
-    setlists, 
-    currentSetlist, 
-    setlistLoading, 
-    fetchSetlists, 
-    fetchSetlist 
-  } from '$lib/stores';
-  import { setSelectedSetlist, playbackState, getPlaybackState } from '$lib/stores/playbackStore';
+  import { setlists, setlistLoading } from '$lib/stores';
+  import { _selectedSetlistId, _initializePage, _handleSetlistChange } from './+page.js';
   
-  // Local state
-  // Initialize with empty string to ensure "All Regions" is selected by default in the dropdown
-  let selectedSetlistId = "";
-  
-  /**
-   * Refresh regions and fetch setlists on component mount
-   * This ensures we have the latest data from Reaper and all available setlists
-   * Also loads the selected setlist from playbackState if available
-   */
-  onMount(async () => {
-    socketControl.refreshRegions();
-    await fetchSetlists();
-    
-    // Subscribe to playbackState to get the selectedSetlistId
-    // Only update the selectedSetlistId when it changes, not on every playback state update
-    let previousSetlistId = null;
-    const unsubscribe = playbackState.subscribe(state => {
-      // Only update if the setlist ID has changed to avoid unnecessary refreshes during playback
-      if (state.selectedSetlistId !== previousSetlistId) {
-        console.log('Setlist ID changed, updating dropdown:', state.selectedSetlistId);
-        // If there's a selected setlist in playbackState, load it
-        selectedSetlistId = state.selectedSetlistId || "";
-        if (state.selectedSetlistId) {
-          fetchSetlist(state.selectedSetlistId);
-        }
-        // Update the previous ID to avoid future unnecessary updates
-        previousSetlistId = state.selectedSetlistId;
-      }
-    });
+  // Initialize page data on mount
+  onMount(() => {
+    const unsubscribe = _initializePage();
     
     // Return a cleanup function
     return () => {
@@ -48,42 +15,11 @@
     };
   });
   
-  /**
-   * Handle setlist selection from the dropdown
-   * When a setlist is selected, fetch its details, pause Reaper, and select the first song
-   * When "All Regions" is selected, clear the current setlist
-   * Also store the selected setlist in Reaper extended data
-   */
-  async function handleSetlistChange(event) {
+  // Wrapper function to handle setlist change from the dropdown
+  function onSetlistChange(event) {
     const id = event.target.value;
-    selectedSetlistId = id;
-
-    if (id) {
-      // Get current playback state
-      const currentState = getPlaybackState();
-
-      // Only pause if currently playing
-      if (currentState.isPlaying) {
-        socketControl.togglePlay();
-      }
-
-      // Fetch the setlist and store the result
-      const setlist = await fetchSetlist(id);
-      
-      // Store the selected setlist ID in Reaper extended data
-      setSelectedSetlist(id);
-
-      // Select the first song in the setlist if available
-      if (setlist && setlist.items && setlist.items.length > 0) {
-        const firstSong = setlist.items[0];
-        socketControl.seekToRegion(firstSong.regionId);
-      }
-    } else {
-      // Clear current setlist to show all regions
-      currentSetlist.set(null);
-      // Store null in Reaper extended data to indicate all regions
-      setSelectedSetlist(null);
-    }
+    _selectedSetlistId.set(id);
+    _handleSetlistChange(id);
   }
 </script>
 
@@ -97,8 +33,8 @@
       <label for="setlist-select">Select Setlist:</label>
       <select 
         id="setlist-select" 
-        bind:value={selectedSetlistId} 
-        on:change={handleSetlistChange}
+        bind:value={$_selectedSetlistId} 
+        on:change={onSetlistChange}
         disabled={$setlistLoading}
       >
         <option value="">All Regions</option>

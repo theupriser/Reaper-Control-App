@@ -51,65 +51,126 @@
     }
     
     // Force page reload to establish a new connection
-    window.location.reload();
+    // Check if we're in a browser environment before accessing window
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
   }
+  
+  // Popover state
+  let showPopover = false;
+  
+  function togglePopover() {
+    showPopover = !showPopover;
+  }
+  
+  // Close popover when clicking outside
+  function handleClickOutside(event) {
+    // Check if we're in a browser environment and have a valid event target
+    if (typeof document !== 'undefined' && event && event.target && typeof event.target.closest === 'function') {
+      if (showPopover && !event.target.closest('.connection-status-menu') && !event.target.closest('.connection-popover')) {
+        showPopover = false;
+      }
+    }
+  }
+  
+  onMount(() => {
+    updateInterval = setInterval(updateTimeSince, 1000);
+    
+    // Check if we're in a browser environment before accessing document
+    if (typeof document !== 'undefined') {
+      document.addEventListener('click', handleClickOutside);
+    }
+  });
+  
+  onDestroy(() => {
+    if (updateInterval) clearInterval(updateInterval);
+    
+    // Check if we're in a browser environment before accessing document
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('click', handleClickOutside);
+    }
+  });
 </script>
 
-<div class="connection-status">
+<svelte:window on:click={handleClickOutside} />
+
+<div class="connection-status-menu" on:click={togglePopover}>
   <div class="status-indicator {$connectionStatus.connected ? 'connected' : 'disconnected'}">
     <div class="status-dot"></div>
     <span class="status-text">
       {#if $connectionStatus.connected}
         Connected
       {:else if $connectionStatus.reconnecting}
-        Reconnecting (Attempt {$connectionStatus.reconnectAttempt})
+        Reconnecting
       {:else}
         Disconnected
       {/if}
     </span>
   </div>
   
-  <div class="status-details">
-    {#if $connectionStatus.connected}
-      <div class="ping-info">
-        <span class="ping-label">Last ping:</span>
-        <span class="ping-value">{timeSinceLastPing}</span>
-      </div>
-      
-      {#if $connectionStatus.pingLatency !== null}
-        <div class="latency-info">
-          <span class="latency-label">Latency:</span>
-          <span class="latency-value {getLatencyClass($connectionStatus.pingLatency)}">
-            {$connectionStatus.pingLatency}ms
+  {#if showPopover}
+    <div class="connection-popover">
+      <div class="popover-header">
+        <div class="status-indicator {$connectionStatus.connected ? 'connected' : 'disconnected'}">
+          <div class="status-dot"></div>
+          <span class="status-text">
+            {#if $connectionStatus.connected}
+              Connected
+            {:else if $connectionStatus.reconnecting}
+              Reconnecting (Attempt {$connectionStatus.reconnectAttempt})
+            {:else}
+              Disconnected
+            {/if}
           </span>
         </div>
-      {/if}
-    {:else if $connectionStatus.lastError}
-      <div class="error-info">
-        <span class="error-label">Error:</span>
-        <span class="error-value">{$connectionStatus.lastError}</span>
       </div>
-    {/if}
-  </div>
-  
-  {#if !$connectionStatus.connected && !$connectionStatus.reconnecting}
-    <button class="reconnect-button" on:click={handleReconnect}>
-      Reconnect
-    </button>
+      
+      <div class="popover-content">
+        {#if $connectionStatus.connected}
+          <div class="ping-info">
+            <span class="ping-label">Last ping:</span>
+            <span class="ping-value">{timeSinceLastPing}</span>
+          </div>
+          
+          {#if $connectionStatus.pingLatency !== null}
+            <div class="latency-info">
+              <span class="latency-label">Latency:</span>
+              <span class="latency-value {getLatencyClass($connectionStatus.pingLatency)}">
+                {$connectionStatus.pingLatency}ms
+              </span>
+            </div>
+          {/if}
+        {:else if $connectionStatus.lastError}
+          <div class="error-info">
+            <span class="error-label">Error:</span>
+            <span class="error-value">{$connectionStatus.lastError}</span>
+          </div>
+        {/if}
+        
+        {#if !$connectionStatus.connected && !$connectionStatus.reconnecting}
+          <button class="reconnect-button" on:click|stopPropagation={handleReconnect}>
+            Reconnect
+          </button>
+        {/if}
+      </div>
+    </div>
   {/if}
 </div>
 
 <style>
-  .connection-status {
+  .connection-status-menu {
+    position: relative;
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    background-color: transparent;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    width: 100%;
-    max-width: 300px;
+    align-items: center;
+    cursor: pointer;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+  
+  .connection-status-menu:hover {
+    background-color: #333;
   }
   
   .status-indicator {
@@ -120,8 +181,8 @@
   }
   
   .status-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
   }
   
@@ -145,13 +206,29 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
   
-  .status-details {
-    font-size: 0.9rem;
-    color: #ffffff;
+  .connection-popover {
+    position: absolute;
+    top: calc(100% + 5px);
+    right: 0;
+    background-color: #1e1e1e;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    width: 250px;
+    z-index: 1000;
+    overflow: hidden;
+  }
+  
+  .popover-header {
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .popover-content {
+    padding: 0.75rem;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    gap: 0.5rem;
   }
   
   .ping-info, .latency-info, .error-info {
@@ -167,7 +244,6 @@
   }
   
   .ping-value, .latency-value, .error-value {
-    width: 110px;
     text-align: right;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -209,6 +285,7 @@
     cursor: pointer;
     font-weight: bold;
     transition: background-color 0.2s;
+    width: 100%;
   }
   
   .reconnect-button:hover {
@@ -217,12 +294,13 @@
   
   /* Responsive adjustments for mobile devices */
   @media (max-width: 768px) {
-    .connection-status {
-      padding: 0.5rem;
-      gap: 0.25rem;
+    .connection-popover {
+      width: 220px;
     }
     
-    .status-details {
+    .popover-content {
+      padding: 0.5rem;
+      gap: 0.25rem;
       font-size: 0.8rem;
     }
   }

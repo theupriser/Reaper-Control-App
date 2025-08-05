@@ -30,16 +30,13 @@
       <a href="/" class="nav-link">Player</a>
       <a href="/setlists" class="nav-link">Setlists</a>
       <a href="/performer" class="nav-link performer-link">Performer Mode</a>
+      <ConnectionStatus />
     </nav>
   </header>
   
   <main>
     <slot />
   </main>
-  
-  <div class="connection-status-container">
-    <ConnectionStatus />
-  </div>
 <!--  -->
 <!--  <footer>-->
 <!--    <p>© 2025 Reaper Control</p>-->
@@ -147,17 +144,6 @@
     width: 100%;
   }
 
-  .connection-status-container {
-    position: fixed;
-    top: 3.5rem; /* Adjusted to be below the header */
-    right: 0;
-    z-index: 100;
-    background-color: transparent;
-    padding: 0.5rem 1rem;
-    display: flex;
-    justify-content: flex-end;
-    box-shadow: none;
-  }
   
   /* Responsive adjustments */
   @media (max-width: 768px) {
@@ -169,10 +155,6 @@
       font-size: 1.2rem;
     }
     
-    .connection-status-container {
-      padding: 0.25rem 0.5rem;
-      top: 4rem; /* Adjusted for header with navigation */
-    }
     
     header {
       padding: 0.75rem 0.5rem;

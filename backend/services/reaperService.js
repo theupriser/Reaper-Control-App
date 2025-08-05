@@ -4,10 +4,13 @@
  */
 
 const { Web } = require('../adapters/reaper-web-adapter');
-const logger = require('../utils/logger');
+const BaseService = require('./BaseService');
+const { bpmCalculator } = require('../utils/bpmUtils');
 
-class ReaperService {
+class ReaperService extends BaseService {
   constructor(config = {}) {
+    super('ReaperService');
+    
     this.host = config.host || process.env.REAPER_HOST || '127.0.0.1';
     this.webPort = config.webPort || parseInt(process.env.REAPER_WEB_PORT || '8080');
     
@@ -18,10 +21,6 @@ class ReaperService {
     });
     
     this.isConnected = false;
-    
-    // Store for recent beat positions and timestamps for BPM calculation
-    // We'll keep only the latest 4 beat positions for more accurate BPM calculation
-    this.beatPositions = [];
   }
 
   /**
@@ -29,14 +28,18 @@ class ReaperService {
    * @returns {Promise} Resolves when connected
    */
   async connect() {
+    const context = this.startLogContext('connect');
+    
     try {
+      this.logWithContext(context, 'Connecting to Reaper...');
       await this.reaper.connect();
       this.isConnected = true;
-      logger.log('Connected to Reaper');
+      this.logWithContext(context, 'Connected to Reaper successfully');
+      this.flushLogs(context);
       return true;
     } catch (error) {
       this.isConnected = false;
-      logger.error('Failed to connect to Reaper:', error);
+      this.logErrorWithContext(context, 'Failed to connect to Reaper', error);
       throw error;
     }
   }
@@ -47,18 +50,27 @@ class ReaperService {
    * @returns {Promise<string>} The response from Reaper
    */
   async sendCommand(command) {
+    const context = this.startLogContext('sendCommand');
+    
+    // Check connection and connect if needed
     if (!this.isConnected) {
+      this.logWithContext(context, 'Not connected, attempting to connect...');
       try {
         await this.connect();
       } catch (error) {
+        this.logErrorWithContext(context, `Cannot send command, connection failed`, error);
         throw new Error(`Cannot send command, not connected to Reaper: ${error.message}`);
       }
     }
 
     try {
-      return await this.reaper.send(command);
+      this.logWithContext(context, `Sending command: ${command}`);
+      const response = await this.reaper.send(command);
+      this.logWithContext(context, `Command successful: ${command}`);
+      this.flushLogs(context);
+      return response;
     } catch (error) {
-      logger.error(`Error sending command to Reaper: ${command}`, error);
+      this.logErrorWithContext(context, `Error sending command: ${command}`, error);
       throw error;
     }
   }
@@ -97,13 +109,15 @@ class ReaperService {
   
   /**
    * Get the current BPM from Reaper by calculating it from the BEATPOS response
-   * Uses the latest 4 beat positions for more accurate BPM calculation
-   * If initialBpm is set (from !bpm marker), it will be used until we have enough beat positions
+   * Uses the bpmCalculator utility for consistent BPM calculation
    * @returns {Promise<number>} Current BPM
    */
   async getBPM() {
+    const context = this.startLogContext('getBPM');
+    
     try {
       // Get the beat position data from Reaper
+      this.logWithContext(context, 'Getting beat position data from Reaper');
       const beatPosResponse = await this.getBeatPosition();
 
       // Parse the response
@@ -115,99 +129,26 @@ class ReaperService {
         // Extract position in seconds and beat position
         const positionSeconds = parseFloat(parts[2]);
         const beatPosition = parseFloat(parts[3]);
-        const timestamp = Date.now();
-
-        // Store the current beat position with timestamp
-        this.beatPositions.push({
-          positionSeconds,
-          beatPosition,
-          timestamp
-        });
-
-        // Keep only the latest 2 beat positions
-        if (this.beatPositions.length > 2) {
-          this.beatPositions = this.beatPositions.slice(-2);
-        }
-
-        // If we have at least 2 beat positions, calculate BPM based on the difference
-        if (this.beatPositions.length >= 2) {
-          // Get the oldest and newest beat positions
-          const oldest = this.beatPositions[0];
-          const newest = this.beatPositions[this.beatPositions.length - 1];
-
-          // Calculate the difference in beat position and seconds
-          const beatDiff = newest.beatPosition - oldest.beatPosition;
-          const secondsDiff = newest.positionSeconds - oldest.positionSeconds;
-
-          // Calculate BPM: (beats / seconds) * 60
-          // This gives us the tempo in beats per minute
-          const bpm = (beatDiff / secondsDiff) * 60;
-
-          // Round to 2 decimal places for display purposes
-          const roundedBpm = Math.round(bpm * 100) / 100;
-          
-          // Check if the calculated BPM is NaN, Infinity, -Infinity, or an extreme value
-          if (isNaN(roundedBpm) || !isFinite(roundedBpm) || roundedBpm > 999 || roundedBpm <= 0) {
-            // If we have an initial BPM from a marker, use that
-            if (this.initialBpm !== null && this.initialBpm > 0) {
-              logger.log(`Calculated BPM is invalid (${roundedBpm}), using initial BPM from marker: ${this.initialBpm}`);
-              return this.initialBpm;
-            }
-            // Otherwise use default BPM of 120
-            logger.log(`Calculated BPM is invalid (${roundedBpm}) and no marker BPM available, using default BPM: 120`);
-            return 120;
-          }
-
-          logger.log(`Calculated BPM from ${this.beatPositions.length} beat positions: ${roundedBpm}`);
-          return roundedBpm;
-        } else {
-          // If we only have one beat position, check if we have an initial BPM from a marker
-          if (this.initialBpm !== null && this.initialBpm > 0) {
-            logger.log(`Using initial BPM from marker: ${this.initialBpm}`);
-            return this.initialBpm;
-          }
         
-          // Otherwise calculate BPM using the traditional method
-          const bpm = (beatPosition / positionSeconds) * 60;
-          const roundedBpm = Math.round(bpm * 100) / 100;
-          
-          // Check if the calculated BPM is NaN, Infinity, -Infinity, or an extreme value
-          if (isNaN(roundedBpm) || !isFinite(roundedBpm) || roundedBpm > 999 || roundedBpm <= 0) {
-            // If we have an initial BPM from a marker, use that
-            if (this.initialBpm !== null && this.initialBpm > 0) {
-              logger.log(`Calculated BPM from single beat position is invalid (${roundedBpm}), using initial BPM from marker: ${this.initialBpm}`);
-              return this.initialBpm;
-            }
-            // Otherwise use default BPM of 120
-            logger.log(`Calculated BPM from single beat position is invalid (${roundedBpm}) and no marker BPM available, using default BPM: 120`);
-            return 120;
-          }
+        this.logWithContext(context, `Beat position data: position=${positionSeconds}s, beat=${beatPosition}`);
         
-          logger.log(`Calculated BPM from single beat position: ${roundedBpm}`);
-          return roundedBpm;
-        }
+        // Add the beat position to the calculator
+        bpmCalculator.addBeatPosition(positionSeconds, beatPosition);
+        
+        // Calculate BPM using the utility
+        const bpm = bpmCalculator.calculateBPM(120); // Default to 120 BPM if calculation fails
+        
+        this.flushLogs(context);
+        return bpm;
       } else {
-        // Check if we have an initial BPM from a marker
-        if (this.initialBpm !== null && this.initialBpm > 0) {
-          logger.log(`Using initial BPM from marker (fallback): ${this.initialBpm}`);
-          return this.initialBpm;
-        }
-      
-        // Return 0 if we can't parse the response and have no initial BPM
-        logger.warn('Could not parse BPM from BEATPOS response, returning 0');
-        return 0;
+        this.logWithContext(context, 'Invalid BEATPOS response format, using fallback BPM calculation');
+        const bpm = bpmCalculator.calculateBPM(120);
+        this.flushLogs(context);
+        return bpm;
       }
     } catch (error) {
-      logger.error('Error calculating BPM from BEATPOS:', error);
-    
-      // Check if we have an initial BPM from a marker
-      if (this.initialBpm !== null && this.initialBpm > 0) {
-        logger.log(`Using initial BPM from marker (error fallback): ${this.initialBpm}`);
-        return this.initialBpm;
-      }
-    
-      // Return 0 in case of error and no initial BPM
-      return 0;
+      this.logErrorWithContext(context, 'Error calculating BPM from BEATPOS', error);
+      return bpmCalculator.calculateBPM(120);
     }
   }
   
@@ -217,15 +158,16 @@ class ReaperService {
    * @param {number} [initialBpm=null] - Optional initial BPM to use (from !bpm marker)
    */
   resetBeatPositions(initialBpm = null) {
-    if (initialBpm !== null && initialBpm > 0) {
-      logger.log(`Resetting beat positions array with initial BPM: ${initialBpm}`);
-      // Store the initial BPM for use in getBPM until we have enough beat positions
-      this.initialBpm = initialBpm;
-    } else {
-      logger.log('Resetting beat positions array');
-      this.initialBpm = null;
-    }
-    this.beatPositions = [];
+    const context = this.startLogContext('resetBeatPositions');
+    
+    this.logWithContext(context, initialBpm !== null && initialBpm > 0 
+      ? `Resetting BPM calculation with initial BPM: ${initialBpm}` 
+      : 'Resetting BPM calculation');
+    
+    // Use the bpmCalculator utility to reset beat positions
+    bpmCalculator.resetBeatPositions(initialBpm);
+    
+    this.flushLogs(context);
   }
   
   /**
@@ -233,7 +175,10 @@ class ReaperService {
    * @returns {Promise<{numerator: number, denominator: number}>} Time signature as an object
    */
   async getTimeSignature() {
+    const context = this.startLogContext('getTimeSignature');
+    
     try {
+      this.logWithContext(context, 'Getting time signature from Reaper');
       const beatPosResponse = await this.getBeatPosition();
       const parts = beatPosResponse.split('\t');
       
@@ -243,20 +188,26 @@ class ReaperService {
         const numerator = parseInt(parts[6]);
         const denominator = parseInt(parts[7]);
         
+        this.logWithContext(context, `Time signature: ${numerator}/${denominator}`);
+        this.flushLogs(context);
+        
         return {
           numerator,
           denominator
         };
       } else {
         // Default to 4/4 if we can't parse the response
-        logger.error('Could not parse time signature from BEATPOS response, defaulting to 4/4');
+        this.logWithContext(context, 'Could not parse time signature from BEATPOS response, defaulting to 4/4');
+        this.flushLogs(context);
+        
         return {
           numerator: 4,
           denominator: 4
         };
       }
     } catch (error) {
-      logger.error('Error getting time signature:', error);
+      this.logErrorWithContext(context, 'Error getting time signature', error);
+      
       // Default to 4/4 in case of error
       return {
         numerator: 4,
@@ -273,17 +224,24 @@ class ReaperService {
    * @returns {Promise<number>} Duration in seconds
    */
   async calculateBarsToSeconds(bars, defaultBpm = 90) {
+    const context = this.startLogContext('calculateBarsToSeconds');
+    
     try {
+      this.logWithContext(context, `Calculating duration for ${bars} bars`);
+      
       // Get the current time signature
       const timeSignature = await this.getTimeSignature();
+      this.logWithContext(context, `Using time signature: ${timeSignature.numerator}/${timeSignature.denominator}`);
       
       // Get the current BPM from Reaper
       let bpm = await this.getBPM();
       
       // If BPM is 0 or invalid, use the default BPM
       if (!bpm || bpm <= 0) {
-        logger.warn(`Invalid BPM (${bpm}), using default BPM: ${defaultBpm}`);
+        this.logWithContext(context, `Invalid BPM (${bpm}), using default BPM: ${defaultBpm}`);
         bpm = defaultBpm;
+      } else {
+        this.logWithContext(context, `Using BPM: ${bpm}`);
       }
       
       // Calculate beats per bar based on time signature
@@ -297,17 +255,19 @@ class ReaperService {
       // Formula: bars * beats per bar * seconds per beat
       const totalSeconds = bars * beatsPerBar * secondsPerBeat;
       
-      logger.log(`Calculated ${bars} bars at time signature ${timeSignature.numerator}/${timeSignature.denominator} and ${bpm} BPM: ${totalSeconds.toFixed(2)} seconds`);
+      this.logWithContext(context, `Calculated ${bars} bars at ${timeSignature.numerator}/${timeSignature.denominator} and ${bpm} BPM: ${totalSeconds.toFixed(2)} seconds`);
+      this.flushLogs(context);
       
       return totalSeconds;
     } catch (error) {
-      logger.error('Error calculating bars to seconds:', error);
+      this.logErrorWithContext(context, 'Error calculating bars to seconds', error);
       
       // Default calculation assuming 4/4 time at default BPM
       // 4 beats per bar * (60 / BPM) seconds per beat * number of bars
       const defaultSeconds = 4 * (60 / defaultBpm) * bars;
       
-      logger.error(`Using default calculation for ${bars} bars: ${defaultSeconds.toFixed(2)} seconds`);
+      this.logWithContext(context, `Using default calculation for ${bars} bars: ${defaultSeconds.toFixed(2)} seconds`);
+      this.flushLogs(context);
       
       return defaultSeconds;
     }
@@ -333,16 +293,21 @@ class ReaperService {
    * @returns {Promise<void>}
    */
   async playWithCountIn() {
+    const context = this.startLogContext('playWithCountIn');
+    
     try {
+      this.logWithContext(context, 'Enabling count-in (ID 40363)');
       // Enable count-in (ID 40363)
       await this.sendCommand('/40363');
       
+      this.logWithContext(context, 'Starting playback (ID 1007)');
       // Start playback (ID 1007)
       await this.sendCommand('/1007');
       
-      logger.log('Started playback with count-in');
+      this.logWithContext(context, 'Started playback with count-in successfully');
+      this.flushLogs(context);
     } catch (error) {
-      logger.error('Error starting playback with count-in:', error);
+      this.logErrorWithContext(context, 'Error starting playback with count-in', error);
       throw error;
     }
   }
@@ -353,7 +318,17 @@ class ReaperService {
    * @returns {Promise<void>}
    */
   async seekToPosition(position) {
-    await this.sendCommand(`/SET/POS/${position}`);
+    const context = this.startLogContext('seekToPosition');
+    
+    try {
+      this.logWithContext(context, `Seeking to position: ${position} seconds`);
+      await this.sendCommand(`/SET/POS/${position}`);
+      this.logWithContext(context, `Successfully seeked to position: ${position} seconds`);
+      this.flushLogs(context);
+    } catch (error) {
+      this.logErrorWithContext(context, `Error seeking to position: ${position}`, error);
+      throw error;
+    }
   }
 
   /**
@@ -363,18 +338,27 @@ class ReaperService {
    * @returns {Promise<string>} The value or empty string if not found
    */
   async getProjectExtState(section, key) {
+    const context = this.startLogContext('getProjectExtState');
+    
+    // Check connection and connect if needed
     if (!this.isConnected) {
+      this.logWithContext(context, 'Not connected, attempting to connect...');
       try {
         await this.connect();
       } catch (error) {
+        this.logErrorWithContext(context, 'Connection failed', error);
         throw new Error(`Cannot get project extended state, not connected to Reaper: ${error.message}`);
       }
     }
 
     try {
-      return await this.reaper.getProjectExtState(section, key);
+      this.logWithContext(context, `Getting project extended state for ${section}/${key}`);
+      const result = await this.reaper.getProjectExtState(section, key);
+      this.logWithContext(context, `Successfully got project extended state for ${section}/${key}`);
+      this.flushLogs(context);
+      return result;
     } catch (error) {
-      logger.error(`Error getting project extended state for ${section}/${key}:`, error);
+      this.logErrorWithContext(context, `Error getting project extended state for ${section}/${key}`, error);
       throw error;
     }
   }
@@ -387,18 +371,26 @@ class ReaperService {
    * @returns {Promise<void>}
    */
   async setProjectExtState(section, key, value) {
+    const context = this.startLogContext('setProjectExtState');
+    
+    // Check connection and connect if needed
     if (!this.isConnected) {
+      this.logWithContext(context, 'Not connected, attempting to connect...');
       try {
         await this.connect();
       } catch (error) {
+        this.logErrorWithContext(context, 'Connection failed', error);
         throw new Error(`Cannot set project extended state, not connected to Reaper: ${error.message}`);
       }
     }
 
     try {
+      this.logWithContext(context, `Setting project extended state for ${section}/${key}`);
       await this.reaper.setProjectExtState(section, key, value);
+      this.logWithContext(context, `Successfully set project extended state for ${section}/${key}`);
+      this.flushLogs(context);
     } catch (error) {
-      logger.error(`Error setting project extended state for ${section}/${key}:`, error);
+      this.logErrorWithContext(context, `Error setting project extended state for ${section}/${key}`, error);
       throw error;
     }
   }

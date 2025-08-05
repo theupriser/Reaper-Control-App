@@ -3,18 +3,16 @@
  * Handles navigation within setlists and provides shared logic for MIDI and Socket services
  */
 
-const logger = require('../utils/logger');
+const BaseService = require('./BaseService');
 const regionService = require('./regionService');
 const setlistService = require('./setlistService');
 const reaperService = require('./reaperService');
 const markerService = require('./markerService');
+const { getBpmForRegion, extractBpmFromMarker } = require('../utils/bpmUtils');
 
-class SetlistNavigationService {
+class SetlistNavigationService extends BaseService {
   constructor() {
-    this.eventListeners = {
-      setlistNavigationUpdated: [],
-      error: []
-    };
+    super('SetlistNavigationService');
     
     this.endOfRegionPollingInterval = null;
     this.isTransitioning = false;
@@ -25,28 +23,6 @@ class SetlistNavigationService {
     });
 
     this.startEndOfRegionPolling();
-  }
-
-  /**
-   * Register an event listener
-   * @param {string} event - Event name
-   * @param {Function} callback - Callback function
-   */
-  on(event, callback) {
-    if (this.eventListeners[event]) {
-      this.eventListeners[event].push(callback);
-    }
-  }
-
-  /**
-   * Emit an event to all registered listeners
-   * @param {string} event - Event name
-   * @param {*} data - Event data
-   */
-  emitEvent(event, data) {
-    if (this.eventListeners[event]) {
-      this.eventListeners[event].forEach(callback => callback(data));
-    }
   }
 
   /**
@@ -103,50 +79,72 @@ class SetlistNavigationService {
    * @param {PlaybackState} playbackState - Current playback state
    */
   async checkEndOfRegion(playbackState) {
+    const context = this.startLogContext('checkEndOfRegion');
+    
     try {
       if (!playbackState.currentRegionId) {
+        this.logWithContext(context, 'No current region ID, skipping check');
+        this.flushLogs(context);
         return;
       }
 
       const currentPosition = playbackState.currentPosition;
       const currentRegion = regionService.findRegionById(playbackState.currentRegionId);
 
-      if (!currentRegion || this.isTransitioning) {
+      if (!currentRegion) {
+        this.logWithContext(context, 'Current region not found, skipping check');
+        this.flushLogs(context);
+        return;
+      }
+      
+      if (this.isTransitioning) {
+        this.logWithContext(context, 'Already transitioning, skipping check');
+        this.flushLogs(context);
         return;
       }
 
       // Check if we're within 0.6 seconds of the end of the region
       // or if we've just passed the end (within 0.1 seconds past)
       const timeToEnd = currentRegion.end - currentPosition;
+      this.logWithContext(context, `Current position: ${currentPosition.toFixed(2)}s, Region end: ${currentRegion.end.toFixed(2)}s, Time to end: ${timeToEnd.toFixed(2)}s`);
+      
       if ((timeToEnd > 0 && timeToEnd < 0.6) || (timeToEnd >= -0.1 && timeToEnd <= 0)) {
+        this.logWithContext(context, 'Approaching end of region, initiating transition');
         this.isTransitioning = true;
 
         try {
           const nextSetlistItem = await this.getNextSetlistItem(playbackState.selectedSetlistId);
           if (nextSetlistItem) {
+            this.logWithContext(context, `Found next setlist item: ${nextSetlistItem.name || nextSetlistItem.regionId}`);
             const region = regionService.findRegionById(nextSetlistItem.regionId);
             if (region) {
+              this.logWithContext(context, `Found next region: ${region.name}`);
+              
               // Check if the region has a !bpm marker
               const bpm = this._getBpmForRegion(region);
               
               // Reset BPM when automatically transitioning to the next song
+              this.logWithContext(context, 'Resetting BPM calculation for next region');
               reaperService.resetBeatPositions(bpm);
-              if (bpm !== null) {
-                logger.log(`Reset beat positions for BPM calculation when automatically transitioning to next song with initial BPM: ${bpm}`);
-              } else {
-                logger.log('Reset beat positions for BPM calculation when automatically transitioning to next song');
-              }
               
+              this.logWithContext(context, 'Seeking to next region and playing');
               await this.seekToRegionAndPlay(region, true);
+            } else {
+              this.logWithContext(context, 'Next region not found');
             }
+          } else {
+            this.logWithContext(context, 'No next setlist item found');
           }
         } finally {
           this.isTransitioning = false;
+          this.logWithContext(context, 'Transition completed');
         }
       }
+      
+      this.flushLogs(context);
     } catch (error) {
       this.isTransitioning = false;
-      logger.error('Error checking end of region:', error);
+      this.logErrorWithContext(context, 'Error checking end of region', error);
     }
   }
 
@@ -155,8 +153,12 @@ class SetlistNavigationService {
    * @param {PlaybackState} playbackState - Current playback state
    */
   async handlePlaybackStateUpdate(playbackState) {
+    const context = this.startLogContext('handlePlaybackStateUpdate');
+    
     try {
       if (!playbackState.selectedSetlistId) {
+        this.logWithContext(context, 'No setlist selected, skipping update');
+        this.flushLogs(context);
         return;
       }
 
@@ -166,41 +168,54 @@ class SetlistNavigationService {
 
       if (playbackState.currentRegionId) {
         currentRegion = regionService.findRegionById(playbackState.currentRegionId);
+        this.logWithContext(context, `Current region: ${currentRegion ? currentRegion.name : 'not found'}`);
       }
 
       // Case 1: Not playing and not in any region
       if (!playbackState.isPlaying && playbackState.currentRegionId === null) {
+        this.logWithContext(context, 'Not playing and not in any region, considering end of region');
         isAtEndOfRegion = true;
       }
       // Case 2: Not playing and at the end of the current region
       else if (!playbackState.isPlaying && currentRegion) {
-        if (Math.abs(currentPosition - currentRegion.end) < 0.05) {
+        const distanceToEnd = Math.abs(currentPosition - currentRegion.end);
+        this.logWithContext(context, `Not playing, distance to end: ${distanceToEnd.toFixed(3)}s`);
+        
+        if (distanceToEnd < 0.05) {
+          this.logWithContext(context, 'At end of region, considering end of region');
           isAtEndOfRegion = true;
         }
       }
 
       if (isAtEndOfRegion) {
+        this.logWithContext(context, 'End of region detected, looking for next setlist item');
         const nextSetlistItem = await this.getNextSetlistItem(playbackState.selectedSetlistId);
         if (nextSetlistItem) {
+          this.logWithContext(context, `Found next setlist item: ${nextSetlistItem.name || nextSetlistItem.regionId}`);
           const region = regionService.findRegionById(nextSetlistItem.regionId);
           if (region) {
+            this.logWithContext(context, `Found next region: ${region.name}`);
+            
             // Check if the region has a !bpm marker
             const bpm = this._getBpmForRegion(region);
             
             // Reset BPM when automatically transitioning to the next song
+            this.logWithContext(context, 'Resetting BPM calculation for next region');
             reaperService.resetBeatPositions(bpm);
-            if (bpm !== null) {
-              logger.log(`Reset beat positions for BPM calculation when transitioning to next song after end detection with initial BPM: ${bpm}`);
-            } else {
-              logger.log('Reset beat positions for BPM calculation when transitioning to next song after end detection');
-            }
             
+            this.logWithContext(context, 'Seeking to next region and playing');
             await this.seekToRegionAndPlay(region, true);
+          } else {
+            this.logWithContext(context, 'Next region not found');
           }
+        } else {
+          this.logWithContext(context, 'No next setlist item found');
         }
       }
+      
+      this.flushLogs(context);
     } catch (error) {
-      logger.error('Error handling playback state update:', error);
+      this.logErrorWithContext(context, 'Error handling playback state update', error);
     }
   }
 
@@ -355,45 +370,40 @@ class SetlistNavigationService {
   }
 
   /**
-   * Extract BPM from a marker name
-   * @param {string} name - Marker name
-   * @returns {number|null} BPM value or null if not a BPM marker
-   * @private
-   */
-  _extractBpmFromMarker(name) {
-    const bpmMatch = name.match(/!bpm:(\d+(\.\d+)?)/);
-    return bpmMatch ? parseFloat(bpmMatch[1]) : null;
-  }
-
-  /**
    * Get the BPM for a region if a !bpm marker is present
+   * Uses the imported getBpmForRegion utility function
    * @param {Object} region - Region object
    * @returns {number|null} - BPM value or null if no !bpm marker
    * @private
    */
   _getBpmForRegion(region) {
-    if (!region) return null;
+    const context = this.startLogContext('_getBpmForRegion');
+    
+    if (!region) {
+      this.logWithContext(context, 'No region provided, returning null');
+      this.flushLogs(context);
+      return null;
+    }
     
     // Get all markers
     const markers = markerService.getMarkers();
-    if (!markers || markers.length === 0) return null;
-    
-    // Find markers that are within the region
-    const regionMarkers = markers.filter(marker => 
-      marker.position >= region.start && 
-      marker.position <= region.end
-    );
-    
-    // Check each marker for !bpm tag
-    for (const marker of regionMarkers) {
-      const bpm = this._extractBpmFromMarker(marker.name);
-      if (bpm !== null) {
-        logger.log(`Found !bpm marker in region ${region.name} with BPM: ${bpm}`);
-        return bpm;
-      }
+    if (!markers || markers.length === 0) {
+      this.logWithContext(context, 'No markers available, returning null');
+      this.flushLogs(context);
+      return null;
     }
     
-    return null;
+    // Use the utility function to get BPM for the region
+    const bpm = getBpmForRegion(region, markers);
+    
+    if (bpm !== null) {
+      this.logWithContext(context, `Found !bpm marker in region ${region.name} with BPM: ${bpm}`);
+    } else {
+      this.logWithContext(context, `No !bpm marker found in region ${region.name}`);
+    }
+    
+    this.flushLogs(context);
+    return bpm;
   }
 
   /**
@@ -404,26 +414,29 @@ class SetlistNavigationService {
    * @returns {Promise<boolean>} True if successful
    */
   async seekToRegionAndPlay(region, autoplay = null, countIn = null) {
+    const context = this.startLogContext('seekToRegionAndPlay');
+    
     try {
+      this.logWithContext(context, `Seeking to region: ${region.name} (${region.start.toFixed(2)}s - ${region.end.toFixed(2)}s)`);
+      
       // Get current playback state and settings
       const playbackState = regionService.getPlaybackState();
       const isPlaying = playbackState.isPlaying;
       const isAutoplayEnabled = autoplay !== null ? autoplay : playbackState.autoplayEnabled;
       const isCountInEnabled = countIn !== null ? countIn : playbackState.countInEnabled;
       
+      this.logWithContext(context, `Current state: playing=${isPlaying}, autoplay=${isAutoplayEnabled}, countIn=${isCountInEnabled}`);
+      
       // Check if the region has a !bpm marker
       const bpm = this._getBpmForRegion(region);
       
       // Reset BPM when changing to a new region/song, passing the BPM from marker if available
+      this.logWithContext(context, `Resetting BPM calculation for region: ${region.name}`);
       reaperService.resetBeatPositions(bpm);
-      if (bpm !== null) {
-        logger.log(`Reset beat positions for BPM calculation when seeking to region ${region.name} with initial BPM: ${bpm}`);
-      } else {
-        logger.log('Reset beat positions for BPM calculation when seeking to region:', region.name);
-      }
       
       // If currently playing, pause first
       if (isPlaying) {
+        this.logWithContext(context, 'Currently playing, pausing first');
         await reaperService.togglePlay(true); // Pause
         await new Promise(resolve => setTimeout(resolve, 150));
       }
@@ -431,48 +444,59 @@ class SetlistNavigationService {
       let positionToSeek;
       
       // If count-in is enabled, position the cursor 2 bars before the marker
-      // Calculate the actual duration of 2 bars based on the current time signature and BPM
       if (isCountInEnabled) {
         try {
+          this.logWithContext(context, 'Count-in enabled, calculating position 2 bars before region start');
+          
           // Get the duration of 2 bars in seconds based on the current time signature
           const countInDuration = await reaperService.calculateBarsToSeconds(2);
           
           // Calculate position 2 bars before region start
           // Ensure we don't go before the start of the project (negative time)
           positionToSeek = Math.max(0, region.start - countInDuration);
-          logger.log(`Count-in enabled, positioning cursor 2 bars (${countInDuration.toFixed(2)}s) before region at ${positionToSeek.toFixed(2)}s`);
+          this.logWithContext(context, `Positioning cursor 2 bars (${countInDuration.toFixed(2)}s) before region at ${positionToSeek.toFixed(2)}s`);
         } catch (error) {
           // Fallback to default calculation if there's an error
-          logger.error('Error calculating count-in position, using default:', error);
+          this.logErrorWithContext(context, 'Error calculating count-in position, using default', error);
           positionToSeek = Math.max(0, region.start - 4); // Default to 4 seconds (2 bars at 4/4 and 120 BPM)
-          logger.log(`Count-in enabled (fallback), positioning cursor 2 bars (4s) before region at ${positionToSeek}s`);
+          this.logWithContext(context, `Using fallback: positioning cursor 2 bars (4s) before region at ${positionToSeek.toFixed(2)}s`);
         }
       } else {
         // Add a small offset to ensure position is clearly within the region
         positionToSeek = region.start + 0.001;
+        this.logWithContext(context, `Count-in disabled, positioning cursor at region start: ${positionToSeek.toFixed(3)}s`);
       }
       
       // Send the seek command
+      this.logWithContext(context, `Seeking to position: ${positionToSeek.toFixed(3)}s`);
       await reaperService.seekToPosition(positionToSeek);
 
       // If was playing and autoplay is enabled, resume playback
       if ((isPlaying || autoplay === true) && isAutoplayEnabled) {
+        this.logWithContext(context, 'Autoplay enabled, resuming playback after short delay');
         await new Promise(resolve => setTimeout(resolve, 150));
         
         // If count-in is enabled, use playWithCountIn, otherwise use normal togglePlay
         if (isCountInEnabled) {
+          this.logWithContext(context, 'Using count-in for playback');
           await reaperService.playWithCountIn();
         } else {
+          this.logWithContext(context, 'Resuming playback without count-in');
           await reaperService.togglePlay(false); // Resume without count-in
         }
+      } else {
+        this.logWithContext(context, 'Autoplay disabled, not resuming playback');
       }
 
       // Restart the polling mechanism
+      this.logWithContext(context, 'Restarting polling mechanism');
       this.restartPolling();
       
+      this.logWithContext(context, 'Successfully seeked to region and configured playback');
+      this.flushLogs(context);
       return true;
     } catch (error) {
-      logger.error('Error seeking to region and playing:', error);
+      this.logErrorWithContext(context, 'Error seeking to region and playing', error);
       this.isTransitioning = false;
       return false;
     }
@@ -483,38 +507,56 @@ class SetlistNavigationService {
    * @returns {Promise<boolean>} True if successful
    */
   async handleTogglePlay() {
+    const context = this.startLogContext('handleTogglePlay');
+    
     try {
       const playbackState = regionService.getPlaybackState();
+      this.logWithContext(context, `Current state: playing=${playbackState.isPlaying}, currentRegionId=${playbackState.currentRegionId}, selectedSetlistId=${playbackState.selectedSetlistId}`);
       
       // If not in a region and a setlist is selected, start from the first item
       if (!playbackState.currentRegionId && playbackState.selectedSetlistId) {
+        this.logWithContext(context, 'Not in a region and setlist is selected, checking for first item');
+        
         const setlist = setlistService.getSetlist(playbackState.selectedSetlistId);
         if (setlist && setlist.items.length > 0) {
+          this.logWithContext(context, `Found setlist with ${setlist.items.length} items`);
+          
           const firstItem = setlist.items[0];
+          this.logWithContext(context, `First item: ${firstItem.name || firstItem.regionId}`);
+          
           const region = regionService.findRegionById(firstItem.regionId);
           if (region) {
+            this.logWithContext(context, `Found region: ${region.name}`);
+            
             // Check if the region has a !bpm marker
             const bpm = this._getBpmForRegion(region);
             
             // Reset BPM when starting playback from the first item in a setlist
+            this.logWithContext(context, 'Resetting BPM calculation for first setlist item');
             reaperService.resetBeatPositions(bpm);
-            if (bpm !== null) {
-              logger.log(`Reset beat positions for BPM calculation when starting playback from first setlist item with initial BPM: ${bpm}`);
-            } else {
-              logger.log('Reset beat positions for BPM calculation when starting playback from first setlist item');
-            }
             
+            this.logWithContext(context, 'Seeking to first region and playing');
             await this.seekToRegionAndPlay(region, true);
+            
+            this.flushLogs(context);
             return true;
+          } else {
+            this.logWithContext(context, 'Region not found for first item');
           }
+        } else {
+          this.logWithContext(context, 'No setlist found or setlist is empty');
         }
       }
       
       // Otherwise, just toggle play normally
+      this.logWithContext(context, `Toggling play normally (current state: ${playbackState.isPlaying ? 'playing' : 'stopped'})`);
       await reaperService.togglePlay(playbackState.isPlaying);
+      
+      this.logWithContext(context, 'Successfully toggled play state');
+      this.flushLogs(context);
       return true;
     } catch (error) {
-      logger.error('Error handling toggle play:', error);
+      this.logErrorWithContext(context, 'Error handling toggle play', error);
       return false;
     }
   }

@@ -3,39 +3,14 @@
  * Handles fetching, parsing, and managing markers from Reaper
  */
 
-const logger = require('../utils/logger');
+const BaseService = require('./BaseService');
 const reaperService = require('./reaperService');
 const Marker = require('../models/Marker');
 
-class MarkerService {
+class MarkerService extends BaseService {
   constructor() {
+    super('MarkerService');
     this.markers = [];
-    this.eventListeners = {
-      markersUpdated: [],
-      error: []
-    };
-  }
-
-  /**
-   * Register an event listener
-   * @param {string} event - Event name
-   * @param {Function} callback - Callback function
-   */
-  on(event, callback) {
-    if (this.eventListeners[event]) {
-      this.eventListeners[event].push(callback);
-    }
-  }
-
-  /**
-   * Emit an event to all registered listeners
-   * @param {string} event - Event name
-   * @param {*} data - Event data
-   */
-  emitEvent(event, data) {
-    if (this.eventListeners[event]) {
-      this.eventListeners[event].forEach(callback => callback(data));
-    }
   }
 
   /**
@@ -43,30 +18,30 @@ class MarkerService {
    * @returns {Promise<Array>} Array of Marker objects
    */
   async fetchMarkers() {
-    const logContext = logger.startCollection('fetchMarkers');
+    const context = this.startLogContext('fetchMarkers');
     
     try {
-      logger.collect(logContext, 'Fetching markers from Reaper...');
+      this.logWithContext(context, 'Fetching markers from Reaper...');
       
       // Get all markers using the MARKER command
       const markerList = await reaperService.getMarkers();
       
-      logger.collect(logContext, 'Received marker list from Reaper');
+      this.logWithContext(context, 'Received marker list from Reaper');
       
       if (markerList && markerList.length > 0) {
-        logger.collect(logContext, 'Marker list has content, length:', markerList.length);
+        this.logWithContext(context, 'Marker list has content, length:', markerList.length);
         
         // Parse the marker list response
         this.markers = this.parseMarkerList(markerList);
         
-        logger.collect(logContext, `Parsed ${this.markers.length} markers successfully`);
+        this.logWithContext(context, `Parsed ${this.markers.length} markers successfully`);
         
         // Emit markers updated event
         this.emitEvent('markersUpdated', this.markers);
         
-        logger.collect(logContext, `Emitted ${this.markers.length} markers to listeners`);
+        this.logWithContext(context, `Emitted ${this.markers.length} markers to listeners`);
       } else {
-        logger.collect(logContext, 'Marker list is empty or invalid');
+        this.logWithContext(context, 'Marker list is empty or invalid');
         
         // Clear markers and emit empty array
         this.markers = [];
@@ -74,12 +49,12 @@ class MarkerService {
       }
       
       // Flush all collected logs
-      logger.flushLogs(logContext);
+      this.flushLogs(context);
       
       return this.markers;
     } catch (error) {
-      // Use collectError to ensure errors are always logged
-      logger.collectError(logContext, 'Error fetching markers:', error);
+      // Log the error with context
+      this.logErrorWithContext(context, 'Error fetching markers', error);
       
       // Emit error status
       this.emitEvent('error', {
@@ -98,10 +73,10 @@ class MarkerService {
    * @returns {Array} Array of Marker objects
    */
   parseMarkerList(response) {
-    const logContext = logger.startCollection('parseMarkerList');
+    const context = this.startLogContext('parseMarkerList');
     
-    logger.collect(logContext, 'Parsing marker list response...');
-    logger.collect(logContext, 'Raw response length:', response ? response.length : 0);
+    this.logWithContext(context, 'Parsing marker list response...');
+    this.logWithContext(context, 'Raw response length:', response ? response.length : 0);
     
     const parsedMarkers = [];
     
@@ -109,7 +84,7 @@ class MarkerService {
     const lines = response.split('\n').filter(line => 
       line !== 'MARKER_LIST' && line !== 'MARKER_LIST_END' && line.trim() !== '');
     
-    logger.collect(logContext, 'Filtered lines count:', lines.length);
+    this.logWithContext(context, 'Filtered lines count:', lines.length);
     
     // Track statistics
     let validMarkerCount = 0;
@@ -131,7 +106,7 @@ class MarkerService {
           // Create a Marker object
           const marker = new Marker(markerData);
           
-          logger.collect(logContext, `Marker ${marker.id}:`,
+          this.logWithContext(context, `Marker ${marker.id}:`,
             `Name: ${marker.name}, Position: ${marker.position}`);
           
           parsedMarkers.push(marker);
@@ -140,7 +115,7 @@ class MarkerService {
           insufficientPartsCount++;
           // Log the first few invalid lines as examples
           if (insufficientPartsCount <= 2) {
-            logger.collect(logContext, 'Example of line with insufficient parts:', 
+            this.logWithContext(context, 'Example of line with insufficient parts:', 
               `Line: ${line}, Parts: ${parts.length}`);
           }
         }
@@ -150,12 +125,12 @@ class MarkerService {
     }
     
     // Log summary statistics
-    logger.collect(logContext, 'Parsing summary:', 
+    this.logWithContext(context, 'Parsing summary:', 
       `Total lines: ${lines.length}, Valid markers: ${validMarkerCount}, ` +
       `Invalid lines: ${invalidLineCount}, Lines with insufficient parts: ${insufficientPartsCount}`);
     
     // Flush all collected logs
-    logger.flushLogs(logContext);
+    this.flushLogs(context);
     
     return parsedMarkers;
   }

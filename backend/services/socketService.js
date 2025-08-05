@@ -13,6 +13,7 @@ const setlistNavigationService = require('./setlistNavigationService');
 class SocketService {
   constructor() {
     this.io = null;
+    this.connectedClients = 0;
     this.setupEventListeners();
   }
 
@@ -39,7 +40,13 @@ class SocketService {
     // Listen for marker updates
     markerService.on('markersUpdated', (markers) => {
       if (this.io) {
-        this.io.emit('markers', markers);
+        // Check if there are any connected clients
+        if (this.connectedClients > 0) {
+          logger.log(`Sending markers to ${this.connectedClients} connected clients`);
+          this.io.emit('markers', markers);
+        } else {
+          logger.log('No clients connected, markers will be sent when clients connect');
+        }
       }
     });
 
@@ -95,19 +102,23 @@ class SocketService {
    * @param {Object} socket - Socket.IO socket
    */
   handleConnection(socket) {
+    // Increment connected clients counter
+    this.connectedClients++;
+    
     // Only create a connection-specific log context if SOCKET_CONNECTION_LOG is enabled
     let connectionContext = null;
     if (process.env.SOCKET_CONNECTION_LOG === 'true') {
       connectionContext = logger.startCollection(`socket-connection-${socket.id}`);
       
       logger.collect(connectionContext, 'Client connected:', socket.id);
+      logger.collect(connectionContext, 'Connected clients:', this.connectedClients);
       logger.collect(connectionContext, 'Current regions count at connection time:', regionService.getRegions().length);
       
       // Send initial data to the newly connected client
       logger.collect(connectionContext, 'Sending initial data to client:', socket.id);
     } else {
       // Always log basic connection info even without detailed logging
-      logger.log('Client connected:', socket.id);
+      logger.log('Client connected:', socket.id, 'Total connected clients:', this.connectedClients);
     }
   
     socket.emit('regions', regionService.getRegions());
@@ -144,7 +155,9 @@ class SocketService {
     
     // Handle disconnect
     socket.on('disconnect', () => {
-      logger.log('Client disconnected:', socket.id);
+      // Decrement connected clients counter
+      this.connectedClients--;
+      logger.log('Client disconnected:', socket.id, 'Total connected clients:', this.connectedClients);
     });
   }
 

@@ -19,6 +19,7 @@ const reaperService = require('./services/reaperService');
 const regionService = require('./services/regionService');
 const projectService = require('./services/projectService');
 const setlistService = require('./services/setlistService');
+const markerService = require('./services/markerService');
 const SocketController = require('./controllers/socketController');
 
 // Create Express app
@@ -54,6 +55,9 @@ async function initializeApp() {
     
     // Initialize setlist service
     await setlistService.initialize();
+    
+    // Initialize marker service
+    await markerService.initialize();
     
     // Initialize socket controller
     socketController.initialize();

@@ -11,6 +11,31 @@ class MarkerService extends BaseService {
   constructor() {
     super('MarkerService');
     this.markers = [];
+    this.initialized = false;
+  }
+
+  /**
+   * Initialize the marker service
+   * @returns {Promise<void>}
+   */
+  async initialize() {
+    const context = this.startLogContext('initialize');
+    
+    try {
+      this.logWithContext(context, 'Initializing marker service...');
+      
+      // Fetch markers from Reaper
+      await this.fetchMarkers();
+      
+      this.initialized = true;
+      this.logWithContext(context, 'Marker service initialized successfully');
+      
+      // Flush all collected logs
+      this.flushLogs(context);
+    } catch (error) {
+      this.logErrorWithContext(context, 'Error initializing marker service', error);
+      throw error;
+    }
   }
 
   /**

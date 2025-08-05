@@ -412,13 +412,28 @@ export function _updateTimer() {
         const positionInRegion = playbackStateValue.currentPosition - currentRegionValue.start;
         const isNearEnd = positionInRegion / regionLength > 0.99;
         
-        // Set hard stop if we're at the end OR near the end, and not playing
-        if ((isAtEnd || isNearEnd) && !playbackStateValue.isPlaying) {
-          // We're at the end of the region with a !1008 marker and not playing, set hard stop flag
-          _atHardStop.set(true);
-        } else if (playbackStateValue.isPlaying) {
-          // If we're playing, reset the hard stop flag
-          _atHardStop.set(false);
+        // Check if position changed significantly (e.g., due to seeking)
+        const positionChanged = Math.abs(playbackStateValue.currentPosition - previousPlaybackPosition) > 0.5;
+        
+        if (positionChanged) {
+          // If position changed significantly due to seeking, check if we're at the end
+          if ((isAtEnd || isNearEnd) && !playbackStateValue.isPlaying) {
+            // We're at the end of the region after seeking, set hard stop flag
+            _atHardStop.set(true);
+          } else {
+            // We're not at the end after seeking, reset hard stop flag
+            _atHardStop.set(false);
+          }
+        } else {
+          // No significant position change, use normal logic
+          // Set hard stop if we're at the end OR near the end, and not playing
+          if ((isAtEnd || isNearEnd) && !playbackStateValue.isPlaying) {
+            // We're at the end of the region with a !1008 marker and not playing, set hard stop flag
+            _atHardStop.set(true);
+          } else if (playbackStateValue.isPlaying) {
+            // If we're playing, reset the hard stop flag
+            _atHardStop.set(false);
+          }
         }
       } else {
         // No !1008 marker, reset hard stop flag

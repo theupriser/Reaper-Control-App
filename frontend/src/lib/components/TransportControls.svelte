@@ -2,6 +2,7 @@
   import { socketControl, playbackState, currentRegion, autoplayEnabled, countInEnabled, sortedMarkers } from '$lib/stores/socket';
   import { getEffectiveRegionLength, getCustomLengthForRegion, has1008MarkerInRegion } from '$lib/stores/markerStore';
   import { markers } from '$lib/stores/markerStore';
+  import { nextRegion } from '$lib/stores/regionStore';
   import { writable } from 'svelte/store';
   import { onMount, onDestroy } from 'svelte';
   
@@ -355,6 +356,27 @@
       }
     }
     
+    // Check if we're in a region with a !1008 marker
+    const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
+    if (has1008Marker) {
+      // Calculate if the seek position is at the end of the region
+      const regionEnd = $currentRegion.end;
+      const isAtEnd = Math.abs(finalPosition - regionEnd) < 0.5;
+      
+      // Calculate if the seek position is near the end (within 99% of region length)
+      const regionLength = $currentRegion.end - $currentRegion.start;
+      const positionInRegion = finalPosition - $currentRegion.start;
+      const isNearEnd = positionInRegion / regionLength > 0.99;
+      
+      // Only set atHardStop to true if we're at or near the end
+      if (isAtEnd || isNearEnd) {
+        atHardStop.set(true);
+      } else {
+        // If we're seeking to a position before the end, reset the hard stop flag
+        atHardStop.set(false);
+      }
+    }
+    
     // Hide the popover after 2 seconds
     setTimeout(() => {
       popoverVisible.set(false);
@@ -405,7 +427,7 @@
       ></div>
       
       <!-- Hard stop message -->
-      {#if $atHardStop && !$playbackState.isPlaying}
+      {#if $atHardStop && !$playbackState.isPlaying && $nextRegion}
         <div class="hard-stop-marker">
           <div class="hard-stop-message">
             Press play to continue
@@ -510,6 +532,7 @@
       class="control-button play-pause" 
       on:click={() => socketControl.togglePlay()}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
+      disabled={!$nextRegion && !$playbackState.isPlaying && $atHardStop}
     >
       {#if $playbackState.isPlaying}
         <svg viewBox="0 0 24 24" width="32" height="32">
@@ -844,6 +867,16 @@
   
   .play-pause:hover {
     background-color: #5a5a5a;
+  }
+  
+  .play-pause:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #3a3a3a;
+  }
+  
+  .play-pause:disabled:hover {
+    background-color: #3a3a3a;
   }
   
   /* Responsive adjustments */

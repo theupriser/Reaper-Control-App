@@ -159,7 +159,7 @@
           &nbsp;
         {/if}
       </div>
-      {#if $atHardStop && !$playbackState.isPlaying}
+      {#if $atHardStop && !$playbackState.isPlaying && $nextRegion}
         <div class="hard-stop-message">Press play to continue</div>
       {/if}
     </div>
@@ -180,6 +180,7 @@
       class="control-button play-pause" 
       on:click={togglePlay}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
+      disabled={!$nextRegion && !$playbackState.isPlaying && $atHardStop}
     >
       {#if $playbackState.isPlaying}
         <svg viewBox="0 0 24 24" width="48" height="48">
@@ -486,6 +487,16 @@
   
   .play-pause:hover {
     background-color: #444;
+  }
+  
+  .play-pause:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #222;
+  }
+  
+  .play-pause:disabled:hover {
+    background-color: #222;
   }
   
   .exit-button-container {

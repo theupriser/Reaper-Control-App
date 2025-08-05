@@ -10,7 +10,8 @@ export {
   updateRegions,
   findRegionById,
   getNextRegion,
-  getPreviousRegion
+  getPreviousRegion,
+  nextRegion
 } from './regionStore';
 
 // Re-export from playback store

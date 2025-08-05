@@ -5,6 +5,7 @@
 
 import { writable, derived } from 'svelte/store';
 import { playbackState } from './playbackStore';
+import { currentSetlist } from './setlistStore';
 
 /**
  * Store for the list of regions
@@ -149,3 +150,29 @@ export function getPreviousRegion() {
   
   return result;
 }
+
+/**
+ * Derived store for the next region
+ * Takes into account setlists if one is selected
+ */
+export const nextRegion = derived(
+  [currentRegion, playbackState, currentSetlist, regions],
+  ([$currentRegion, $playbackState, $currentSetlist, $regions]) => {
+    if (!$currentRegion) return null;
+    
+    if ($playbackState.selectedSetlistId && $currentSetlist) {
+      // If a setlist is selected, get the next item from the setlist
+      const currentItemIndex = $currentSetlist.items.findIndex(item => item.regionId === $currentRegion.id);
+      if (currentItemIndex !== -1 && currentItemIndex < $currentSetlist.items.length - 1) {
+        const nextItem = $currentSetlist.items[currentItemIndex + 1];
+        return $regions.find(region => region.id === nextItem.regionId);
+      }
+      return null;
+    } else {
+      // Otherwise, get the next region from all regions
+      const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
+      return currentIndex !== -1 && currentIndex < $regions.length - 1 ? 
+        $regions[currentIndex + 1] : null;
+    }
+  }
+);

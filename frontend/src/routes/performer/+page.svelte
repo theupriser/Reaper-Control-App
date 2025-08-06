@@ -437,13 +437,33 @@
     padding: 0;
   }
   
+  /* Make SystemStats icons bigger in performer mode */
   .performer-status :global(.stats-icon) {
-    gap: 6px;
+    gap: 8px;
   }
   
-  /* Hide the CPU usage bar in performer mode to keep it minimal */
+  /* Show CPU usage bar in performer mode with increased size */
   .performer-status :global(.usage-indicator) {
-    display: none;
+    width: 40px;
+    height: 10px;
+  }
+  
+  /* Increase size of connection dot */
+  .performer-status :global(.connection-dot) {
+    width: 10px;
+    height: 10px;
+  }
+  
+  /* Increase size of MIDI indicator */
+  .performer-status :global(.midi-indicator svg) {
+    width: 18px;
+    height: 18px;
+  }
+  
+  /* Increase size of CPU icon */
+  .performer-status :global(svg) {
+    width: 20px;
+    height: 20px;
   }
   
   .toggle-container {
@@ -635,8 +655,29 @@
       padding: 0;
     }
     
+    /* Adjust icon sizes for mobile */
     .performer-status :global(.stats-icon) {
-      gap: 4px;
+      gap: 6px;
+    }
+    
+    .performer-status :global(.connection-dot) {
+      width: 8px;
+      height: 8px;
+    }
+    
+    .performer-status :global(.midi-indicator svg) {
+      width: 16px;
+      height: 16px;
+    }
+    
+    .performer-status :global(svg) {
+      width: 18px;
+      height: 18px;
+    }
+    
+    .performer-status :global(.usage-indicator) {
+      width: 35px;
+      height: 8px;
     }
     
     .play-pause {

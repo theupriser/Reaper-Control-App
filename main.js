@@ -102,6 +102,39 @@ function createWindow() {
     mainWindow.show();
   });
 
+  // Add event listeners to monitor frontend loading
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('Frontend loaded successfully');
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`Frontend failed to load: ${errorDescription} (${errorCode})`);
+    
+    // Check if the window still exists
+    if (mainWindow) {
+      mainWindow.webContents.executeJavaScript(`
+        document.body.innerHTML = '<div style="padding: 20px; font-family: Arial, sans-serif; color: #333;">' +
+          '<h2 style="color: #e74c3c;">Frontend Loading Error</h2>' +
+          '<p>The application frontend failed to load.</p>' +
+          '<p>Error: ${errorDescription} (${errorCode})</p>' +
+          '<p>Possible solutions:</p>' +
+          '<ul>' +
+          '<li>Check if the frontend build is complete and correct</li>' +
+          '<li>Restart the application</li>' +
+          '</ul>' +
+          '<button onclick="window.location.reload()" ' +
+          'style="padding: 8px 16px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">' +
+          'Reload Frontend</button>' +
+          '<button onclick="window.electronAPI.restartBackend()" ' +
+          'style="padding: 8px 16px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">' +
+          'Restart Backend</button>' +
+          '</div>';
+      `).catch(err => {
+        console.error('Failed to execute JavaScript in webContents:', err);
+      });
+    }
+  });
+
   // Load the frontend
   // In development, we'll load from the dev server
   // In production, we'll load from the built files
@@ -147,7 +180,9 @@ function createWindow() {
             'Restart Backend</button>' +
             '</div>';
         }
-      `);
+      `).catch(err => {
+        console.error('Failed to execute JavaScript in webContents:', err);
+      });
     }
   }, 15000); // 15 seconds timeout
 

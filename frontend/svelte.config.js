@@ -14,7 +14,8 @@ const config = {
     // Use relative paths for assets
     paths: {
       base: '',
-      assets: ''
+      assets: '',
+      relative: true // Use relative paths for all assets and imports
     }
   },
 };

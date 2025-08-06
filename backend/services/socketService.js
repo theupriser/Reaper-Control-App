@@ -10,6 +10,7 @@ const markerService = require('./markerService');
 const projectService = require('./projectService');
 const setlistNavigationService = require('./setlistNavigationService');
 const systemStatsService = require('./systemStatsService');
+const midiService = require('./midiService');
 
 class SocketService {
   constructor() {
@@ -76,6 +77,13 @@ class SocketService {
         } else {
           logger.log('No clients connected, markers will be sent when clients connect');
         }
+      }
+    });
+    
+    // Listen for MIDI activity
+    midiService.on('midiActivity', () => {
+      if (this.io && this.connectedClients > 0) {
+        this.io.emit('midiActivity');
       }
     });
 

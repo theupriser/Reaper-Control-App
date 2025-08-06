@@ -10,12 +10,16 @@ const logger = require('../utils/logger');
 const reaperService = require('./reaperService');
 const regionService = require('./regionService');
 const setlistNavigationService = require('./setlistNavigationService');
+const EventEmitter = require('events');
 
-class MidiService {
+class MidiService extends EventEmitter {
   constructor() {
+    super();
     this.config = null;
     this.inputs = [];
     this.noteToEventMap = {};
+    this.deviceCheckInterval = null;
+    this.connectedInputs = new Map(); // Track connected inputs by name
   }
 
   /**
@@ -30,17 +34,153 @@ class MidiService {
       this.inputs = easymidi.getInputs();
       logger.log('Available MIDI inputs:', this.inputs);
       
-      if (this.inputs.length === 0) {
-        logger.log('No MIDI inputs available');
-        return;
-      }
-      
       // Set up MIDI input listeners for all available inputs
       this.setupMidiListeners();
+      
+      // Start polling for new MIDI devices every 5 seconds
+      this.startDevicePolling();
       
       logger.log('MIDI service initialized');
     } catch (error) {
       logger.error('Error initializing MIDI service:', error);
+    }
+  }
+  
+  /**
+   * Start polling for new MIDI devices
+   */
+  startDevicePolling() {
+    // Clear any existing interval
+    if (this.deviceCheckInterval) {
+      clearInterval(this.deviceCheckInterval);
+    }
+    
+    // Check for new devices immediately
+    this.checkForNewDevices();
+    
+    // Set up interval to check for new devices every 5 seconds
+    this.deviceCheckInterval = setInterval(() => {
+      this.checkForNewDevices();
+    }, 5000); // 5 seconds
+    
+    logger.log('Started polling for new MIDI devices every 5 seconds');
+  }
+  
+  /**
+   * Stop polling for new MIDI devices
+   */
+  stopDevicePolling() {
+    if (this.deviceCheckInterval) {
+      clearInterval(this.deviceCheckInterval);
+      this.deviceCheckInterval = null;
+      logger.log('Stopped polling for new MIDI devices');
+    }
+  }
+  
+  /**
+   * Shutdown the MIDI service and clean up all resources
+   */
+  shutdown() {
+    try {
+      logger.log('Shutting down MIDI service...');
+      
+      // Stop the device polling
+      this.stopDevicePolling();
+      
+      // Clean up all connected inputs
+      const connectedInputNames = Array.from(this.connectedInputs.keys());
+      
+      if (connectedInputNames.length > 0) {
+        logger.log(`Cleaning up ${connectedInputNames.length} MIDI inputs...`);
+        
+        connectedInputNames.forEach(inputName => {
+          this.cleanupMidiInput(inputName);
+        });
+      }
+      
+      // Reset state
+      this.inputs = [];
+      this.connectedInputs.clear();
+      
+      logger.log('MIDI service shutdown complete');
+    } catch (error) {
+      logger.error('Error shutting down MIDI service:', error);
+    }
+  }
+  
+  /**
+   * Check for new MIDI devices and connect them
+   * Also check for disconnected devices and clean them up
+   */
+  checkForNewDevices() {
+    try {
+      // Get current available MIDI inputs
+      const currentInputs = easymidi.getInputs();
+      
+      // Find new inputs that weren't available before
+      const newInputs = currentInputs.filter(input => 
+        !this.connectedInputs.has(input)
+      );
+      
+      // Find disconnected inputs that are no longer available
+      const disconnectedInputs = Array.from(this.connectedInputs.keys())
+        .filter(input => !currentInputs.includes(input));
+      
+      // Handle new inputs
+      if (newInputs.length > 0) {
+        logger.log('New MIDI devices detected:', newInputs);
+        
+        // Set up listeners for new inputs
+        newInputs.forEach(inputName => {
+          this.setupMidiListenerForInput(inputName);
+        });
+      }
+      
+      // Handle disconnected inputs
+      if (disconnectedInputs.length > 0) {
+        logger.log('MIDI devices disconnected:', disconnectedInputs);
+        
+        // Clean up disconnected inputs
+        disconnectedInputs.forEach(inputName => {
+          this.cleanupMidiInput(inputName);
+        });
+      }
+      
+      // Update the inputs list
+      this.inputs = currentInputs;
+    } catch (error) {
+      logger.error('Error checking for new MIDI devices:', error);
+    }
+  }
+  
+  /**
+   * Clean up resources for a disconnected MIDI input
+   * @param {string} inputName - Name of the MIDI input to clean up
+   */
+  cleanupMidiInput(inputName) {
+    try {
+      // Get the input data from the map
+      const inputData = this.connectedInputs.get(inputName);
+      
+      if (!inputData) {
+        return;
+      }
+      
+      // Close the input
+      if (inputData.input) {
+        try {
+          inputData.input.close();
+        } catch (closeError) {
+          logger.error(`Error closing MIDI input ${inputName}:`, closeError);
+        }
+      }
+      
+      // Remove from the connected inputs map
+      this.connectedInputs.delete(inputName);
+      
+      logger.log(`Cleaned up disconnected MIDI input: ${inputName}`);
+    } catch (error) {
+      logger.error(`Error cleaning up MIDI input ${inputName}:`, error);
     }
   }
 
@@ -71,36 +211,62 @@ class MidiService {
    */
   setupMidiListeners() {
     this.inputs.forEach(inputName => {
-      try {
-        const input = new easymidi.Input(inputName);
-        
-        // Create a context for logging all MIDI messages from this input
-        const midiLogContext = logger.startCollection(`midi-input-${inputName}`);
-        
-        // Listen for all MIDI message types
-        const messageTypes = ['noteon', 'noteoff', 'cc', 'program', 'channel aftertouch', 'pitch', 'position', 'mtc', 'select', 'clock', 'start', 'continue', 'stop', 'reset'];
-        
-        messageTypes.forEach(type => {
-          input.on(type, msg => {
-            // Log all MIDI messages if MIDI_LOG_ALL is enabled
-            if (process.env.MIDI_LOG_ALL === 'true') {
-              logger.collect(midiLogContext, `MIDI ${type} received on input ${inputName}:`, JSON.stringify(msg));
-              // Flush logs immediately for MIDI messages
-              logger.flushLogs(midiLogContext);
-            }
-            
-            // Only process noteOn events for actions
-            if (type === 'noteon') {
-              this.handleNoteOn(inputName, msg);
-            }
-          });
-        });
-        
-        logger.log(`MIDI listener set up for input: ${inputName}`);
-      } catch (error) {
-        logger.error(`Error setting up MIDI listener for input ${inputName}:`, error);
-      }
+      this.setupMidiListenerForInput(inputName);
     });
+  }
+  
+  /**
+   * Set up MIDI input listener for a single input
+   * @param {string} inputName - Name of the MIDI input
+   * @returns {boolean} - Whether the listener was set up successfully
+   */
+  setupMidiListenerForInput(inputName) {
+    try {
+      // Skip if already connected
+      if (this.connectedInputs.has(inputName)) {
+        logger.log(`MIDI input ${inputName} is already connected`);
+        return false;
+      }
+      
+      const input = new easymidi.Input(inputName);
+      
+      // Create a context for logging all MIDI messages from this input
+      const midiLogContext = logger.startCollection(`midi-input-${inputName}`);
+      
+      // Listen for all MIDI message types
+      const messageTypes = ['noteon', 'noteoff', 'cc', 'program', 'channel aftertouch', 'pitch', 'position', 'mtc', 'select', 'clock', 'start', 'continue', 'stop', 'reset'];
+      
+      messageTypes.forEach(type => {
+        input.on(type, msg => {
+          // Log all MIDI messages if MIDI_LOG_ALL is enabled
+          if (process.env.MIDI_LOG_ALL === 'true') {
+            logger.collect(midiLogContext, `MIDI ${type} received on input ${inputName}:`, JSON.stringify(msg));
+            // Flush logs immediately for MIDI messages
+            logger.flushLogs(midiLogContext);
+          }
+          
+          // Emit midiActivity event for any MIDI message
+          this.emit('midiActivity');
+          
+          // Only process noteOn events for actions
+          if (type === 'noteon') {
+            this.handleNoteOn(inputName, msg);
+          }
+        });
+      });
+      
+      // Store the input instance in the connectedInputs map
+      this.connectedInputs.set(inputName, {
+        input,
+        logContext: midiLogContext
+      });
+      
+      logger.log(`MIDI listener set up for input: ${inputName}`);
+      return true;
+    } catch (error) {
+      logger.error(`Error setting up MIDI listener for input ${inputName}:`, error);
+      return false;
+    }
   }
 
   /**

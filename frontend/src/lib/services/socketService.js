@@ -25,7 +25,8 @@ import {
   setConnectionError,
   updatePingInfo,
   updateProjectId,
-  updateMarkers
+  updateMarkers,
+  setMidiActive
 } from '../stores';
 
 // Socket instance
@@ -95,6 +96,7 @@ function setupEventListeners() {
   socket.on('status', handleStatusMessage);
   socket.on('projectId', handleProjectIdUpdate);
   socket.on('projectChanged', handleProjectChanged);
+  socket.on('midiActivity', handleMidiActivity);
 }
 
 /**
@@ -432,6 +434,16 @@ function handleProjectChanged(projectId) {
     logger.log('Refreshing regions after project change...');
     socket.emit('refreshRegions');
   }, 500);
+}
+
+/**
+ * Handles the MIDI activity event
+ */
+function handleMidiActivity() {
+  logger.log('MIDI activity detected');
+  
+  // Update the MIDI activity store
+  setMidiActive();
 }
 
 /**

@@ -1,11 +1,74 @@
 <script>
+  /**
+   * TransportControls Component
+   * 
+   * This component provides playback controls for Reaper DAW.
+   * 
+   * IMPORTANT: To prevent the application from freezing when buttons are clicked rapidly,
+   * all transport actions are protected by the safeTransportAction function which:
+   * 1. Disables all transport controls immediately after a click
+   * 2. Executes the requested action
+   * 3. Re-enables controls only after receiving a playback state update from the backend
+   * 4. Has a safety timeout to re-enable controls after 2 seconds if no update is received
+   * 
+   * This prevents race conditions that can occur when multiple commands are sent to Reaper
+   * in rapid succession before the previous command has been processed.
+   */
   import { socketControl, playbackState, currentRegion, autoplayEnabled, countInEnabled, sortedMarkers } from '$lib/stores/socket';
   import { getEffectiveRegionLength, getCustomLengthForRegion, has1008MarkerInRegion } from '$lib/stores/markerStore';
   import { markers } from '$lib/stores/markerStore';
   import { nextRegion } from '$lib/stores/regionStore';
   import { writable } from 'svelte/store';
   import { onMount, onDestroy } from 'svelte';
+
+  // Store to track disabled state of transport buttons
+  const transportButtonsDisabled = writable(false);
+
+  // Last playback state update timestamp
+  let lastPlaybackStateUpdate = Date.now();
+
+  /**
+   * Safely execute a transport control function with button disabling
+   * This prevents multiple rapid clicks from causing the application to freeze
+   * 
+   * The issue: When transport buttons (especially play) are clicked multiple times rapidly,
+   * many commands are sent to Reaper before receiving playback state updates, causing
+   * race conditions that can freeze the application.
+   * 
+   * The solution:
+   * 1. Immediately disable all transport controls when any action is triggered
+   * 2. Execute the requested transport action (which sends a command to Reaper)
+   * 3. Store the timestamp of when the action was triggered
+   * 4. Set a safety timeout to re-enable controls after 2 seconds (in case no update is received)
+   * 5. Re-enable controls when a playback state update is received (in the reactive statement)
+   * 
+   * This ensures that users cannot trigger multiple actions before the previous one completes,
+   * preventing the race conditions that cause the application to freeze.
+   * 
+   * @param {Function} actionFn - The transport control function to execute
+   * @param {Array} args - Arguments to pass to the function
+   */
+  function safeTransportAction(actionFn, ...args) {
+    // Step 1: Disable all transport buttons
+    transportButtonsDisabled.set(true);
   
+    // Step 2: Execute the transport action
+    actionFn(...args);
+  
+    // Step 3: Store the current timestamp when the action was triggered
+    // This is used in the reactive statement to ensure we don't re-enable too early
+    lastPlaybackStateUpdate = Date.now();
+  
+    // Step 4: Set a safety timeout to re-enable buttons after a maximum wait time
+    // This ensures buttons don't stay disabled if something goes wrong with the backend
+    setTimeout(() => {
+      transportButtonsDisabled.set(false);
+    }, 2000); // 2 seconds maximum wait time
+  
+    // Step 5 happens in the reactive statement that watches playbackState changes
+    // When a playback state update is received, buttons are re-enabled
+  }
+
   // Local timer state
   let localTimer = null;
   let localPosition = writable(0);
@@ -24,12 +87,12 @@
   
   // Toggle autoplay function
   function toggleAutoplay() {
-    socketControl.toggleAutoplay();
+    safeTransportAction(socketControl.toggleAutoplay);
   }
-  
+
   // Toggle count-in function
   function toggleCountIn() {
-    socketControl.toggleCountIn();
+    safeTransportAction(socketControl.toggleCountIn);
   }
   
   // Function to start the local timer
@@ -208,6 +271,16 @@
     // Update previous state values
     previousPlaybackPosition = $playbackState.currentPosition;
     previousPlaybackIsPlaying = $playbackState.isPlaying;
+  
+    // Step 5 of safeTransportAction: Re-enable transport buttons when playback state updates
+    // This is the key part of preventing freezes - we only re-enable controls after
+    // receiving confirmation from the backend that our previous action was processed
+  
+    // Only re-enable if at least 100ms have passed since the last action
+    // This small delay prevents re-enabling too early if multiple updates arrive in quick succession
+    if (Date.now() - lastPlaybackStateUpdate > 100) {
+      transportButtonsDisabled.set(false);
+    }
   }
   
   // Store previous region ID to detect actual region changes
@@ -331,7 +404,8 @@
     
     // Seek to the position (either marker position or calculated position)
     // Pass isNearMarker flag to indicate whether the click was on a marker
-    socketControl.seekToPosition(finalPosition, isNearMarker);
+    // Use safeTransportAction to prevent multiple rapid clicks
+    safeTransportAction(socketControl.seekToPosition, finalPosition, isNearMarker);
     
     // Check if we should use the local timer based on the position
     const customLength = getCustomLengthForRegion($markers, $currentRegion);
@@ -420,7 +494,9 @@
   
   <!-- Progress bar -->
   {#if $currentRegion}
-    <div class="progress-container" on:click={handleProgressBarClick}>
+    <div class="progress-container" 
+      on:click={$transportButtonsDisabled ? null : handleProgressBarClick}
+      class:disabled={$transportButtonsDisabled}>
       <div 
         class="progress-bar" 
         style="width: {Math.min(100, Math.max(0, ((($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start) / getEffectiveRegionLength($currentRegion, $markers)) * 100))}%"
@@ -476,7 +552,7 @@
       {/if}
     </div>
   {:else}
-    <div class="progress-container">
+    <div class="progress-container" class:disabled={$transportButtonsDisabled}>
       <div class="progress-bar" style="width: 0%"></div>
     </div>
   {/if}
@@ -488,6 +564,7 @@
           type="checkbox" 
           checked={$autoplayEnabled} 
           on:change={toggleAutoplay}
+          disabled={$transportButtonsDisabled}
         />
         <span class="toggle-slider"></span>
       </label>
@@ -500,6 +577,7 @@
           type="checkbox" 
           checked={$countInEnabled} 
           on:change={toggleCountIn}
+          disabled={$transportButtonsDisabled}
         />
         <span class="toggle-slider"></span>
       </label>
@@ -510,8 +588,9 @@
   <div class="controls">
     <button 
       class="control-button previous" 
-      on:click={() => socketControl.previousRegion()}
+      on:click={() => safeTransportAction(socketControl.previousRegion)}
       aria-label="Previous region"
+      disabled={$transportButtonsDisabled}
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/>
@@ -520,8 +599,9 @@
     
     <button 
       class="control-button restart" 
-      on:click={() => socketControl.seekToCurrentRegionStart($useLocalTimer)}
+      on:click={() => safeTransportAction(socketControl.seekToCurrentRegionStart, $useLocalTimer)}
       aria-label="Restart current region"
+      disabled={$transportButtonsDisabled}
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z" fill="currentColor"/>
@@ -530,9 +610,9 @@
     
     <button 
       class="control-button play-pause" 
-      on:click={() => socketControl.togglePlay()}
+      on:click={() => safeTransportAction(socketControl.togglePlay)}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
-      disabled={!$nextRegion && !$playbackState.isPlaying && $atHardStop}
+      disabled={$transportButtonsDisabled || (!$nextRegion && !$playbackState.isPlaying && $atHardStop)}
     >
       {#if $playbackState.isPlaying}
         <svg viewBox="0 0 24 24" width="32" height="32">
@@ -547,8 +627,9 @@
     
     <button 
       class="control-button next" 
-      on:click={() => socketControl.nextRegion()}
+      on:click={() => safeTransportAction(socketControl.nextRegion)}
       aria-label="Next region"
+      disabled={$transportButtonsDisabled}
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/>
@@ -557,8 +638,9 @@
     
     <button 
       class="control-button refresh" 
-      on:click={() => socketControl.refreshRegions()}
+      on:click={() => safeTransportAction(socketControl.refreshRegions)}
       aria-label="Refresh regions"
+      disabled={$transportButtonsDisabled}
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" fill="currentColor"/>
@@ -638,6 +720,13 @@
     overflow: visible;
     position: relative;
     cursor: pointer;
+    transition: opacity 0.2s ease-out;
+  }
+  
+  /* Disabled progress container */
+  .progress-container.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
   
   .progress-bar {
@@ -825,6 +914,16 @@
     transform: translateX(20px);
   }
   
+  /* Disabled toggle switch styles */
+  input:disabled + .toggle-slider {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  input:disabled + .toggle-slider:before {
+    background-color: #ccc;
+  }
+
   .toggle-label {
     font-size: 0.9rem;
     color: #ddd;

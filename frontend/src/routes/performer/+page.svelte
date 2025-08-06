@@ -10,12 +10,14 @@
     sortedMarkers
   } from '$lib/stores';
   import { markers, has1008MarkerInRegion, getCustomLengthForRegion, getEffectiveRegionLength } from '$lib/stores/markerStore';
+  import SystemStats from '$lib/components/SystemStats.svelte';
   import { 
     // Stores
     _localPosition as localPosition,
     _useLocalTimer as useLocalTimer,
     _atHardStop as atHardStop,
     _currentTime as currentTime,
+    _transportButtonsDisabled as transportButtonsDisabled,
     
     // Derived stores
     _nextRegion as nextRegion,
@@ -75,13 +77,18 @@
 
 <div class="performer-mode">
   <div class="current-time">
-    {#if $playbackState.selectedSetlistId && $currentSetlist}
-      <div class="setlist-info">
+    <div class="setlist-info">
+      {#if $playbackState.selectedSetlistId && $currentSetlist}
         Setlist: {$currentSetlist.name}
-      </div>
-    {/if}
+      {/if}
+    </div>
     <div class="time-display-top">
-      {$currentTime.toLocaleTimeString()}
+      <div class="time-and-status">
+        {$currentTime.toLocaleTimeString()}
+        <div class="performer-status">
+          <SystemStats />
+        </div>
+      </div>
     </div>
   </div>
   
@@ -109,7 +116,11 @@
       
       <!-- Progress bar -->
       {#if $currentRegion}
-        <div class="progress-container" on:click={handleProgressBarClick}>
+        <div 
+          class="progress-container" 
+          on:click={$transportButtonsDisabled ? null : handleProgressBarClick}
+          class:disabled={$transportButtonsDisabled}
+        >
           <div 
             class="progress-bar" 
             style="width: {Math.min(100, Math.max(0, (($useLocalTimer ? $localPosition - $currentRegion.start : $playbackState.currentPosition - $currentRegion.start) / $songDuration) * 100))}%"
@@ -170,6 +181,7 @@
       class="control-button previous" 
       on:click={previousRegionHandler}
       aria-label="Previous song"
+      disabled={$transportButtonsDisabled}
     >
       <svg viewBox="0 0 24 24" width="36" height="36">
         <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/>
@@ -180,7 +192,7 @@
       class="control-button play-pause" 
       on:click={togglePlay}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
-      disabled={!$nextRegion && !$playbackState.isPlaying && $atHardStop}
+      disabled={$transportButtonsDisabled || (!$nextRegion && !$playbackState.isPlaying && $atHardStop)}
     >
       {#if $playbackState.isPlaying}
         <svg viewBox="0 0 24 24" width="48" height="48">
@@ -197,6 +209,7 @@
       class="control-button next" 
       on:click={nextRegionHandler}
       aria-label="Next song"
+      disabled={$transportButtonsDisabled}
     >
       <svg viewBox="0 0 24 24" width="36" height="36">
         <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/>
@@ -205,12 +218,20 @@
   </div>
   <div class="toggle-container">
     <div class="toggle-item">
-      <div class="status-indicator {$autoplayEnabled ? 'enabled' : 'disabled'}" on:click={toggleAutoplay}>
+      <div 
+        class="status-indicator {$autoplayEnabled ? 'enabled' : 'disabled'}" 
+        on:click={$transportButtonsDisabled ? null : toggleAutoplay}
+        class:button-disabled={$transportButtonsDisabled}
+      >
         Auto-resume: {$autoplayEnabled ? 'ON' : 'OFF'}
       </div>
     </div>
     <div class="toggle-item">
-      <div class="status-indicator {$countInEnabled ? 'enabled' : 'disabled'}" on:click={toggleCountIn}>
+      <div 
+        class="status-indicator {$countInEnabled ? 'enabled' : 'disabled'}" 
+        on:click={$transportButtonsDisabled ? null : toggleCountIn}
+        class:button-disabled={$transportButtonsDisabled}
+      >
         Count-in when pressing marker: {$countInEnabled ? 'ON' : 'OFF'}
       </div>
     </div>
@@ -304,6 +325,13 @@
     overflow: visible;
     position: relative;
     cursor: pointer;
+    transition: opacity 0.2s ease-out;
+  }
+  
+  /* Disabled progress container */
+  .progress-container.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
   
   .progress-bar {
@@ -398,6 +426,26 @@
     text-align: right;
   }
   
+  .time-and-status {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  
+  .performer-status :global(.system-stats-menu) {
+    padding: 0;
+  }
+  
+  .performer-status :global(.stats-icon) {
+    gap: 6px;
+  }
+  
+  /* Hide the CPU usage bar in performer mode to keep it minimal */
+  .performer-status :global(.usage-indicator) {
+    display: none;
+  }
+  
   .toggle-container {
     display: flex;
     flex-direction: column;
@@ -437,6 +485,13 @@
   .status-indicator.disabled {
     background-color: rgba(244, 67, 54, 0.2);
     color: #f44336;
+  }
+  
+  /* Disabled button styles */
+  .status-indicator.button-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 
   .hard-stop-message {
@@ -570,6 +625,18 @@
     .time-display-top {
       align-self: flex-end;
       margin-top: 0.5rem;
+    }
+    
+    .time-and-status {
+      gap: 6px;
+    }
+    
+    .performer-status :global(.system-stats-menu) {
+      padding: 0;
+    }
+    
+    .performer-status :global(.stats-icon) {
+      gap: 4px;
     }
     
     .play-pause {

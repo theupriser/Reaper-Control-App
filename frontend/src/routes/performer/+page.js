@@ -12,6 +12,12 @@ import { socketControl } from '$lib/stores/socket';
 import { markers, getEffectiveRegionLength, has1008MarkerInRegion } from '$lib/stores/markerStore';
 import { initializeSetlistHandling } from '$lib/services/setlistService';
 
+// Store to track disabled state of transport buttons
+export const _transportButtonsDisabled = writable(false);
+
+// Last playback state update timestamp
+let lastPlaybackStateUpdate = Date.now();
+
 // Local timer state
 export const _localTimer = writable(null);
 export const _localPosition = writable(0);
@@ -26,6 +32,45 @@ let previousPlaybackIsPlaying = false;
 
 // Store previous region ID to detect actual region changes
 let previousRegionId = null;
+
+/**
+ * Safely execute a transport control function with button disabling
+ * This prevents multiple rapid clicks from causing the application to freeze
+ * 
+ * The issue: When transport buttons (especially play) are clicked multiple times rapidly,
+ * many commands are sent to Reaper before receiving playback state updates, causing
+ * race conditions that can freeze the application.
+ * 
+ * The solution:
+ * 1. Immediately disable all transport controls when any action is triggered
+ * 2. Execute the requested transport action (which sends a command to Reaper)
+ * 3. Store the timestamp of when the action was triggered
+ * 4. Set a safety timeout to re-enable controls after 2 seconds (in case no update is received)
+ * 5. Re-enable controls when a playback state update is received (in the reactive statement)
+ * 
+ * @param {Function} actionFn - The transport control function to execute
+ * @param {Array} args - Arguments to pass to the function
+ */
+export function _safeTransportAction(actionFn, ...args) {
+  // Step 1: Disable all transport buttons
+  _transportButtonsDisabled.set(true);
+
+  // Step 2: Execute the transport action
+  actionFn(...args);
+
+  // Step 3: Store the current timestamp when the action was triggered
+  // This is used in the reactive statement to ensure we don't re-enable too early
+  lastPlaybackStateUpdate = Date.now();
+
+  // Step 4: Set a safety timeout to re-enable buttons after a maximum wait time
+  // This ensures buttons don't stay disabled if something goes wrong with the backend
+  setTimeout(() => {
+    _transportButtonsDisabled.set(false);
+  }, 2000); // 2 seconds maximum wait time
+
+  // Step 5 happens in the reactive statement that watches playbackState changes
+  // When a playback state update is received, buttons are re-enabled
+}
 
 /**
  * Function to start the local timer
@@ -182,35 +227,35 @@ export function _formatLongTime(seconds) {
  * Toggle play/pause
  */
 export function _togglePlay() {
-  socketControl.togglePlay();
+  _safeTransportAction(socketControl.togglePlay);
 }
 
 /**
  * Go to next region
  */
 export function _nextRegionHandler() {
-  socketControl.nextRegion();
+  _safeTransportAction(socketControl.nextRegion);
 }
 
 /**
  * Go to previous region
  */
 export function _previousRegionHandler() {
-  socketControl.previousRegion();
+  _safeTransportAction(socketControl.previousRegion);
 }
 
 /**
  * Toggle autoplay
  */
 export function _toggleAutoplay() {
-  socketControl.toggleAutoplay();
+  _safeTransportAction(socketControl.toggleAutoplay);
 }
 
 /**
  * Toggle count-in
  */
 export function _toggleCountIn() {
-  socketControl.toggleCountIn();
+  _safeTransportAction(socketControl.toggleCountIn);
 }
 
 /**
@@ -271,7 +316,8 @@ export function _handleProgressBarClick(event) {
   
   // Seek to the position (either marker position or calculated position)
   // Pass isNearMarker flag to indicate whether the click was on a marker
-  socketControl.seekToPosition(finalPosition, isNearMarker);
+  // Use safeTransportAction to prevent multiple rapid clicks
+  _safeTransportAction(socketControl.seekToPosition, finalPosition, isNearMarker);
 }
 
 // Helper function to get the current value of a store
@@ -294,18 +340,22 @@ markers.get = () => get(markers);
 export function _handleKeydown(event) {
   if (event.key === ' ') {
     // Space bar - toggle play/pause
+    // Use the existing _togglePlay function which already uses safeTransportAction
     _togglePlay();
     event.preventDefault();
   } else if (event.key === 'ArrowRight') {
     // Right arrow - next region
+    // Use the existing _nextRegionHandler function which already uses safeTransportAction
     _nextRegionHandler();
     event.preventDefault();
   } else if (event.key === 'ArrowLeft') {
     // Left arrow - previous region
+    // Use the existing _previousRegionHandler function which already uses safeTransportAction
     _previousRegionHandler();
     event.preventDefault();
   } else if (event.key === 'a') {
     // 'a' key - toggle autoplay
+    // Use the existing _toggleAutoplay function which already uses safeTransportAction
     _toggleAutoplay();
     event.preventDefault();
   }
@@ -456,6 +506,16 @@ export function _updateTimer() {
   // Update previous state values
   previousPlaybackPosition = playbackStateValue.currentPosition;
   previousPlaybackIsPlaying = playbackStateValue.isPlaying;
+  
+  // Step 5 of safeTransportAction: Re-enable transport buttons when playback state updates
+  // This is the key part of preventing freezes - we only re-enable controls after
+  // receiving confirmation from the backend that our previous action was processed
+  
+  // Only re-enable if at least 100ms have passed since the last action
+  // This small delay prevents re-enabling too early if multiple updates arrive in quick succession
+  if (Date.now() - lastPlaybackStateUpdate > 100) {
+    _transportButtonsDisabled.set(false);
+  }
 }
 
 /**

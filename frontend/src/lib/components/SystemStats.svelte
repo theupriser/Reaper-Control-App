@@ -3,7 +3,7 @@
   import { io } from 'socket.io-client';
   import { SOCKET_URL, SOCKET_OPTIONS } from '$lib/config/socketConfig';
   import { connectionStatus } from '$lib/stores/socket';
-  import { projectId } from '$lib/stores';
+  import { projectId, midiActivity } from '$lib/stores';
   
   // Socket instance
   let socket;
@@ -127,6 +127,16 @@
 
 <div class="system-stats-menu" on:click={togglePopover}>
   <div class="stats-icon">
+    <div class="midi-indicator {$midiActivity.active ? 'active' : ''}">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" class="midi-icon">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 1c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9z"/>
+        <circle cx="7" cy="8" r="1" />
+        <circle cx="12" cy="6" r="1" />
+        <circle cx="17" cy="8" r="1" />
+        <circle cx="9.5" cy="10" r="1" />
+        <circle cx="14.5" cy="10" r="1" />
+      </svg>
+    </div>
     <div class="connection-dot {$connectionStatus.connected ? 'connected' : 'disconnected'}"></div>
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M18 20V10"></path>
@@ -264,6 +274,7 @@
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
+    margin-left: 4px;
   }
   
   .connection-dot.connected {
@@ -274,6 +285,24 @@
   .connection-dot.disconnected {
     background-color: #F44336;
     box-shadow: 0 0 5px #F44336;
+  }
+  
+  .midi-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.1s ease;
+  }
+  
+  .midi-icon {
+    fill: #aaa;
+    transition: fill 0.1s ease, filter 0.1s ease;
+  }
+  
+  .midi-indicator.active .midi-icon {
+    fill: #FFC107;
+    filter: drop-shadow(0 0 2px #FFC107);
   }
   
   .usage-indicator {

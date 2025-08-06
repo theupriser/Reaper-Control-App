@@ -53,6 +53,13 @@ export {
   isConnected
 } from './connectionStore';
 
+// Re-export from MIDI store
+export {
+  midiActivity,
+  setMidiActive,
+  getMidiActivity
+} from './midiStore';
+
 // Re-export from project store
 export {
   projectId,

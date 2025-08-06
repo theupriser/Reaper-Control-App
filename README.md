@@ -68,6 +68,8 @@ To test disconnection handling:
 2. Copy `.env.example` to `.env` and adjust settings if needed
 3. Run `docker-compose up` to start the application
 
+When running the application with `npm run dev` or `npm run start`, the system will automatically copy `.env.example` to `.env` if it doesn't exist, and then create softlinks to the `.env` file in both the frontend and backend directories.
+
 ### Project Structure
 
 - `/backend` - Node.js backend with Socket.IO server
@@ -88,8 +90,11 @@ The application supports configurable logging through environment variables:
 - `MIDI_LOG_ALL`: Set to `true` to log all MIDI input events, not just mapped notes
 - `PLAYBACK_STATE_LOG`: Set to `true` to log detailed playback state updates
 - `WEB_ADAPTER_LOG`: Set to `true` to log detailed web adapter communication
+- `BPM_UTILS_LOG`: Set to `true` to log detailed BPM calculation information
 - `SOCKET_EVENT_LOG`: Set to `true` to log detailed socket event communication
 - `SOCKET_CONNECTION_LOG`: Set to `true` to log detailed socket connection information
+- `REAPER_SERVICE_LOG`: Set to `true` to log detailed ReaperService operations
+- `SETLIST_NAVIGATION_SERVICE_LOG`: Set to `true` to log detailed SetlistNavigationService operations
 
 These settings can be configured in the `.env` file.
 

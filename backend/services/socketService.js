@@ -9,11 +9,13 @@ const regionService = require('./regionService');
 const markerService = require('./markerService');
 const projectService = require('./projectService');
 const setlistNavigationService = require('./setlistNavigationService');
+const systemStatsService = require('./systemStatsService');
 
 class SocketService {
   constructor() {
     this.io = null;
     this.connectedClients = 0;
+    this.systemStatsInterval = null;
     this.setupEventListeners();
   }
 
@@ -23,7 +25,34 @@ class SocketService {
    */
   initialize(io) {
     this.io = io;
+    
+    // Start system stats interval (every 5 seconds)
+    this.startSystemStatsInterval();
+    
     logger.log('Socket service initialized');
+  }
+  
+  /**
+   * Start the interval to emit system stats to connected clients
+   */
+  startSystemStatsInterval() {
+    // Clear any existing interval
+    if (this.systemStatsInterval) {
+      clearInterval(this.systemStatsInterval);
+    }
+    
+    // Set up interval to emit system stats every 5 seconds
+    this.systemStatsInterval = setInterval(async () => {
+      // Only emit if there are connected clients
+      if (this.io && this.connectedClients > 0) {
+        try {
+          const stats = await systemStatsService.getStats();
+          this.io.emit('systemStats', stats);
+        } catch (error) {
+          logger.error('Error emitting system stats:', error);
+        }
+      }
+    }, 5000); // 5 seconds
   }
 
   /**

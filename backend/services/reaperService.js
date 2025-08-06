@@ -21,6 +21,59 @@ class ReaperService extends baseService {
     });
     
     this.isConnected = false;
+    this.enableLogging = process.env.REAPER_SERVICE_LOG === 'true';
+  }
+  
+  /**
+   * Override startLogContext to check if logging is enabled
+   * @param {string} operation - The operation name
+   * @returns {string} The log context or null if logging is disabled
+   */
+  startLogContext(operation) {
+    if (!this.enableLogging && process.env.NODE_ENV !== 'production') {
+      return null;
+    }
+    return super.startLogContext(operation);
+  }
+
+  /**
+   * Override logWithContext to check if logging is enabled
+   * @param {string} context - The log context
+   * @param {string} message - The message to log
+   * @param {...any} args - Additional arguments to log
+   */
+  logWithContext(context, message, ...args) {
+    if (!context || !this.enableLogging) {
+      return;
+    }
+    super.logWithContext(context, message, ...args);
+  }
+
+  /**
+   * Override log to check if logging is enabled
+   * @param {string} message - The message to log
+   * @param {...any} args - Additional arguments to log
+   */
+  log(message, ...args) {
+    if (!this.enableLogging) {
+      return;
+    }
+    super.log(message, ...args);
+  }
+  
+  /**
+   * Override logErrorWithContext to always log errors but respect context
+   * @param {string} context - The log context
+   * @param {string} message - The error message
+   * @param {Error} error - The error object
+   */
+  logErrorWithContext(context, message, error) {
+    if (!context) {
+      // If context is null due to disabled logging, log the error directly
+      this.logError(message, error);
+      return;
+    }
+    super.logErrorWithContext(context, message, error);
   }
 
   /**

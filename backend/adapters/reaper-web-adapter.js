@@ -1,6 +1,11 @@
 /**
  * Adapter for Reaper Web Interface
  * This adapter provides a clean API for communicating with the Reaper Web Interface
+ * 
+ * Features:
+ * - Automatic retry mechanism for timed out requests (3 attempts with 1s delay)
+ * - Detailed error reporting for connection issues
+ * - Configurable timeout settings
  */
 
 // Import required modules
@@ -68,7 +73,11 @@ class Web {
         logger.error('Web Adapter: Failed to connect to Reaper Web Interface:', error);
       }
       
-      return Promise.reject(error);
+      // Create a more descriptive error that includes retry information
+      const enhancedError = new Error(`Failed to connect to Reaper Web Interface after multiple attempts: ${error.message}`);
+      enhancedError.originalError = error;
+      
+      return Promise.reject(enhancedError);
     }
   }
   
@@ -158,75 +167,106 @@ class Web {
   }
   
   /**
-   * Send a request to the Reaper Web Interface
+   * Send a request to the Reaper Web Interface with retry capability
    * @private
    * @param {string} command - The command to send
+   * @param {number} [retryCount=3] - Number of retry attempts
+   * @param {number} [retryDelay=1000] - Delay between retries in milliseconds
    * @returns {Promise<string>} A promise that resolves with the response
    */
-  sendRequest(command) {
+  sendRequest(command, retryCount = 3, retryDelay = 1000) {
     return new Promise((resolve, reject) => {
-      // Create the request URL
-      const requestUrl = `http://${this.host}:${this.port}/_/${command}`;
-      
-      if (this.logContext) {
-        logger.collect(this.logContext, `Web Adapter: Sending request to ${requestUrl}`);
-      }
-      
-      // Parse the URL
-      const parsedUrl = url.parse(requestUrl);
-      
-      // Create the request options
-      const options = {
-        hostname: parsedUrl.hostname,
-        port: parsedUrl.port,
-        path: parsedUrl.path,
-        method: 'GET',
-        timeout: 5000 // 5 second timeout
+      const attemptRequest = (attemptsLeft) => {
+        // Create the request URL
+        const requestUrl = `http://${this.host}:${this.port}/_/${command}`;
+        
+        if (this.logContext) {
+          logger.collect(this.logContext, `Web Adapter: Sending request to ${requestUrl}${attemptsLeft < retryCount ? ` (retry ${retryCount - attemptsLeft})` : ''}`);
+        }
+        
+        // Parse the URL
+        const parsedUrl = url.parse(requestUrl);
+        
+        // Create the request options
+        const options = {
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port,
+          path: parsedUrl.path,
+          method: 'GET',
+          timeout: 5000 // 5 second timeout
+        };
+        
+        // Create the request
+        const req = http.request(options, (res) => {
+          let data = '';
+          
+          // Handle data chunks
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          
+          // Handle end of response
+          res.on('end', () => {
+            if (this.logContext) {
+              logger.collect(this.logContext, `Web Adapter: Received response for ${command}:`, data.substring(0, 100) + (data.length > 100 ? '...' : ''));
+            }
+            resolve(data);
+          });
+        });
+        
+        // Handle errors
+        req.on('error', (error) => {
+          if (this.logContext) {
+            logger.collectError(this.logContext, `Web Adapter: Error sending request to ${requestUrl}:`, error);
+          } else {
+            // Always log errors, even without detailed logging
+            logger.error(`Web Adapter: Error sending request to ${requestUrl}:`, error);
+          }
+          
+          // If we have attempts left, retry after delay
+          if (attemptsLeft > 0) {
+            if (this.logContext) {
+              logger.collect(this.logContext, `Web Adapter: Retrying request to ${requestUrl} in ${retryDelay}ms (${attemptsLeft} attempts left)`);
+            } else {
+              logger.log(`Web Adapter: Retrying request to ${requestUrl} in ${retryDelay}ms (${attemptsLeft} attempts left)`);
+            }
+            
+            setTimeout(() => attemptRequest(attemptsLeft - 1), retryDelay);
+          } else {
+            reject(error);
+          }
+        });
+        
+        // Handle timeout
+        req.on('timeout', () => {
+          if (this.logContext) {
+            logger.collectError(this.logContext, `Web Adapter: Request to ${requestUrl} timed out`);
+          } else {
+            // Always log timeout errors, even without detailed logging
+            logger.error(`Web Adapter: Request to ${requestUrl} timed out`);
+          }
+          req.abort();
+          
+          // If we have attempts left, retry after delay
+          if (attemptsLeft > 0) {
+            if (this.logContext) {
+              logger.collect(this.logContext, `Web Adapter: Retrying request to ${requestUrl} after timeout in ${retryDelay}ms (${attemptsLeft} attempts left)`);
+            } else {
+              logger.log(`Web Adapter: Retrying request to ${requestUrl} after timeout in ${retryDelay}ms (${attemptsLeft} attempts left)`);
+            }
+            
+            setTimeout(() => attemptRequest(attemptsLeft - 1), retryDelay);
+          } else {
+            reject(new Error(`Request to ${requestUrl} timed out after ${retryCount} attempts. The Reaper endpoint might be temporarily unavailable.`));
+          }
+        });
+        
+        // End the request
+        req.end();
       };
       
-      // Create the request
-      const req = http.request(options, (res) => {
-        let data = '';
-        
-        // Handle data chunks
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-        
-        // Handle end of response
-        res.on('end', () => {
-          if (this.logContext) {
-            logger.collect(this.logContext, `Web Adapter: Received response for ${command}:`, data.substring(0, 100) + (data.length > 100 ? '...' : ''));
-          }
-          resolve(data);
-        });
-      });
-      
-      // Handle errors
-      req.on('error', (error) => {
-        if (this.logContext) {
-          logger.collectError(this.logContext, `Web Adapter: Error sending request to ${requestUrl}:`, error);
-        } else {
-          // Always log errors, even without detailed logging
-          logger.error(`Web Adapter: Error sending request to ${requestUrl}:`, error);
-        }
-        reject(error);
-      });
-      
-      // Handle timeout
-      req.on('timeout', () => {
-        if (this.logContext) {
-          logger.collectError(this.logContext, `Web Adapter: Request to ${requestUrl} timed out`);
-        } else {
-          // Always log timeout errors, even without detailed logging
-          logger.error(`Web Adapter: Request to ${requestUrl} timed out`);
-        }
-        req.abort();
-        reject(new Error('Request timed out'));
-      });
-      
-      // End the request
-      req.end();
+      // Start the first attempt
+      attemptRequest(retryCount);
     });
   }
   

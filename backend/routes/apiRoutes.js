@@ -6,6 +6,7 @@
 const express = require('express');
 const regionService = require('../services/regionService');
 const setlistService = require('../services/setlistService');
+const systemStatsService = require('../services/systemStatsService');
 const logger = require('../utils/logger');
 
 // Create a router
@@ -359,6 +360,23 @@ router.put('/setlists/:id/items/:itemId/move', async (req, res) => {
     }
   } catch (error) {
     logger.error('Error moving setlist item:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/system-stats
+ * Returns current CPU and memory usage
+ */
+router.get('/system-stats', async (req, res) => {
+  try {
+    const stats = await systemStatsService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error('Error getting system stats:', error);
     res.status(500).json({
       error: 'Internal server error',
       message: error.message

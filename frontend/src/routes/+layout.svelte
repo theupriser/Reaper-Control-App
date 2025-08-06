@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { projectId } from '$lib/stores';
   import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
+  import SystemStats from '$lib/components/SystemStats.svelte';
   import { _initializeApp } from './+layout.js';
   
   // Initialize the app when mounted
@@ -30,7 +31,10 @@
       <a href="/" class="nav-link">Player</a>
       <a href="/setlists" class="nav-link">Setlists</a>
       <a href="/performer" class="nav-link performer-link">Performer Mode</a>
-      <ConnectionStatus />
+      <div class="status-container">
+        <SystemStats />
+        <ConnectionStatus />
+      </div>
     </nav>
   </header>
   
@@ -96,6 +100,14 @@
     width: 100%;
     justify-content: center;
     border-top: 1px solid #333;
+    position: relative;
+  }
+  
+  .status-container {
+    display: flex;
+    position: absolute;
+    right: 1rem;
+    gap: 0.5rem;
   }
   
   .nav-link {
@@ -166,6 +178,16 @@
     
     .main-nav {
       gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding-bottom: 3rem; /* Add space for the status container */
+    }
+    
+    .status-container {
+      position: absolute;
+      right: 0.5rem;
+      bottom: 0.5rem;
+      top: auto;
     }
     
     .nav-link {

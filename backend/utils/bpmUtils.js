@@ -13,6 +13,79 @@ class BpmCalculator {
     // Store for recent beat positions and timestamps for BPM calculation
     this.beatPositions = [];
     this.initialBpm = null;
+    this.enableLogging = process.env.BPM_UTILS_LOG === 'true';
+    this.serviceName = 'BpmUtils';
+  }
+  
+  /**
+   * Log a message if logging is enabled
+   * @param {string} message - The message to log
+   * @param {...any} args - Additional arguments to log
+   */
+  log(message, ...args) {
+    if (!this.enableLogging) {
+      return;
+    }
+    logger.log(`[${this.serviceName}] ${message}`, ...args);
+  }
+  
+  /**
+   * Log an error (always logs regardless of enableLogging)
+   * @param {string} message - The error message
+   * @param {Error} error - The error object
+   */
+  logError(message, error) {
+    logger.error(`[${this.serviceName}] ${message}`, error);
+  }
+  
+  /**
+   * Start a log collection context if logging is enabled
+   * @param {string} operation - The operation name
+   * @returns {string} The log context or null if logging is disabled
+   */
+  startLogContext(operation) {
+    if (!this.enableLogging && process.env.NODE_ENV !== 'production') {
+      return null;
+    }
+    return logger.startCollection(`${this.serviceName}.${operation}`);
+  }
+  
+  /**
+   * Log a message within a context if logging is enabled
+   * @param {string} context - The log context
+   * @param {string} message - The message to log
+   * @param {...any} args - Additional arguments to log
+   */
+  logWithContext(context, message, ...args) {
+    if (!context || !this.enableLogging) {
+      return;
+    }
+    logger.collect(context, message, ...args);
+  }
+  
+  /**
+   * Log an error within a context (always logs errors)
+   * @param {string} context - The log context
+   * @param {string} message - The error message
+   * @param {Error} error - The error object
+   */
+  logErrorWithContext(context, message, error) {
+    if (!context) {
+      // If context is null due to disabled logging, log the error directly
+      this.logError(message, error);
+      return;
+    }
+    logger.collectError(context, message, error);
+  }
+  
+  /**
+   * Flush logs for a context
+   * @param {string} context - The log context
+   */
+  flushLogs(context) {
+    if (context) {
+      logger.flushLogs(context);
+    }
   }
 
   /**
@@ -21,18 +94,23 @@ class BpmCalculator {
    * @param {number} [initialBpm=null] - Optional initial BPM to use (from !bpm marker)
    */
   resetBeatPositions(initialBpm = null) {
-    const logContext = logger.startCollection('bpmUtils.resetBeatPositions');
+    const logContext = this.startLogContext('resetBeatPositions');
     
     if (initialBpm !== null && initialBpm > 0) {
-      logger.collect(logContext, `Resetting beat positions with initial BPM: ${initialBpm}`);
+      this.logWithContext(logContext, `Resetting beat positions with initial BPM: ${initialBpm}`);
+    } else {
+      this.logWithContext(logContext, 'Resetting beat positions');
+    }
+    
+    if (initialBpm !== null && initialBpm > 0) {
       this.initialBpm = initialBpm;
     } else {
-      logger.collect(logContext, 'Resetting beat positions');
       this.initialBpm = null;
     }
     
     this.beatPositions = [];
-    logger.flushLogs(logContext);
+    
+    this.flushLogs(logContext);
   }
 
   /**
@@ -63,7 +141,7 @@ class BpmCalculator {
    * @returns {number} Calculated BPM
    */
   calculateBPM(defaultBpm = 120) {
-    const logContext = logger.startCollection('bpmUtils.calculateBPM');
+    const logContext = this.startLogContext('calculateBPM');
     
     try {
       // If we have at least 2 beat positions, calculate BPM based on the difference
@@ -86,27 +164,27 @@ class BpmCalculator {
         if (isNaN(roundedBpm) || !isFinite(roundedBpm) || roundedBpm > 999 || roundedBpm <= 0) {
           // If we have an initial BPM from a marker, use that
           if (this.initialBpm !== null && this.initialBpm > 0) {
-            logger.collect(logContext, `Calculated BPM is invalid (${roundedBpm}), using initial BPM: ${this.initialBpm}`);
-            logger.flushLogs(logContext);
+            this.logWithContext(logContext, `Calculated BPM is invalid (${roundedBpm}), using initial BPM: ${this.initialBpm}`);
+            this.flushLogs(logContext);
             return this.initialBpm;
           }
           
           // Otherwise use default BPM
-          logger.collect(logContext, `Calculated BPM is invalid (${roundedBpm}), using default BPM: ${defaultBpm}`);
-          logger.flushLogs(logContext);
+          this.logWithContext(logContext, `Calculated BPM is invalid (${roundedBpm}), using default BPM: ${defaultBpm}`);
+          this.flushLogs(logContext);
           return defaultBpm;
         }
         
-        logger.collect(logContext, `Calculated BPM from ${this.beatPositions.length} beat positions: ${roundedBpm}`);
-        logger.flushLogs(logContext);
+        this.logWithContext(logContext, `Calculated BPM from ${this.beatPositions.length} beat positions: ${roundedBpm}`);
+        this.flushLogs(logContext);
         return roundedBpm;
       } 
       // If we only have one beat position
       else if (this.beatPositions.length === 1) {
         // If we have an initial BPM from a marker, use that
         if (this.initialBpm !== null && this.initialBpm > 0) {
-          logger.collect(logContext, `Using initial BPM from marker: ${this.initialBpm}`);
-          logger.flushLogs(logContext);
+          this.logWithContext(logContext, `Using initial BPM from marker: ${this.initialBpm}`);
+          this.flushLogs(logContext);
           return this.initialBpm;
         }
         
@@ -117,31 +195,31 @@ class BpmCalculator {
         
         // Check if the calculated BPM is valid
         if (isNaN(roundedBpm) || !isFinite(roundedBpm) || roundedBpm > 999 || roundedBpm <= 0) {
-          logger.collect(logContext, `Calculated BPM from single beat position is invalid (${roundedBpm}), using default BPM: ${defaultBpm}`);
-          logger.flushLogs(logContext);
+          this.logWithContext(logContext, `Calculated BPM from single beat position is invalid (${roundedBpm}), using default BPM: ${defaultBpm}`);
+          this.flushLogs(logContext);
           return defaultBpm;
         }
         
-        logger.collect(logContext, `Calculated BPM from single beat position: ${roundedBpm}`);
-        logger.flushLogs(logContext);
+        this.logWithContext(logContext, `Calculated BPM from single beat position: ${roundedBpm}`);
+        this.flushLogs(logContext);
         return roundedBpm;
       }
       // No beat positions available
       else {
         // If we have an initial BPM from a marker, use that
         if (this.initialBpm !== null && this.initialBpm > 0) {
-          logger.collect(logContext, `No beat positions available, using initial BPM: ${this.initialBpm}`);
-          logger.flushLogs(logContext);
+          this.logWithContext(logContext, `No beat positions available, using initial BPM: ${this.initialBpm}`);
+          this.flushLogs(logContext);
           return this.initialBpm;
         }
         
         // Otherwise use default BPM
-        logger.collect(logContext, `No beat positions available, using default BPM: ${defaultBpm}`);
-        logger.flushLogs(logContext);
+        this.logWithContext(logContext, `No beat positions available, using default BPM: ${defaultBpm}`);
+        this.flushLogs(logContext);
         return defaultBpm;
       }
     } catch (error) {
-      logger.collectError(logContext, 'Error calculating BPM:', error);
+      this.logErrorWithContext(logContext, 'Error calculating BPM:', error);
       
       // If we have an initial BPM from a marker, use that
       if (this.initialBpm !== null && this.initialBpm > 0) {

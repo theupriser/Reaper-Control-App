@@ -16,6 +16,65 @@ class SetlistNavigationService extends baseService {
     
     this.endOfRegionPollingInterval = null;
     this.isTransitioning = false;
+    this.enableLogging = process.env.SETLIST_NAVIGATION_SERVICE_LOG === 'true';
+    
+    // Store original methods
+    this._originalStartLogContext = this.startLogContext;
+    this._originalLogWithContext = this.logWithContext;
+    this._originalLog = this.log;
+    this._originalLogErrorWithContext = this.logErrorWithContext;
+    
+    /**
+     * Override startLogContext to check if logging is enabled
+     * @param {string} operation - The operation name
+     * @returns {string} The log context or null if logging is disabled
+     */
+    this.startLogContext = (operation) => {
+      if (!this.enableLogging && process.env.NODE_ENV !== 'production') {
+        return null;
+      }
+      return this._originalStartLogContext(operation);
+    };
+    
+    /**
+     * Override logWithContext to check if logging is enabled
+     * @param {string} context - The log context
+     * @param {string} message - The message to log
+     * @param {...any} args - Additional arguments to log
+     */
+    this.logWithContext = (context, message, ...args) => {
+      if (!context || !this.enableLogging) {
+        return;
+      }
+      this._originalLogWithContext(context, message, ...args);
+    };
+    
+    /**
+     * Override log to check if logging is enabled
+     * @param {string} message - The message to log
+     * @param {...any} args - Additional arguments to log
+     */
+    this.log = (message, ...args) => {
+      if (!this.enableLogging) {
+        return;
+      }
+      this._originalLog(message, ...args);
+    };
+    
+    /**
+     * Override logErrorWithContext to always log errors but respect context
+     * @param {string} context - The log context
+     * @param {string} message - The error message
+     * @param {Error} error - The error object
+     */
+    this.logErrorWithContext = (context, message, error) => {
+      if (!context) {
+        // If context is null due to disabled logging, log the error directly
+        this.logError(message, error);
+        return;
+      }
+      this._originalLogErrorWithContext(context, message, error);
+    };
     
     // Set up event listener for playback state updates
     regionService.on('playbackStateUpdated', (playbackState) => {

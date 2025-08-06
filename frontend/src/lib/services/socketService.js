@@ -48,6 +48,19 @@ function initialize() {
   
   logger.log('Initializing socket connection to:', SOCKET_URL);
   
+  // Initialize global variable to track socket connection status
+  window.socketConnected = false;
+  
+  // Report initial connection attempt to Electron main process if running in Electron
+  if (window.electronAPI && window.electronAPI.reportConnectionStatus) {
+    window.electronAPI.reportConnectionStatus({ 
+      connected: false, 
+      reason: 'initializing', 
+      status: 'Attempting to connect to backend'
+    });
+    logger.log('Reported initial connection attempt to Electron main process');
+  }
+  
   // Create the socket connection
   socket = io(SOCKET_URL, SOCKET_OPTIONS);
   
@@ -186,6 +199,17 @@ function handleConnect() {
   // Start ping interval
   startPingInterval();
   
+  // Set global variable to track socket connection status
+  if (isBrowser()) {
+    window.socketConnected = true;
+  }
+  
+  // Report connection status to Electron main process if running in Electron
+  if (isBrowser() && window.electronAPI && window.electronAPI.reportConnectionStatus) {
+    window.electronAPI.reportConnectionStatus({ connected: true });
+    logger.log('Reported connected status to Electron main process');
+  }
+  
   // Refresh regions immediately after connection
   setTimeout(() => {
     logger.log('Refreshing regions after connection...');
@@ -204,6 +228,17 @@ function handleDisconnect() {
   
   // Stop ping interval
   stopPingInterval();
+  
+  // Update global variable to track socket connection status
+  if (isBrowser()) {
+    window.socketConnected = false;
+  }
+  
+  // Report disconnection status to Electron main process if running in Electron
+  if (isBrowser() && window.electronAPI && window.electronAPI.reportConnectionStatus) {
+    window.electronAPI.reportConnectionStatus({ connected: false, reason: 'disconnected' });
+    logger.log('Reported disconnected status to Electron main process');
+  }
 }
 
 /**
@@ -263,6 +298,16 @@ function handleReconnectFailed() {
     message: 'Connection to server lost',
     details: 'Unable to reconnect to the backend server. Please check if the server is running and refresh the page.'
   });
+  
+  // Report reconnection failure to Electron main process if running in Electron
+  if (isBrowser() && window.electronAPI && window.electronAPI.reportConnectionStatus) {
+    window.electronAPI.reportConnectionStatus({ 
+      connected: false, 
+      reason: 'reconnect_failed', 
+      error: 'Failed to reconnect after multiple attempts' 
+    });
+    logger.log('Reported reconnection failure to Electron main process');
+  }
 }
 
 /**
@@ -278,6 +323,16 @@ function handleConnectError(error) {
     message: 'Failed to connect to server',
     details: error.message
   });
+  
+  // Report connection error to Electron main process if running in Electron
+  if (isBrowser() && window.electronAPI && window.electronAPI.reportConnectionStatus) {
+    window.electronAPI.reportConnectionStatus({ 
+      connected: false, 
+      reason: 'connect_error', 
+      error: error.message 
+    });
+    logger.log('Reported connection error to Electron main process');
+  }
 }
 
 /**

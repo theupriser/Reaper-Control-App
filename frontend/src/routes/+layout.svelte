@@ -1,7 +1,6 @@
 <script>
   import { onMount } from 'svelte';
   import { projectId } from '$lib/stores';
-  import ConnectionStatus from '$lib/components/ConnectionStatus.svelte';
   import SystemStats from '$lib/components/SystemStats.svelte';
   import { _initializeApp } from './+layout.js';
   
@@ -33,7 +32,6 @@
       <a href="/performer" class="nav-link performer-link">Performer Mode</a>
       <div class="status-container">
         <SystemStats />
-        <ConnectionStatus />
       </div>
     </nav>
   </header>

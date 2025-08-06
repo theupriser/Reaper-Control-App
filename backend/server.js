@@ -1,6 +1,12 @@
 /**
  * Main Server
  * Entry point for the Reaper Control application
+ * 
+ * This server provides:
+ * 1. A health check endpoint to indicate when initialization is complete
+ * 2. Socket.IO connections for real-time communication with the frontend
+ * 3. API endpoints for controlling Reaper
+ * 4. Services for managing regions, projects, setlists, and markers
  */
 
 const express = require('express');
@@ -22,10 +28,27 @@ const setlistService = require('./services/setlistService');
 const markerService = require('./services/markerService');
 const SocketController = require('./controllers/socketController');
 
+// Track application initialization status
+// This flag is used by the health check endpoint to indicate when the backend is fully initialized
+// The Electron app waits for this flag to be true before loading the frontend
+let isAppInitialized = false;
+
 // Create Express app
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Add a health check endpoint
+// This endpoint is used by the Electron app to determine when the backend is ready
+// It returns 'ready' when all services are initialized, or 'initializing' otherwise
+// The Electron app polls this endpoint and only loads the frontend when status is 'ready'
+app.get('/health', (req, res) => {
+  if (isAppInitialized) {
+    res.status(200).json({ status: 'ready' });
+  } else {
+    res.status(200).json({ status: 'initializing' });
+  }
+});
 
 // Create HTTP server
 const server = http.createServer(app);
@@ -64,6 +87,11 @@ async function initializeApp() {
     
     // Register API routes after all services are initialized
     app.use('/api', apiRoutes);
+    
+    // Mark application as initialized
+    // This signals to the health check endpoint that the backend is fully ready
+    // The Electron app will now proceed to load the frontend
+    isAppInitialized = true;
     
     logger.log('Application initialized successfully');
   } catch (error) {

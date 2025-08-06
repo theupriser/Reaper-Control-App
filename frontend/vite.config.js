@@ -14,5 +14,16 @@ export default defineConfig({
         secure: false
       }
     }
+  },
+  build: {
+    outDir: 'build',
+    emptyOutDir: true,
+    // Use relative paths for assets when building for Electron
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        manualChunks: undefined
+      }
+    }
   }
 });

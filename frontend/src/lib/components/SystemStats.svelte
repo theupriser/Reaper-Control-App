@@ -4,10 +4,10 @@
   import { SOCKET_URL, SOCKET_OPTIONS } from '$lib/config/socketConfig';
   import { connectionStatus } from '$lib/stores/socket';
   
-    // Socket instance
-    let socket;
+  // Socket instance
+  let socket;
   
-    // System stats data
+  // System stats data
   let stats = {
     cpu: {
       usage: 0,
@@ -26,15 +26,10 @@
   // Combined memory usage
   let combinedMemoryUsage = {
     nodeBackend: 0,
-    electron: 0,
     svelte: 0,
     total: 0,
     usedPercent: 0
   };
-  
-  // Electron detection
-  let isElectron = false;
-  let electronVersion = '';
   
   // Popover state
   let showPopover = false;
@@ -83,16 +78,6 @@
     // Node backend memory usage (from stats)
     combinedMemoryUsage.nodeBackend = stats.memory.used;
     
-    // Estimate Electron main process memory usage (if running in Electron)
-    // This is a rough estimate as we don't have direct access to the main process memory
-    if (isElectron) {
-      // Estimate Electron main process memory as a percentage of the backend memory
-      // This is just an estimate - in a real app you might want to use IPC to get actual values
-      combinedMemoryUsage.electron = Math.round(stats.memory.used * 0.3); // 30% of backend as an estimate
-    } else {
-      combinedMemoryUsage.electron = 0;
-    }
-    
     // Estimate Svelte frontend memory usage using performance API if available
     if (typeof window !== 'undefined' && window.performance && window.performance.memory) {
       combinedMemoryUsage.svelte = window.performance.memory.usedJSHeapSize;
@@ -102,7 +87,7 @@
     }
     
     // Calculate total combined memory usage
-    combinedMemoryUsage.total = combinedMemoryUsage.nodeBackend + combinedMemoryUsage.electron + combinedMemoryUsage.svelte;
+    combinedMemoryUsage.total = combinedMemoryUsage.nodeBackend + combinedMemoryUsage.svelte;
     
     // Calculate percentage of total system memory
     combinedMemoryUsage.usedPercent = Math.round((combinedMemoryUsage.total / stats.memory.total) * 100);
@@ -115,15 +100,6 @@
       
       // Listen for system stats updates
       socket.on('systemStats', handleSystemStats);
-      
-      // Check if running in Electron by looking for the electronAPI exposed by the preload script
-      isElectron = window.electronAPI && window.electronAPI.isElectron || false;
-
-      // If we're in Electron, we can access the electronAPI
-      if (isElectron && window.electronAPI) {
-        // We could get more info from the Electron API if needed
-        electronVersion = 'Electron API available';
-      }
     }
     
     // Add click outside listener
@@ -173,20 +149,10 @@
           <div class="stats-details">
             <div class="stat-item">
               <span class="stat-label">Runtime:</span>
-              <span class="stat-value {isElectron ? 'electron-status' : 'browser-status'}">
-                {#if isElectron}
-                  Running in Electron
-                {:else}
-                  Running in browser
-                {/if}
+              <span class="stat-value browser-status">
+                Running in browser
               </span>
             </div>
-            {#if isElectron && electronVersion}
-              <div class="stat-item">
-                <span class="stat-label">Electron:</span>
-                <span class="stat-value">{electronVersion}</span>
-              </div>
-            {/if}
             <div class="stat-item">
               <span class="stat-label">Connection:</span>
               <span class="stat-value {$connectionStatus.connected ? 'connected-status' : 'disconnected-status'}">
@@ -243,12 +209,6 @@
               <span class="stat-label">Node Backend:</span>
               <span class="stat-value">{formatBytes(combinedMemoryUsage.nodeBackend)}</span>
             </div>
-            {#if isElectron}
-            <div class="stat-item">
-              <span class="stat-label">Electron:</span>
-              <span class="stat-value">{formatBytes(combinedMemoryUsage.electron)}</span>
-            </div>
-            {/if}
             <div class="stat-item">
               <span class="stat-label">Svelte:</span>
               <span class="stat-value">{formatBytes(combinedMemoryUsage.svelte)}</span>
@@ -443,10 +403,6 @@
   }
   
   /* Status styles */
-  .electron-status {
-    color: #2ecc71;
-  }
-  
   .browser-status {
     color: #3498db;
   }

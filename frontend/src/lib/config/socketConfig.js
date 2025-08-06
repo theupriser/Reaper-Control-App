@@ -6,14 +6,11 @@
 /**
  * Backend server URL - Check if window is defined to handle SSR
  * When running in Docker, we need to use the service name 'backend' instead of window.location.hostname
- * When running in Electron, we always use localhost
  */
 export const SOCKET_URL = typeof window !== 'undefined' 
-  ? window.isElectronApp // Check if running in Electron
-    ? `http://localhost:3000` // Always use localhost in Electron
-    : window.location.hostname === 'localhost' 
-      ? `http://localhost:3000` 
-      : `http://backend:3000` // Use Docker service name when not on localhost
+  ? window.location.hostname === 'localhost' 
+    ? `http://localhost:3000` 
+    : `http://backend:3000` // Use Docker service name when not on localhost
   : 'http://localhost:3000'; // Fallback for server-side rendering
 
 /**

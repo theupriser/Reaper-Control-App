@@ -30,7 +30,6 @@ const SocketController = require('./controllers/socketController');
 
 // Track application initialization status
 // This flag is used by the health check endpoint to indicate when the backend is fully initialized
-// The Electron app waits for this flag to be true before loading the frontend
 let isAppInitialized = false;
 
 // Create Express app
@@ -39,9 +38,7 @@ app.use(cors());
 app.use(express.json());
 
 // Add a health check endpoint
-// This endpoint is used by the Electron app to determine when the backend is ready
 // It returns 'ready' when all services are initialized, or 'initializing' otherwise
-// The Electron app polls this endpoint and only loads the frontend when status is 'ready'
 app.get('/health', (req, res) => {
   if (isAppInitialized) {
     res.status(200).json({ status: 'ready' });
@@ -90,7 +87,6 @@ async function initializeApp() {
     
     // Mark application as initialized
     // This signals to the health check endpoint that the backend is fully ready
-    // The Electron app will now proceed to load the frontend
     isAppInitialized = true;
     
     logger.log('Application initialized successfully');

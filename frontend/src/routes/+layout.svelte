@@ -19,11 +19,6 @@
   <header>
     <div class="header-content">
       <h1>Reaper Control</h1>
-      {#if $projectId}
-        <div class="project-id">
-          Project ID: <span class="id-value">{$projectId}</span>
-        </div>
-      {/if}
     </div>
     
     <nav class="main-nav">
@@ -84,11 +79,6 @@
     font-size: 1.5rem;
   }
   
-  .project-id {
-    font-size: 0.8rem;
-    color: #aaaaaa;
-    margin-top: 0.5rem;
-  }
   
   .main-nav {
     display: flex;
@@ -138,13 +128,6 @@
     color: #4CAF50;
   }
   
-  .id-value {
-    font-family: monospace;
-    background-color: #2a2a2a;
-    padding: 0.2rem 0.4rem;
-    border-radius: 4px;
-    color: #4caf50;
-  }
   
   main {
     flex: 1;

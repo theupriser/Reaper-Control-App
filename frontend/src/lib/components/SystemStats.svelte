@@ -3,6 +3,7 @@
   import { io } from 'socket.io-client';
   import { SOCKET_URL, SOCKET_OPTIONS } from '$lib/config/socketConfig';
   import { connectionStatus } from '$lib/stores/socket';
+  import { projectId } from '$lib/stores';
   
   // Socket instance
   let socket;
@@ -153,6 +154,14 @@
                 Running in browser
               </span>
             </div>
+            {#if $projectId}
+              <div class="stat-item">
+                <span class="stat-label">Project ID:</span>
+                <span class="stat-value project-id-value">
+                  {$projectId}
+                </span>
+              </div>
+            {/if}
             <div class="stat-item">
               <span class="stat-label">Connection:</span>
               <span class="stat-value {$connectionStatus.connected ? 'connected-status' : 'disconnected-status'}">
@@ -388,11 +397,13 @@
   
   .stat-label {
     color: #aaa;
+    white-space: nowrap;
   }
   
   .stat-value {
     color: #fff;
     font-family: monospace;
+    text-align: right;
   }
   
   .last-updated {
@@ -413,6 +424,14 @@
   
   .disconnected-status {
     color: #F44336;
+  }
+  
+  .project-id-value {
+    font-family: monospace;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    color: #4caf50;
+    text-align: right;
   }
   
   /* Responsive adjustments for mobile devices */

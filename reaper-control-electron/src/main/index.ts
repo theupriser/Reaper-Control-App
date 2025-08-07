@@ -8,6 +8,9 @@ import os from 'os'
 // Global reference to the main window
 let mainWindow: BrowserWindow | null = null
 
+// Reference to the system stats monitoring interval
+let systemStatsInterval: NodeJS.Timeout | null = null
+
 function createWindow(): void {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -23,31 +26,35 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    if (mainWindow) {
+      mainWindow.show()
 
-    // Initialize the backend service
-    backendService.initialize(mainWindow)
+      // Initialize the backend service
+      backendService.initialize(mainWindow)
 
-    // Start system stats monitoring
-    startSystemStatsMonitoring()
+      // Start system stats monitoring
+      startSystemStatsMonitoring()
+    }
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  if (mainWindow) {
+    mainWindow.webContents.setWindowOpenHandler((details) => {
+      shell.openExternal(details.url)
+      return { action: 'deny' }
+    })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+    // HMR for renderer base on electron-vite cli.
+    // Load the remote URL for development or the local html file for production.
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    } else {
+      mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    }
 
-  // Open DevTools in development mode
-  if (is.dev) {
-    mainWindow.webContents.openDevTools()
+    // Open DevTools in development mode
+    if (is.dev) {
+      mainWindow.webContents.openDevTools()
+    }
   }
 
   // Set up IPC handlers
@@ -164,8 +171,14 @@ function setupIpcHandlers(): void {
  * Start monitoring system stats and send updates to the renderer process
  */
 function startSystemStatsMonitoring(): void {
+  // Clear any existing interval
+  if (systemStatsInterval) {
+    clearInterval(systemStatsInterval)
+    systemStatsInterval = null
+  }
+
   // Send system stats every 2 seconds
-  setInterval(() => {
+  systemStatsInterval = setInterval(() => {
     if (!mainWindow) return
 
     const cpuInfo = os.cpus()
@@ -187,7 +200,9 @@ function startSystemStatsMonitoring(): void {
       lastUpdated: Date.now()
     }
 
-    mainWindow.webContents.send('system-stats', stats)
+    if (mainWindow) {
+      mainWindow.webContents.send('system-stats', stats)
+    }
   }, 2000)
 }
 
@@ -223,9 +238,16 @@ app.on('window-all-closed', () => {
     backendService.cleanup()
   }
 
-  if (process.platform !== 'darwin') {
-    app.quit()
+  // Clean up system stats monitoring interval
+  if (systemStatsInterval) {
+    clearInterval(systemStatsInterval)
+    systemStatsInterval = null
   }
+
+  // Set mainWindow to null to prevent further access
+  mainWindow = null
+
+  app.quit();
 })
 
 // In this file you can include the rest of your app's specific main process

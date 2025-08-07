@@ -49,6 +49,12 @@ interface PlaybackState {
   isPlaying: boolean;
   position: number;
   currentRegionId?: string;
+  selectedSetlistId?: string | null;
+  bpm?: number;
+  timeSignature?: {
+    numerator: number;
+    denominator: number;
+  };
 }
 
 interface StatusMessage {
@@ -195,7 +201,59 @@ function handleMarkersUpdate(data: Marker[]): void {
  * Handles the playback state update event
  */
 function handlePlaybackStateUpdate(data: PlaybackState): void {
-  updatePlaybackState(data);
+  // Log the received data for debugging
+  logger.log('Received playback state update:', data);
+
+  // Check for missing required fields
+  if (data === undefined || data === null) {
+    logger.error('Received playback state is null or undefined');
+    return;
+  }
+
+  // Validate required fields and log any missing ones
+  const missingFields = [];
+  if (data.isPlaying === undefined) missingFields.push('isPlaying');
+  if (data.position === undefined) missingFields.push('position');
+
+  if (missingFields.length > 0) {
+    logger.error(`Received playback state is missing required fields: ${missingFields.join(', ')}`, data);
+  }
+
+  // Map the fields to match what the frontend expects with robust defaults
+  const mappedData = {
+    // For boolean values, explicitly convert to boolean with !! to handle undefined
+    isPlaying: data.isPlaying !== undefined ? Boolean(data.isPlaying) : false,
+
+    // For numeric values, use Number() with || to handle NaN, undefined, etc.
+    currentPosition: data.position !== undefined ? Number(data.position) : 0,
+
+    // For currentRegionId, first check if it exists, then convert to number or null
+    currentRegionId: data.currentRegionId !== undefined ?
+      (data.currentRegionId === null ? null : Number(data.currentRegionId)) : null,
+
+    // For selectedSetlistId, explicitly check for undefined to preserve null values
+    selectedSetlistId: data.selectedSetlistId !== undefined ? data.selectedSetlistId : null,
+
+    // For bpm, ensure we don't convert 0 to the default value
+    bpm: data.bpm !== undefined ? Number(data.bpm) : 120,
+
+    // For timeSignature, check if it exists and has required properties
+    timeSignature: (data.timeSignature &&
+      typeof data.timeSignature.numerator === 'number' &&
+      typeof data.timeSignature.denominator === 'number') ?
+      data.timeSignature : { numerator: 4, denominator: 4 }
+  };
+
+  // Log the mapped data for debugging
+  logger.log('Mapped playback state data:', mappedData);
+
+  // Update the playback state with the mapped data
+  const result = updatePlaybackState(mappedData);
+
+  // Log the result of the update
+  if (!result) {
+    logger.error('Failed to update playback state with mapped data:', mappedData);
+  }
 }
 
 /**

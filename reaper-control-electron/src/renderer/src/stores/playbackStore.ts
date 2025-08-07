@@ -64,21 +64,56 @@ export function updatePlaybackState(data: Partial<PlaybackState>): boolean {
       return false;
     }
 
-    // Ensure required fields are present
-    if (data.isPlaying === undefined || data.currentPosition === undefined) {
-      logger.error('Received playback state is missing required fields:', data);
-      return false;
+    // Check for missing required fields and log them
+    const missingFields = [];
+    if (data.isPlaying === undefined) missingFields.push('isPlaying');
+    if (data.currentPosition === undefined) missingFields.push('currentPosition');
+
+    if (missingFields.length > 0) {
+      logger.warn(`Playback state missing fields: ${missingFields.join(', ')}. Using defaults.`, data);
+      // Continue with defaults rather than failing
     }
 
-    // Update the playback state store
-    playbackState.set({
-      isPlaying: Boolean(data.isPlaying),
-      currentPosition: Number(data.currentPosition) || 0,
-      currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null,
-      selectedSetlistId: data.selectedSetlistId || null,
-      bpm: data.bpm !== undefined ? Number(data.bpm) : 120, // Use received BPM or default to 120
-      timeSignature: data.timeSignature || { numerator: 4, denominator: 4 } // Use received time signature or default to 4/4
+    // Get current state to use as fallback for missing fields
+    let currentState: PlaybackState;
+    const unsubscribe = playbackState.subscribe(value => {
+      currentState = value;
     });
+    unsubscribe();
+
+    // Prepare the new state with robust defaults
+    const newState = {
+      // For boolean values, use explicit Boolean conversion with fallbacks
+      isPlaying: data.isPlaying !== undefined ? Boolean(data.isPlaying) : currentState.isPlaying,
+
+      // For numeric values, handle NaN and other edge cases
+      currentPosition: data.currentPosition !== undefined ?
+        (isNaN(Number(data.currentPosition)) ? currentState.currentPosition : Number(data.currentPosition)) :
+        currentState.currentPosition,
+
+      // For currentRegionId, properly handle null vs undefined vs invalid
+      currentRegionId: data.currentRegionId !== undefined ?
+        (data.currentRegionId === null ? null :
+          (isNaN(Number(data.currentRegionId)) ? currentState.currentRegionId : Number(data.currentRegionId))) :
+        currentState.currentRegionId,
+
+      // For selectedSetlistId, explicitly check for undefined to preserve null values
+      selectedSetlistId: data.selectedSetlistId !== undefined ? data.selectedSetlistId : currentState.selectedSetlistId,
+
+      // For bpm, ensure we handle NaN and other edge cases
+      bpm: data.bpm !== undefined ?
+        (isNaN(Number(data.bpm)) ? currentState.bpm : Number(data.bpm)) :
+        currentState.bpm,
+
+      // For timeSignature, validate it has required properties
+      timeSignature: (data.timeSignature &&
+        typeof data.timeSignature.numerator === 'number' &&
+        typeof data.timeSignature.denominator === 'number') ?
+        data.timeSignature : currentState.timeSignature
+    };
+
+    // Update the playback state store
+    playbackState.set(newState);
 
     // Update the autoplayEnabled store if the value is present in the data
     if (data.autoplayEnabled !== undefined) {
@@ -90,14 +125,9 @@ export function updatePlaybackState(data: Partial<PlaybackState>): boolean {
       countInEnabled.set(Boolean(data.countInEnabled));
     }
 
-    // Log success
+    // Log success with the new state
     logger.log('Successfully updated playback state:', {
-      isPlaying: Boolean(data.isPlaying),
-      currentPosition: Number(data.currentPosition) || 0,
-      currentRegionId: data.currentRegionId !== undefined ? Number(data.currentRegionId) : null,
-      selectedSetlistId: data.selectedSetlistId || null,
-      bpm: data.bpm !== undefined ? Number(data.bpm) : 120,
-      timeSignature: data.timeSignature || { numerator: 4, denominator: 4 },
+      ...newState,
       autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : undefined,
       countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : undefined
     });

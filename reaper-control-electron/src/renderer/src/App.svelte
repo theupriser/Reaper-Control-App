@@ -15,6 +15,7 @@
 
     // Initial data refresh
     ipcService.refreshRegions();
+    ipcService.refreshMarkers();
     ipcService.refreshProjectId();
 
     // Set up cleanup on component destroy
@@ -89,6 +90,31 @@
 
   :global(*) {
     box-sizing: border-box;
+  }
+
+  /* Custom scrollbar styling */
+  :global(::-webkit-scrollbar) {
+    width: 10px;
+    height: 10px;
+  }
+
+  :global(::-webkit-scrollbar-track) {
+    background: #1e1e1e;
+    border-radius: 4px;
+  }
+
+  :global(::-webkit-scrollbar-thumb) {
+    background: #333;
+    border-radius: 4px;
+    border: 2px solid #1e1e1e;
+  }
+
+  :global(::-webkit-scrollbar-thumb:hover) {
+    background: #4CAF50;
+  }
+
+  :global(::-webkit-scrollbar-corner) {
+    background: #1e1e1e;
   }
 
   .app {

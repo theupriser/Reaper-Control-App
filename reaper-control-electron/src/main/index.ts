@@ -1,15 +1,30 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { backendService } from './backend/backendService'
 import os from 'os'
 
-// Global reference to the main window
-let mainWindow: BrowserWindow | null = null
+// Import services
+import { ReaperConnector } from './services/reaperConnector'
+import { RegionService } from './services/regionService'
+import { MarkerService } from './services/markerService'
+import { MidiService } from './services/midiService'
+import { ProjectService } from './services/projectService'
+import { IpcHandler } from './ipc/ipcHandler'
+import logger from './utils/logger'
 
-// Reference to the system stats monitoring interval
+
+// Global references
+let mainWindow: BrowserWindow | null = null
 let systemStatsInterval: NodeJS.Timeout | null = null
+
+// Service instances
+let reaperConnector: ReaperConnector | null = null
+let regionService: RegionService | null = null
+let markerService: MarkerService | null = null
+let midiService: MidiService | null = null
+let projectService: ProjectService | null = null
+let ipcHandler: IpcHandler | null = null
 
 function createWindow(): void {
   // Create the browser window.
@@ -30,8 +45,8 @@ function createWindow(): void {
     if (mainWindow) {
       mainWindow.show()
 
-      // Initialize the backend service
-      backendService.initialize(mainWindow)
+      // Initialize services
+      initializeServices()
 
       // Start system stats monitoring
       startSystemStatsMonitoring()
@@ -58,114 +73,46 @@ function createWindow(): void {
     }
   }
 
-  // Set up IPC handlers
-  setupIpcHandlers()
 }
 
 /**
- * Set up IPC handlers for communication with the renderer process
+ * Initialize services
  */
-function setupIpcHandlers(): void {
-  // Ping/Pong for latency measurement
-  ipcMain.handle('ping', async (): Promise<string> => {
-    return 'pong'
-  })
+function initializeServices(): void {
+  if (!mainWindow) {
+    logger.error('Cannot initialize services: mainWindow is null');
+    return;
+  }
 
-  // Connection status reporting
-  ipcMain.on('report-connection-status', (_, status) => {
-    console.log('Connection status reported:', status)
-  })
+  try {
+    logger.info('Initializing services...');
 
-  // Request reconnection
-  ipcMain.on('request-reconnect', () => {
-    console.log('Reconnection requested')
-    // In a real implementation, this would trigger a reconnection to REAPER
-  })
+    // Initialize REAPER connector
+    reaperConnector = new ReaperConnector();
 
-  // Regions management
-  ipcMain.handle('refresh-regions', async () => {
-    return await backendService.refreshRegions()
-  })
+    // Initialize services
+    regionService = new RegionService(reaperConnector);
+    markerService = new MarkerService(reaperConnector);
+    midiService = new MidiService();
+    projectService = new ProjectService(reaperConnector);
 
-  ipcMain.handle('get-regions', async () => {
-    return await backendService.getRegions()
-  })
+    // Initialize IPC handler
+    ipcHandler = new IpcHandler(
+      mainWindow,
+      reaperConnector,
+      regionService,
+      markerService,
+      midiService,
+      projectService
+    );
 
-  // Markers management
-  ipcMain.handle('refresh-markers', async () => {
-    return await backendService.refreshMarkers()
-  })
+    // Connect to REAPER
+    reaperConnector.connect();
 
-  // Playback control
-  ipcMain.handle('toggle-play', async () => {
-    return await backendService.togglePlay()
-  })
-
-  ipcMain.handle('seek-to-position', async (_, position) => {
-    return await backendService.seekToPosition(position)
-  })
-
-  ipcMain.handle('seek-to-region', async (_, regionId) => {
-    return await backendService.seekToRegion(regionId)
-  })
-
-  ipcMain.handle('next-region', async () => {
-    return await backendService.nextRegion()
-  })
-
-  ipcMain.handle('previous-region', async () => {
-    return await backendService.previousRegion()
-  })
-
-  ipcMain.handle('seek-to-current-region-start', async () => {
-    return await backendService.seekToCurrentRegionStart()
-  })
-
-  // Project management
-  ipcMain.handle('refresh-project-id', async () => {
-    return await backendService.refreshProjectId()
-  })
-
-  ipcMain.handle('get-project-id', async () => {
-    return await backendService.getProjectId()
-  })
-
-  // Setlist management
-  ipcMain.handle('set-selected-setlist', async (_, setlistId) => {
-    return await backendService.setSelectedSetlist(setlistId)
-  })
-
-  ipcMain.handle('get-setlists', async () => {
-    return await backendService.getSetlists()
-  })
-
-  ipcMain.handle('get-setlist', async (_, setlistId) => {
-    return await backendService.getSetlist(setlistId)
-  })
-
-  ipcMain.handle('create-setlist', async (_, name) => {
-    return await backendService.createSetlist(name)
-  })
-
-  ipcMain.handle('update-setlist', async (_, { setlistId, name }) => {
-    return await backendService.updateSetlist(setlistId, name)
-  })
-
-  ipcMain.handle('delete-setlist', async (_, setlistId) => {
-    return await backendService.deleteSetlist(setlistId)
-  })
-
-  ipcMain.handle('add-setlist-item', async (_, { setlistId, regionId, position }) => {
-    return await backendService.addSetlistItem(setlistId, regionId, position)
-  })
-
-  ipcMain.handle('remove-setlist-item', async (_, { setlistId, itemId }) => {
-    return await backendService.removeSetlistItem(setlistId, itemId)
-  })
-
-  ipcMain.handle('move-setlist-item', async (_, { setlistId, itemId, newPosition }) => {
-    return await backendService.moveSetlistItem(setlistId, itemId, newPosition)
-  })
+    logger.info('Services initialized successfully');
+  } catch (error) {
+    logger.error('Failed to initialize services', { error });
+  }
 }
 
 /**
@@ -234,10 +181,26 @@ app.whenReady().then(() => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  // Clean up backend service
-  if (backendService) {
-    backendService.cleanup()
+  // Clean up services
+  if (ipcHandler) {
+    ipcHandler.cleanup()
+    ipcHandler = null
   }
+
+  if (reaperConnector) {
+    reaperConnector.cleanup()
+    reaperConnector = null
+  }
+
+  if (midiService) {
+    midiService.cleanup()
+    midiService = null
+  }
+
+  // Clean up other services
+  regionService = null
+  markerService = null
+  projectService = null
 
   // Clean up system stats monitoring interval
   if (systemStatsInterval) {
@@ -248,6 +211,7 @@ app.on('window-all-closed', () => {
   // Set mainWindow to null to prevent further access
   mainWindow = null
 
+  logger.info('Application shutting down')
   app.quit();
 })
 

@@ -4,6 +4,8 @@
  */
 import { BrowserWindow } from 'electron';
 import { EventEmitter } from 'events';
+import { ReaperConnector } from '../services/reaperConnector';
+import logger from '../utils/logger';
 
 // Define interfaces for the data types
 export interface ConnectionStatus {
@@ -61,110 +63,83 @@ export interface StatusMessage {
   details?: string;
 }
 
-// Mock data for testing
-const mockRegions: Region[] = [
-  { id: '1', name: 'Intro', start: 0, end: 10 },
-  { id: '2', name: 'Verse 1', start: 10, end: 30 },
-  { id: '3', name: 'Chorus', start: 30, end: 50 },
-  { id: '4', name: 'Verse 2', start: 50, end: 70 },
-  { id: '5', name: 'Outro', start: 70, end: 90 }
-];
-
-const mockMarkers: Marker[] = [
-  { id: '1', name: 'Start', position: 0 },
-  { id: '2', name: 'Verse 1', position: 10 },
-  { id: '3', name: 'Chorus', position: 30 },
-  { id: '4', name: 'Verse 2', position: 50 },
-  { id: '5', name: 'Outro', position: 70 }
-];
-
-// Mock setlists data
-const mockSetlists: Map<string, Setlist> = new Map();
-
-// Initialize with a sample setlist
-const sampleSetlist: Setlist = {
-  id: 'setlist-1',
-  name: 'Sample Setlist',
-  projectId: 'mock-project-id',
-  items: [
-    { id: 'item-1', regionId: '1', name: 'Intro', position: 0 },
-    { id: 'item-2', regionId: '2', name: 'Verse 1', position: 1 },
-    { id: 'item-3', regionId: '3', name: 'Chorus', position: 2 }
-  ]
-};
-
-mockSetlists.set(sampleSetlist.id, sampleSetlist);
+// Real setlists data
+const setlists: Map<string, Setlist> = new Map();
 
 // Backend service class
 export class BackendService extends EventEmitter {
   private mainWindow: BrowserWindow | null = null;
+  private reaperConnector: ReaperConnector;
   private connected: boolean = false;
-  private projectId: string = 'mock-project-id';
+  private projectId: string = '';
   private playbackState: PlaybackState = {
     isPlaying: false,
     position: 0,
-    currentRegionId: '1',
     bpm: 120,
     timeSignature: {
       numerator: 4,
       denominator: 4
     }
   };
-  private playbackTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
+    this.reaperConnector = new ReaperConnector();
+
+    // Set up event listeners for the REAPER connector
+    this.reaperConnector.on('connection-change', (status: ConnectionStatus) => {
+      this.connected = status.connected;
+      this.emitConnectionStatus(status);
+    });
+
+    this.reaperConnector.on('playback-state-update', (state: PlaybackState) => {
+      this.playbackState = state;
+      this.emitPlaybackState();
+    });
+
+    this.reaperConnector.on('project-id-update', (projectId: string) => {
+      this.projectId = projectId;
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('project-id-update', projectId);
+      }
+    });
+
+    this.reaperConnector.on('project-changed', (projectId: string) => {
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('project-changed', projectId);
+      }
+    });
   }
 
   /**
    * Initialize the backend service
    * @param window - The main window
    */
-  public initialize(window: BrowserWindow): void {
+  public async initialize(window: BrowserWindow): Promise<void> {
     this.mainWindow = window;
-    this.connected = true;
 
-    // Emit connection status
-    this.emitConnectionStatus({
-      connected: true,
-      status: 'Connected to REAPER'
-    });
+    logger.info('Initializing backend service');
 
-    // Start a timer to simulate playback position updates
-    this.startPlaybackTimer();
-  }
+    try {
+      // Connect to REAPER
+      await this.reaperConnector.connect();
 
-  /**
-   * Start a timer to simulate playback position updates
-   */
-  private startPlaybackTimer(): void {
-    if (this.playbackTimer) {
-      clearInterval(this.playbackTimer);
+      // Refresh initial data
+      await this.refreshRegions();
+      await this.refreshMarkers();
+      await this.refreshProjectId();
+
+      logger.info('Backend service initialized successfully');
+    } catch (error) {
+      logger.error('Failed to initialize backend service', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to connect to REAPER',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
     }
-
-    this.playbackTimer = setInterval(() => {
-      if (this.playbackState.isPlaying) {
-        // Update position
-        this.playbackState.position += 0.1;
-
-        // Check if we've reached the end of the current region
-        const currentRegion = mockRegions.find(r => r.id === this.playbackState.currentRegionId);
-        if (currentRegion && this.playbackState.position >= currentRegion.end) {
-          // Move to the next region
-          const currentIndex = mockRegions.findIndex(r => r.id === this.playbackState.currentRegionId);
-          if (currentIndex < mockRegions.length - 1) {
-            this.playbackState.currentRegionId = mockRegions[currentIndex + 1].id;
-            this.playbackState.position = mockRegions[currentIndex + 1].start;
-          } else {
-            // Stop playback at the end of the last region
-            this.playbackState.isPlaying = false;
-          }
-        }
-
-        // Emit playback state update
-        this.emitPlaybackState();
-      }
-    }, 100);
   }
 
   /**
@@ -209,15 +184,27 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the regions
    */
   public async refreshRegions(): Promise<Region[]> {
-    // Simulate a delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    try {
+      const regions = await this.reaperConnector.refreshRegions();
 
-    // Emit regions update
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('regions-update', mockRegions);
+      // Emit regions update
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('regions-update', regions);
+      }
+
+      return regions;
+    } catch (error) {
+      logger.error('Failed to refresh regions', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to refresh regions',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+
+      return [];
     }
-
-    return mockRegions;
   }
 
   /**
@@ -225,7 +212,12 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the regions
    */
   public async getRegions(): Promise<Region[]> {
-    return mockRegions;
+    try {
+      return await this.reaperConnector.getRegions();
+    } catch (error) {
+      logger.error('Failed to get regions', { error });
+      return [];
+    }
   }
 
   /**
@@ -233,15 +225,27 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the markers
    */
   public async refreshMarkers(): Promise<Marker[]> {
-    // Simulate a delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    try {
+      const markers = await this.reaperConnector.refreshMarkers();
 
-    // Emit markers update
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('markers-update', mockMarkers);
+      // Emit markers update
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('markers-update', markers);
+      }
+
+      return markers;
+    } catch (error) {
+      logger.error('Failed to refresh markers', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to refresh markers',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+
+      return [];
     }
-
-    return mockMarkers;
   }
 
   /**
@@ -249,7 +253,12 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the markers
    */
   public async getMarkers(): Promise<Marker[]> {
-    return mockMarkers;
+    try {
+      return await this.reaperConnector.getMarkers();
+    } catch (error) {
+      logger.error('Failed to get markers', { error });
+      return [];
+    }
   }
 
   /**
@@ -257,18 +266,20 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async togglePlay(): Promise<void> {
-    // Toggle playback state
-    this.playbackState.isPlaying = !this.playbackState.isPlaying;
+    try {
+      await this.reaperConnector.togglePlay();
 
-    // Emit playback state update
-    this.emitPlaybackState();
+      // Playback state update will be emitted by the reaperConnector
+    } catch (error) {
+      logger.error('Failed to toggle play/pause', { error });
 
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: this.playbackState.isPlaying ? 'Playback started' : 'Playback stopped',
-      timestamp: Date.now()
-    });
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to toggle play/pause',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   /**
@@ -277,30 +288,32 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async seekToPosition(position: string): Promise<void> {
-    // Parse position
-    const pos = parseFloat(position);
-    if (isNaN(pos)) {
-      throw new Error('Invalid position');
+    try {
+      // Parse position
+      const pos = parseFloat(position);
+      if (isNaN(pos)) {
+        throw new Error('Invalid position');
+      }
+
+      await this.reaperConnector.seekToPosition(pos);
+
+      // Playback state update will be emitted by the reaperConnector
+
+      this.emitStatusMessage({
+        type: 'info',
+        message: `Seeked to position ${pos.toFixed(2)}`,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      logger.error('Failed to seek to position', { error, position });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Failed to seek to position ${position}`,
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
     }
-
-    // Update playback state
-    this.playbackState.position = pos;
-
-    // Find the region that contains this position
-    const region = mockRegions.find(r => pos >= r.start && pos <= r.end);
-    if (region) {
-      this.playbackState.currentRegionId = region.id;
-    }
-
-    // Emit playback state update
-    this.emitPlaybackState();
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Seeked to position ${pos.toFixed(2)}`,
-      timestamp: Date.now()
-    });
   }
 
   /**
@@ -309,25 +322,31 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async seekToRegion(regionId: string): Promise<void> {
-    // Find the region
-    const region = mockRegions.find(r => r.id === regionId);
-    if (!region) {
-      throw new Error('Region not found');
+    try {
+      await this.reaperConnector.seekToRegion(regionId);
+
+      // Get the region name for the status message
+      const regions = await this.getRegions();
+      const region = regions.find(r => r.id === regionId);
+      const regionName = region ? region.name : regionId;
+
+      // Playback state update will be emitted by the reaperConnector
+
+      this.emitStatusMessage({
+        type: 'info',
+        message: `Seeked to region ${regionName}`,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      logger.error('Failed to seek to region', { error, regionId });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to seek to region',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
     }
-
-    // Update playback state
-    this.playbackState.currentRegionId = regionId;
-    this.playbackState.position = region.start;
-
-    // Emit playback state update
-    this.emitPlaybackState();
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Seeked to region ${region.name}`,
-      timestamp: Date.now()
-    });
   }
 
   /**
@@ -335,25 +354,26 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async nextRegion(): Promise<void> {
-    // Find the current region index
-    const currentIndex = mockRegions.findIndex(r => r.id === this.playbackState.currentRegionId);
-    if (currentIndex === -1 || currentIndex >= mockRegions.length - 1) {
-      throw new Error('No next region');
+    try {
+      await this.reaperConnector.nextRegion();
+
+      // Playback state update will be emitted by the reaperConnector
+
+      this.emitStatusMessage({
+        type: 'info',
+        message: 'Moved to next region',
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      logger.error('Failed to move to next region', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to move to next region',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
     }
-
-    // Update playback state
-    this.playbackState.currentRegionId = mockRegions[currentIndex + 1].id;
-    this.playbackState.position = mockRegions[currentIndex + 1].start;
-
-    // Emit playback state update
-    this.emitPlaybackState();
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Moved to next region: ${mockRegions[currentIndex + 1].name}`,
-      timestamp: Date.now()
-    });
   }
 
   /**
@@ -361,25 +381,26 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async previousRegion(): Promise<void> {
-    // Find the current region index
-    const currentIndex = mockRegions.findIndex(r => r.id === this.playbackState.currentRegionId);
-    if (currentIndex <= 0) {
-      throw new Error('No previous region');
+    try {
+      await this.reaperConnector.previousRegion();
+
+      // Playback state update will be emitted by the reaperConnector
+
+      this.emitStatusMessage({
+        type: 'info',
+        message: 'Moved to previous region',
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      logger.error('Failed to move to previous region', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to move to previous region',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
     }
-
-    // Update playback state
-    this.playbackState.currentRegionId = mockRegions[currentIndex - 1].id;
-    this.playbackState.position = mockRegions[currentIndex - 1].start;
-
-    // Emit playback state update
-    this.emitPlaybackState();
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Moved to previous region: ${mockRegions[currentIndex - 1].name}`,
-      timestamp: Date.now()
-    });
   }
 
   /**
@@ -387,24 +408,26 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async seekToCurrentRegionStart(): Promise<void> {
-    // Find the current region
-    const region = mockRegions.find(r => r.id === this.playbackState.currentRegionId);
-    if (!region) {
-      throw new Error('Current region not found');
+    try {
+      await this.reaperConnector.seekToCurrentRegionStart();
+
+      // Playback state update will be emitted by the reaperConnector
+
+      this.emitStatusMessage({
+        type: 'info',
+        message: 'Seeked to start of current region',
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      logger.error('Failed to seek to start of current region', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to seek to start of current region',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
     }
-
-    // Update playback state
-    this.playbackState.position = region.start;
-
-    // Emit playback state update
-    this.emitPlaybackState();
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Seeked to start of region ${region.name}`,
-      timestamp: Date.now()
-    });
   }
 
   /**
@@ -412,15 +435,24 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the project ID
    */
   public async refreshProjectId(): Promise<string> {
-    // Simulate a delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    try {
+      const projectId = await this.reaperConnector.refreshProjectId();
 
-    // Emit project ID update
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('project-id-update', this.projectId);
+      // Project ID update will be emitted by the reaperConnector event handler
+
+      return projectId;
+    } catch (error) {
+      logger.error('Failed to refresh project ID', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to refresh project ID',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+
+      return this.projectId;
     }
-
-    return this.projectId;
   }
 
   /**
@@ -428,7 +460,70 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the project ID
    */
   public async getProjectId(): Promise<string> {
-    return this.projectId;
+    try {
+      return await this.reaperConnector.getProjectId();
+    } catch (error) {
+      logger.error('Failed to get project ID', { error });
+      return this.projectId;
+    }
+  }
+
+  /**
+   * Load setlists from REAPER project state
+   * @private
+   */
+  private async loadSetlists(): Promise<void> {
+    try {
+      const projectId = await this.getProjectId();
+      const setlistsJson = await this.reaperConnector.getProjectExtState('reaper-control', 'setlists');
+
+      if (setlistsJson) {
+        const loadedSetlists = JSON.parse(setlistsJson) as Setlist[];
+
+        // Clear existing setlists for this project
+        Array.from(setlists.keys())
+          .filter(key => setlists.get(key)?.projectId === projectId)
+          .forEach(key => setlists.delete(key));
+
+        // Add loaded setlists
+        loadedSetlists.forEach(setlist => {
+          setlists.set(setlist.id, setlist);
+        });
+
+        logger.debug(`Loaded ${loadedSetlists.length} setlists for project ${projectId}`);
+      }
+    } catch (error) {
+      logger.error('Failed to load setlists from project state', { error });
+    }
+  }
+
+  /**
+   * Save setlists to REAPER project state
+   * @private
+   */
+  private async saveSetlists(): Promise<void> {
+    try {
+      const projectId = await this.getProjectId();
+
+      // Get setlists for current project
+      const projectSetlists = Array.from(setlists.values())
+        .filter(setlist => setlist.projectId === projectId);
+
+      // Save to project state
+      const setlistsJson = JSON.stringify(projectSetlists);
+      await this.reaperConnector.setProjectExtState('reaper-control', 'setlists', setlistsJson);
+
+      logger.debug(`Saved ${projectSetlists.length} setlists for project ${projectId}`);
+    } catch (error) {
+      logger.error('Failed to save setlists to project state', { error });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to save setlists',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   /**
@@ -436,16 +531,24 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the setlists
    */
   public async getSetlists(): Promise<Setlist[]> {
-    // Filter setlists by current project ID
-    const projectSetlists = Array.from(mockSetlists.values())
-      .filter(setlist => setlist.projectId === this.projectId);
+    try {
+      // Load setlists from project state
+      await this.loadSetlists();
 
-    // Emit setlists update
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('setlists-update', projectSetlists);
+      // Filter setlists by current project ID
+      const projectSetlists = Array.from(setlists.values())
+        .filter(setlist => setlist.projectId === this.projectId);
+
+      // Emit setlists update
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('setlists-update', projectSetlists);
+      }
+
+      return projectSetlists;
+    } catch (error) {
+      logger.error('Failed to get setlists', { error });
+      return [];
     }
-
-    return projectSetlists;
   }
 
   /**
@@ -454,18 +557,34 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the setlist or null if not found
    */
   public async getSetlist(setlistId: string): Promise<Setlist | null> {
-    const setlist = mockSetlists.get(setlistId);
+    try {
+      // Ensure setlists are loaded
+      await this.loadSetlists();
 
-    if (!setlist) {
+      const setlist = setlists.get(setlistId);
+
+      if (!setlist) {
+        this.emitStatusMessage({
+          type: 'error',
+          message: `Setlist with ID ${setlistId} not found`,
+          timestamp: Date.now()
+        });
+        return null;
+      }
+
+      return setlist;
+    } catch (error) {
+      logger.error('Failed to get setlist', { error, setlistId });
+
       this.emitStatusMessage({
         type: 'error',
-        message: `Setlist with ID ${setlistId} not found`,
-        timestamp: Date.now()
+        message: `Failed to get setlist with ID ${setlistId}`,
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
       });
+
       return null;
     }
-
-    return setlist;
   }
 
   /**
@@ -474,31 +593,47 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the created setlist
    */
   public async createSetlist(name: string): Promise<Setlist> {
-    // Generate a unique ID
-    const id = `setlist-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    try {
+      // Generate a unique ID
+      const id = `setlist-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    // Create the setlist
-    const setlist: Setlist = {
-      id,
-      name,
-      projectId: this.projectId,
-      items: []
-    };
+      // Create the setlist
+      const setlist: Setlist = {
+        id,
+        name,
+        projectId: this.projectId,
+        items: []
+      };
 
-    // Add to mock data
-    mockSetlists.set(id, setlist);
+      // Add to setlists
+      setlists.set(id, setlist);
 
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Created setlist "${name}"`,
-      timestamp: Date.now()
-    });
+      // Save setlists to project state
+      await this.saveSetlists();
 
-    // Emit setlists update
-    await this.getSetlists();
+      // Emit status message
+      this.emitStatusMessage({
+        type: 'info',
+        message: `Created setlist "${name}"`,
+        timestamp: Date.now()
+      });
 
-    return setlist;
+      // Emit setlists update
+      await this.getSetlists();
+
+      return setlist;
+    } catch (error) {
+      logger.error('Failed to create setlist', { error, name });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Failed to create setlist "${name}"`,
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+
+      throw error;
+    }
   }
 
   /**
@@ -508,34 +643,45 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the updated setlist or null if not found
    */
   public async updateSetlist(setlistId: string, name: string): Promise<Setlist | null> {
-    const setlist = mockSetlists.get(setlistId);
+    try {
+      const setlist = await this.getSetlist(setlistId);
 
-    if (!setlist) {
+      if (!setlist) {
+        return null;
+      }
+
+      // Update the setlist
+      setlist.name = name;
+
+      // Update in setlists
+      setlists.set(setlistId, setlist);
+
+      // Save setlists to project state
+      await this.saveSetlists();
+
+      // Emit status message
       this.emitStatusMessage({
-        type: 'error',
-        message: `Setlist with ID ${setlistId} not found`,
+        type: 'info',
+        message: `Updated setlist "${name}"`,
         timestamp: Date.now()
       });
+
+      // Emit setlists update
+      await this.getSetlists();
+
+      return setlist;
+    } catch (error) {
+      logger.error('Failed to update setlist', { error, setlistId, name });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Failed to update setlist "${name}"`,
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+
       return null;
     }
-
-    // Update the setlist
-    setlist.name = name;
-
-    // Update in mock data
-    mockSetlists.set(setlistId, setlist);
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Updated setlist "${name}"`,
-      timestamp: Date.now()
-    });
-
-    // Emit setlists update
-    await this.getSetlists();
-
-    return setlist;
   }
 
   /**
@@ -544,31 +690,42 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with true if deleted, false if not found
    */
   public async deleteSetlist(setlistId: string): Promise<boolean> {
-    const setlist = mockSetlists.get(setlistId);
+    try {
+      const setlist = await this.getSetlist(setlistId);
 
-    if (!setlist) {
+      if (!setlist) {
+        return false;
+      }
+
+      // Delete from setlists
+      setlists.delete(setlistId);
+
+      // Save setlists to project state
+      await this.saveSetlists();
+
+      // Emit status message
       this.emitStatusMessage({
-        type: 'error',
-        message: `Setlist with ID ${setlistId} not found`,
+        type: 'info',
+        message: `Deleted setlist "${setlist.name}"`,
         timestamp: Date.now()
       });
+
+      // Emit setlists update
+      await this.getSetlists();
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to delete setlist', { error, setlistId });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Failed to delete setlist`,
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+
       return false;
     }
-
-    // Delete from mock data
-    mockSetlists.delete(setlistId);
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Deleted setlist "${setlist.name}"`,
-      timestamp: Date.now()
-    });
-
-    // Emit setlists update
-    await this.getSetlists();
-
-    return true;
   }
 
   /**
@@ -579,73 +736,86 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the added item or null if setlist not found
    */
   public async addSetlistItem(setlistId: string, regionId: string, position?: number): Promise<SetlistItem | null> {
-    const setlist = mockSetlists.get(setlistId);
+    try {
+      // Get the setlist
+      const setlist = await this.getSetlist(setlistId);
 
-    if (!setlist) {
-      this.emitStatusMessage({
-        type: 'error',
-        message: `Setlist with ID ${setlistId} not found`,
-        timestamp: Date.now()
-      });
-      return null;
-    }
-
-    // Find the region
-    const region = mockRegions.find(r => r.id === regionId);
-
-    if (!region) {
-      this.emitStatusMessage({
-        type: 'error',
-        message: `Region with ID ${regionId} not found`,
-        timestamp: Date.now()
-      });
-      return null;
-    }
-
-    // Generate a unique ID
-    const id = `item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-    // Determine position
-    const itemPosition = position !== undefined ? position : setlist.items.length;
-
-    // Create the item
-    const item: SetlistItem = {
-      id,
-      regionId,
-      name: region.name,
-      position: itemPosition
-    };
-
-    // Add to setlist
-    if (position !== undefined) {
-      // Insert at specific position
-      setlist.items.splice(position, 0, item);
-
-      // Update positions of subsequent items
-      for (let i = position + 1; i < setlist.items.length; i++) {
-        setlist.items[i].position = i;
+      if (!setlist) {
+        return null;
       }
-    } else {
-      // Add to end
-      setlist.items.push(item);
+
+      // Find the region
+      const regions = await this.getRegions();
+      const region = regions.find(r => r.id === regionId);
+
+      if (!region) {
+        this.emitStatusMessage({
+          type: 'error',
+          message: `Region with ID ${regionId} not found`,
+          timestamp: Date.now()
+        });
+        return null;
+      }
+
+      // Generate a unique ID
+      const id = `item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+      // Determine position
+      const itemPosition = position !== undefined ? position : setlist.items.length;
+
+      // Create the item
+      const item: SetlistItem = {
+        id,
+        regionId,
+        name: region.name,
+        position: itemPosition
+      };
+
+      // Add to setlist
+      if (position !== undefined) {
+        // Insert at specific position
+        setlist.items.splice(position, 0, item);
+
+        // Update positions of subsequent items
+        for (let i = position + 1; i < setlist.items.length; i++) {
+          setlist.items[i].position = i;
+        }
+      } else {
+        // Add to end
+        setlist.items.push(item);
+      }
+
+      // Update in setlists
+      setlists.set(setlistId, setlist);
+
+      // Save setlists to project state
+      await this.saveSetlists();
+
+      // Emit status message
+      this.emitStatusMessage({
+        type: 'info',
+        message: `Added "${region.name}" to setlist "${setlist.name}"`,
+        timestamp: Date.now()
+      });
+
+      // Emit setlist update
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('setlist-update', setlist);
+      }
+
+      return item;
+    } catch (error) {
+      logger.error('Failed to add item to setlist', { error, setlistId, regionId });
+
+      this.emitStatusMessage({
+        type: 'error',
+        message: 'Failed to add item to setlist',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
+      });
+
+      return null;
     }
-
-    // Update in mock data
-    mockSetlists.set(setlistId, setlist);
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Added "${region.name}" to setlist "${setlist.name}"`,
-      timestamp: Date.now()
-    });
-
-    // Emit setlist update
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('setlist-update', setlist);
-    }
-
-    return item;
   }
 
   /**
@@ -655,56 +825,68 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with true if removed, false if not found
    */
   public async removeSetlistItem(setlistId: string, itemId: string): Promise<boolean> {
-    const setlist = mockSetlists.get(setlistId);
+    try {
+      // Get the setlist
+      const setlist = await this.getSetlist(setlistId);
 
-    if (!setlist) {
+      if (!setlist) {
+        return false;
+      }
+
+      // Find the item
+      const itemIndex = setlist.items.findIndex(item => item.id === itemId);
+
+      if (itemIndex === -1) {
+        this.emitStatusMessage({
+          type: 'error',
+          message: `Item with ID ${itemId} not found in setlist`,
+          timestamp: Date.now()
+        });
+        return false;
+      }
+
+      // Get the item name for the status message
+      const itemName = setlist.items[itemIndex].name;
+
+      // Remove the item
+      setlist.items.splice(itemIndex, 1);
+
+      // Update positions of subsequent items
+      for (let i = itemIndex; i < setlist.items.length; i++) {
+        setlist.items[i].position = i;
+      }
+
+      // Update in setlists
+      setlists.set(setlistId, setlist);
+
+      // Save setlists to project state
+      await this.saveSetlists();
+
+      // Emit status message
       this.emitStatusMessage({
-        type: 'error',
-        message: `Setlist with ID ${setlistId} not found`,
+        type: 'info',
+        message: `Removed "${itemName}" from setlist "${setlist.name}"`,
         timestamp: Date.now()
       });
-      return false;
-    }
 
-    // Find the item
-    const itemIndex = setlist.items.findIndex(item => item.id === itemId);
+      // Emit setlist update
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('setlist-update', setlist);
+      }
 
-    if (itemIndex === -1) {
+      return true;
+    } catch (error) {
+      logger.error('Failed to remove item from setlist', { error, setlistId, itemId });
+
       this.emitStatusMessage({
         type: 'error',
-        message: `Item with ID ${itemId} not found in setlist`,
-        timestamp: Date.now()
+        message: 'Failed to remove item from setlist',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
       });
+
       return false;
     }
-
-    // Get the item name for the status message
-    const itemName = setlist.items[itemIndex].name;
-
-    // Remove from setlist
-    setlist.items.splice(itemIndex, 1);
-
-    // Update positions of subsequent items
-    for (let i = itemIndex; i < setlist.items.length; i++) {
-      setlist.items[i].position = i;
-    }
-
-    // Update in mock data
-    mockSetlists.set(setlistId, setlist);
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Removed "${itemName}" from setlist "${setlist.name}"`,
-      timestamp: Date.now()
-    });
-
-    // Emit setlist update
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('setlist-update', setlist);
-    }
-
-    return true;
   }
 
   /**
@@ -715,65 +897,77 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves with the updated setlist or null if not found
    */
   public async moveSetlistItem(setlistId: string, itemId: string, newPosition: number): Promise<Setlist | null> {
-    const setlist = mockSetlists.get(setlistId);
+    try {
+      // Get the setlist
+      const setlist = await this.getSetlist(setlistId);
 
-    if (!setlist) {
+      if (!setlist) {
+        return null;
+      }
+
+      // Find the item
+      const itemIndex = setlist.items.findIndex(item => item.id === itemId);
+
+      if (itemIndex === -1) {
+        this.emitStatusMessage({
+          type: 'error',
+          message: `Item with ID ${itemId} not found in setlist`,
+          timestamp: Date.now()
+        });
+        return null;
+      }
+
+      // Validate new position
+      if (newPosition < 0 || newPosition >= setlist.items.length) {
+        this.emitStatusMessage({
+          type: 'error',
+          message: `Invalid position ${newPosition}`,
+          timestamp: Date.now()
+        });
+        return null;
+      }
+
+      // Move the item
+      const item = setlist.items[itemIndex];
+      setlist.items.splice(itemIndex, 1);
+      setlist.items.splice(newPosition, 0, item);
+
+      // Update positions
+      for (let i = 0; i < setlist.items.length; i++) {
+        setlist.items[i].position = i;
+      }
+
+      // Update in setlists
+      setlists.set(setlistId, setlist);
+
+      // Save setlists to project state
+      await this.saveSetlists();
+
+      // Emit status message
       this.emitStatusMessage({
-        type: 'error',
-        message: `Setlist with ID ${setlistId} not found`,
+        type: 'info',
+        message: `Moved "${item.name}" to position ${newPosition + 1} in setlist "${setlist.name}"`,
         timestamp: Date.now()
       });
-      return null;
-    }
 
-    // Find the item
-    const itemIndex = setlist.items.findIndex(item => item.id === itemId);
+      // Emit setlist update
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('setlist-update', setlist);
+      }
 
-    if (itemIndex === -1) {
+      return setlist;
+    } catch (error) {
+      logger.error('Failed to move item in setlist', { error, setlistId, itemId, newPosition });
+
       this.emitStatusMessage({
         type: 'error',
-        message: `Item with ID ${itemId} not found in setlist`,
-        timestamp: Date.now()
+        message: 'Failed to move item in setlist',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
       });
+
       return null;
     }
-
-    // Validate new position
-    if (newPosition < 0 || newPosition >= setlist.items.length) {
-      this.emitStatusMessage({
-        type: 'error',
-        message: `Invalid position ${newPosition}`,
-        timestamp: Date.now()
-      });
-      return null;
-    }
-
-    // Move the item
-    const item = setlist.items[itemIndex];
-    setlist.items.splice(itemIndex, 1);
-    setlist.items.splice(newPosition, 0, item);
-
-    // Update positions
-    for (let i = 0; i < setlist.items.length; i++) {
-      setlist.items[i].position = i;
-    }
-
-    // Update in mock data
-    mockSetlists.set(setlistId, setlist);
-
-    // Emit status message
-    this.emitStatusMessage({
-      type: 'info',
-      message: `Moved "${item.name}" to position ${newPosition + 1} in setlist "${setlist.name}"`,
-      timestamp: Date.now()
-    });
-
-    // Emit setlist update
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('setlist-update', setlist);
-    }
-
-    return setlist;
   }
 
   /**
@@ -782,41 +976,55 @@ export class BackendService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async setSelectedSetlist(setlistId: string | null): Promise<void> {
-    // Update playback state
-    this.playbackState.selectedSetlistId = setlistId;
+    try {
+      // Update playback state
+      this.playbackState.selectedSetlistId = setlistId;
 
-    // Emit playback state update
-    this.emitPlaybackState();
+      // Emit playback state update
+      this.emitPlaybackState();
 
-    // Emit status message
-    if (setlistId) {
-      const setlist = mockSetlists.get(setlistId);
-      if (setlist) {
+      // Emit status message
+      if (setlistId) {
+        const setlist = await this.getSetlist(setlistId);
+        if (setlist) {
+          this.emitStatusMessage({
+            type: 'info',
+            message: `Selected setlist "${setlist.name}"`,
+            timestamp: Date.now()
+          });
+        }
+      } else {
         this.emitStatusMessage({
           type: 'info',
-          message: `Selected setlist "${setlist.name}"`,
+          message: 'Cleared setlist selection',
           timestamp: Date.now()
         });
       }
-    } else {
+
+      logger.debug(`Selected setlist: ${setlistId}`);
+    } catch (error) {
+      logger.error('Failed to set selected setlist', { error, setlistId });
+
       this.emitStatusMessage({
-        type: 'info',
-        message: 'Cleared setlist selection',
-        timestamp: Date.now()
+        type: 'error',
+        message: 'Failed to set selected setlist',
+        timestamp: Date.now(),
+        details: error instanceof Error ? error.message : String(error)
       });
     }
-
-    console.log(`Selected setlist: ${setlistId}`);
   }
 
   /**
    * Clean up resources
    */
   public cleanup(): void {
-    if (this.playbackTimer) {
-      clearInterval(this.playbackTimer);
-      this.playbackTimer = null;
-    }
+    logger.info('Cleaning up backend service');
+
+    // Clean up REAPER connector
+    this.reaperConnector.cleanup();
+
+    // Clear main window reference
+    this.mainWindow = null;
   }
 }
 

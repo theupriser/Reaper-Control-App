@@ -50,35 +50,10 @@
     updateTimerOnRegionChange
   } from '../stores/performerStore';
 
-  // Mock data for testing when no real data is available
   import { writable } from 'svelte/store';
 
-  // Create mock region if none exists
-  const mockCurrentRegion = {
-    id: 'mock-1',
-    name: 'Mock Song Title',
-    start: 0,
-    end: 180, // 3 minutes
-    color: '#4CAF50'
-  };
-
-  // Create mock next region
-  const mockNextRegion = {
-    id: 'mock-2',
-    name: 'Next Mock Song',
-    start: 180,
-    end: 360, // 3 minutes
-    color: '#2196F3'
-  };
-
-  // Mock markers for when no real markers are available
-  const mockMarkers = [
-    { id: 1, name: 'Intro', position: 0, color: '#FFC107' },
-    { id: 2, name: 'Verse', position: 30, color: '#FF9800' },
-    { id: 3, name: 'Chorus', position: 60, color: '#F44336' },
-    { id: 4, name: 'Bridge', position: 120, color: '#9C27B0' },
-    { id: 5, name: 'Outro', position: 150, color: '#2196F3' }
-  ];
+  // Track loading state
+  const isLoading = writable(true);
 
   // Initialize the page on mount
   onMount(() => {
@@ -89,17 +64,25 @@
       currentTime.set(new Date());
     }, 1000);
 
+    // Set loading state to false once we have data
+    const unsubscribeRegions = regions.subscribe(value => {
+      if (value && value.length > 0) {
+        isLoading.set(false);
+      }
+    });
+
     // Return a cleanup function
     return () => {
       cleanup();
       clearInterval(timeInterval);
+      unsubscribeRegions();
     };
   });
 
-  // Use mock data if no real data is available
-  $: displayRegion = $currentRegion || mockCurrentRegion;
-  $: displayNextRegion = $nextRegion || mockNextRegion;
-  $: displayMarkers = $markers.length > 0 ? $markers : mockMarkers;
+  // Use real data or null if not available
+  $: displayRegion = $currentRegion;
+  $: displayNextRegion = $nextRegion;
+  $: displayMarkers = $markers;
 
   // Initialize playback position if not available
   $: currentPosition = $useLocalTimer
@@ -117,8 +100,22 @@
   $: if ($currentRegion) {
     updateTimerOnRegionChange();
   }
+
+  // Helper function to check if we have data
+  $: hasData = $regions && $regions.length > 0;
 </script>
 
+{#if $isLoading}
+  <div class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>Loading data from REAPER...</p>
+  </div>
+{:else if !hasData}
+  <div class="no-data-container">
+    <p>No regions found in REAPER project.</p>
+    <p>Please create regions in your REAPER project to use this application.</p>
+  </div>
+{/if}
 <div class="performer-mode">
   <div class="current-time">
     <div class="setlist-info">

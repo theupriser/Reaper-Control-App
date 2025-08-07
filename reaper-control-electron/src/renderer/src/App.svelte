@@ -4,6 +4,8 @@
   import ConnectionStatus from './components/ConnectionStatus.svelte';
   import RegionList from './components/RegionList.svelte';
   import TransportControls from './components/TransportControls.svelte';
+  import SetlistEditor from './components/SetlistEditor.svelte';
+  import PerformerMode from './components/PerformerMode.svelte';
   import ipcService from './services/ipcService';
   import logger from './lib/utils/logger';
   import { currentView, View, navigateTo } from './stores/navigationStore';
@@ -28,38 +30,38 @@
   }
 </script>
 
-<main class="app-container">
-  <header class="app-header">
-    <div class="app-title">
+<div class="app">
+  <header>
+    <div class="header-content">
       <h1>Reaper Control</h1>
-      <nav class="app-nav">
-        <button
-          class="nav-button {$currentView === View.MAIN ? 'active' : ''}"
-          on:click={() => handleNavigation(View.MAIN)}
-        >
-          Main
-        </button>
-        <button
-          class="nav-button {$currentView === View.PERFORMER ? 'active' : ''}"
-          on:click={() => handleNavigation(View.PERFORMER)}
-        >
-          Performer
-        </button>
-        <button
-          class="nav-button {$currentView === View.SETLISTS ? 'active' : ''}"
-          on:click={() => handleNavigation(View.SETLISTS)}
-        >
-          Setlists
-        </button>
-      </nav>
     </div>
-    <div class="app-status">
-      <ConnectionStatus />
-      <SystemStats />
-    </div>
+
+    <nav class="main-nav">
+      <button
+        class="nav-link {$currentView === View.MAIN ? 'active-nav-link' : ''}"
+        on:click={() => handleNavigation(View.MAIN)}
+      >
+        Player
+      </button>
+      <button
+        class="nav-link {$currentView === View.SETLISTS ? 'active-nav-link' : ''}"
+        on:click={() => handleNavigation(View.SETLISTS)}
+      >
+        Setlists
+      </button>
+      <button
+        class="nav-link performer-link {$currentView === View.PERFORMER ? 'active-nav-link' : ''}"
+        on:click={() => handleNavigation(View.PERFORMER)}
+      >
+        Performer Mode
+      </button>
+      <div class="status-container">
+        <SystemStats />
+      </div>
+    </nav>
   </header>
 
-  <div class="app-content">
+  <main>
     {#if $currentView === View.MAIN}
       <div class="main-panel">
         <TransportControls />
@@ -67,98 +69,119 @@
       </div>
     {:else if $currentView === View.PERFORMER}
       <div class="performer-panel">
-        <p class="placeholder-message">Performer view will be implemented in a future update.</p>
+        <PerformerMode />
       </div>
     {:else if $currentView === View.SETLISTS}
       <div class="setlists-panel">
-        <p class="placeholder-message">Setlists management will be implemented in a future update.</p>
+        <SetlistEditor />
       </div>
     {/if}
-  </div>
-</main>
+  </main>
+</div>
 
 <style>
   :global(body) {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #1e1e1e;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background-color: #121212;
     color: #ffffff;
-    height: 100vh;
-    overflow: hidden;
   }
 
-  :global(#app) {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .app-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    /*max-width: 1200px;*/
-    margin: 0 auto;
-    padding: 1rem;
+  :global(*) {
     box-sizing: border-box;
   }
 
-  .app-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #333;
-  }
-
-  .app-title {
+  .app {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    min-height: 100vh;
   }
 
-  .app-title h1 {
+  header {
+    background-color: #1e1e1e;
+    padding: 1rem 1rem 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .header-content {
+    text-align: center;
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+
+  h1 {
     margin: 0;
     font-size: 1.5rem;
-    font-weight: 600;
   }
 
-  .app-nav {
+  .main-nav {
     display: flex;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0;
+    width: 100%;
+    justify-content: center;
+    border-top: 1px solid #333;
+    position: relative;
+  }
+
+  .status-container {
+    display: flex;
+    position: absolute;
+    right: 1rem;
     gap: 0.5rem;
   }
 
-  .nav-button {
-    background-color: #333;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
+  .nav-link {
+    color: #ffffff;
+    text-decoration: none;
     padding: 0.5rem 1rem;
-    font-size: 0.9rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    font-weight: 500;
+    background: none;
+    border: none;
     cursor: pointer;
-    transition: background-color 0.2s, color 0.2s;
+    font-size: 1rem;
   }
 
-  .nav-button:hover {
-    background-color: #444;
+  .nav-link:hover {
+    background-color: #333;
   }
 
-  .nav-button.active {
+  /* Performer Mode link styling */
+  .performer-link {
     background-color: #4CAF50;
-    color: #fff;
+    color: #000;
+    font-weight: bold;
   }
 
-  .app-status {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+  .performer-link:hover {
+    background-color: #3d9c47;
   }
 
-  .app-content {
+  /* Active link styling */
+  .active-nav-link {
+    background-color: #333;
+    color: #4CAF50;
+  }
+
+  /* Override performer link when active */
+  .performer-link.active-nav-link {
+    background-color: #333;
+    color: #4CAF50;
+  }
+
+  main {
     flex: 1;
-    overflow-y: auto;
-    padding: 1rem 0;
+    padding: 1rem;
+    width: 100%;
+    margin: 0 auto;
+    max-width: 1200px;
   }
 
   .main-panel, .performer-panel, .setlists-panel {
@@ -167,43 +190,41 @@
     gap: 1rem;
   }
 
-  .placeholder-message {
-    background-color: #2a2a2a;
-    border-radius: 8px;
-    padding: 2rem;
-    text-align: center;
-    color: #aaa;
-    font-style: italic;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  }
-
   /* Responsive adjustments */
   @media (max-width: 768px) {
-    .app-container {
+    main {
       padding: 0.5rem;
     }
 
-    .app-header {
-      flex-direction: column;
-      align-items: flex-start;
+    h1 {
+      font-size: 1.2rem;
+    }
+
+    header {
+      padding: 0.75rem 0.5rem;
+    }
+
+    .header-content {
+      margin-bottom: 0.5rem;
+    }
+
+    .main-nav {
       gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding-bottom: 3rem; /* Add space for the status container */
     }
 
-    .app-status {
-      width: 100%;
-      justify-content: space-between;
+    .status-container {
+      position: absolute;
+      right: 0.5rem;
+      bottom: 0.5rem;
+      top: auto;
     }
 
-    .app-nav {
-      width: 100%;
-      justify-content: space-between;
-    }
-
-    .nav-button {
-      flex: 1;
-      padding: 0.4rem 0.5rem;
-      font-size: 0.8rem;
-      text-align: center;
+    .nav-link {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.9rem;
     }
   }
 </style>

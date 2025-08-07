@@ -17,6 +17,15 @@ export interface Marker {
   color?: string;
 }
 
+// Mock markers for when no real markers are available
+export const mockMarkers: Marker[] = [
+  { id: 1, name: 'Intro', position: 0, color: '#FFC107' },
+  { id: 2, name: 'Verse', position: 30, color: '#FF9800' },
+  { id: 3, name: 'Chorus', position: 60, color: '#F44336' },
+  { id: 4, name: 'Bridge', position: 120, color: '#9C27B0' },
+  { id: 5, name: 'Outro', position: 150, color: '#2196F3' }
+];
+
 // Create a writable store for markers
 export const markers: Writable<Marker[]> = writable([]);
 
@@ -27,8 +36,21 @@ markers.set([]);
  * Update markers with new data
  * @param markerData - Array of marker objects
  */
-export function updateMarkers(markerData: Marker[]): void {
-  markers.set(markerData);
+export function updateMarkers(markerData: any): void {
+  // Ensure markerData is an array
+  if (!Array.isArray(markerData)) {
+    logger.error('Received markerData is not an array:', markerData);
+    markers.set([]);
+    return;
+  }
+
+  // Convert marker IDs from strings to numbers if needed
+  const convertedMarkers = markerData.map(marker => ({
+    ...marker,
+    id: typeof marker.id === 'string' ? parseInt(marker.id, 10) : marker.id
+  }));
+
+  markers.set(convertedMarkers);
 }
 
 /**
@@ -118,11 +140,20 @@ function extractBpmFromMarker(name: string): number | null {
 }
 
 /**
+ * Get all markers or mock markers if none are available
+ * This is the primary store that should be used by components
+ */
+export const displayMarkers: Readable<Marker[]> = derived(markers, $markers => {
+  return $markers.length > 0 ? [...$markers] : [...mockMarkers];
+});
+
+/**
  * Get all markers sorted by position
  * Filters out markers that only contain commands
+ * Uses mock markers if no real markers are available
  */
-export const sortedMarkers: Readable<Marker[]> = derived(markers, $markers => {
-  return [...$markers]
+export const sortedMarkers: Readable<Marker[]> = derived(displayMarkers, $displayMarkers => {
+  return [...$displayMarkers]
     .filter(marker => !isCommandOnlyMarker(marker.name))
     .sort((a, b) => a.position - b.position);
 });
@@ -133,8 +164,18 @@ export const sortedMarkers: Readable<Marker[]> = derived(markers, $markers => {
  * @param markerList - List of markers
  * @returns Custom length in seconds or null if no !length marker
  */
-export function getCustomLengthForRegion(region: Region, markerList: Marker[]): number | null {
-  if (!region || !markerList || markerList.length === 0) return null;
+export function getCustomLengthForRegion(region: Region, markerList: Marker[] | any): number | null {
+  // Check if region exists
+  if (!region) return null;
+
+  // Ensure markerList is an array
+  if (!markerList || !Array.isArray(markerList) || markerList.length === 0) {
+    logger.warn('getCustomLengthForRegion: markerList is not a valid array', {
+      isArray: Array.isArray(markerList),
+      value: markerList
+    });
+    return null;
+  }
 
   // Find markers that are within the region and have a !length tag
   const lengthMarkers = markerList.filter(marker =>
@@ -168,8 +209,18 @@ function has1008Command(name: string): boolean {
  * @param region - Region object
  * @returns True if region has a !1008 marker
  */
-export function has1008MarkerInRegion(markers: Marker[], region: Region): boolean {
-  if (!region || !markers || markers.length === 0) return false;
+export function has1008MarkerInRegion(markers: Marker[] | any, region: Region): boolean {
+  // Check if region exists
+  if (!region) return false;
+
+  // Ensure markers is an array
+  if (!markers || !Array.isArray(markers) || markers.length === 0) {
+    logger.warn('has1008MarkerInRegion: markers is not a valid array', {
+      isArray: Array.isArray(markers),
+      value: markers
+    });
+    return false;
+  }
 
   // Find markers that are within the region
   const regionMarkers = markers.filter(marker =>
@@ -193,8 +244,18 @@ export function has1008MarkerInRegion(markers: Marker[], region: Region): boolea
  * @param region - Region object
  * @returns BPM value or null if no !bpm marker
  */
-export function getBpmForRegion(markers: Marker[], region: Region): number | null {
-  if (!region || !markers || markers.length === 0) return null;
+export function getBpmForRegion(markers: Marker[] | any, region: Region): number | null {
+  // Check if region exists
+  if (!region) return null;
+
+  // Ensure markers is an array
+  if (!markers || !Array.isArray(markers) || markers.length === 0) {
+    logger.warn('getBpmForRegion: markers is not a valid array', {
+      isArray: Array.isArray(markers),
+      value: markers
+    });
+    return null;
+  }
 
   // Find markers that are within the region and have a !bpm tag
   const regionMarkers = markers.filter(marker =>
@@ -219,8 +280,18 @@ export function getBpmForRegion(markers: Marker[], region: Region): number | nul
  * @param markerList - List of all markers
  * @returns The effective region length in seconds
  */
-export function getEffectiveRegionLength(region: Region, markerList: Marker[]): number {
+export function getEffectiveRegionLength(region: Region, markerList: Marker[] | any): number {
+  // Check if region exists
   if (!region) return 0;
+
+  // Ensure markerList is an array
+  if (!markerList || !Array.isArray(markerList)) {
+    logger.warn('getEffectiveRegionLength: markerList is not a valid array', {
+      isArray: Array.isArray(markerList),
+      value: markerList
+    });
+    return region.end - region.start; // Default to region length if no valid markerList
+  }
 
   const customLength = getCustomLengthForRegion(region, markerList);
   return customLength !== null ? customLength : (region.end - region.start);

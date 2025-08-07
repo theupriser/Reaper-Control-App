@@ -126,6 +126,38 @@ function setupIpcHandlers(): void {
   ipcMain.handle('set-selected-setlist', async (_, setlistId) => {
     return await backendService.setSelectedSetlist(setlistId)
   })
+
+  ipcMain.handle('get-setlists', async () => {
+    return await backendService.getSetlists()
+  })
+
+  ipcMain.handle('get-setlist', async (_, setlistId) => {
+    return await backendService.getSetlist(setlistId)
+  })
+
+  ipcMain.handle('create-setlist', async (_, name) => {
+    return await backendService.createSetlist(name)
+  })
+
+  ipcMain.handle('update-setlist', async (_, { setlistId, name }) => {
+    return await backendService.updateSetlist(setlistId, name)
+  })
+
+  ipcMain.handle('delete-setlist', async (_, setlistId) => {
+    return await backendService.deleteSetlist(setlistId)
+  })
+
+  ipcMain.handle('add-setlist-item', async (_, { setlistId, regionId, position }) => {
+    return await backendService.addSetlistItem(setlistId, regionId, position)
+  })
+
+  ipcMain.handle('remove-setlist-item', async (_, { setlistId, itemId }) => {
+    return await backendService.removeSetlistItem(setlistId, itemId)
+  })
+
+  ipcMain.handle('move-setlist-item', async (_, { setlistId, itemId, newPosition }) => {
+    return await backendService.moveSetlistItem(setlistId, itemId, newPosition)
+  })
 }
 
 /**

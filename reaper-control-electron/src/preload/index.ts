@@ -68,6 +68,17 @@ const api = {
 
   // Setlist management
   setSelectedSetlist: (setlistId: string | null) => ipcRenderer.invoke('set-selected-setlist', setlistId),
+  getSetlists: () => ipcRenderer.invoke('get-setlists'),
+  getSetlist: (setlistId: string) => ipcRenderer.invoke('get-setlist', setlistId),
+  createSetlist: (name: string) => ipcRenderer.invoke('create-setlist', name),
+  updateSetlist: (setlistId: string, name: string) => ipcRenderer.invoke('update-setlist', { setlistId, name }),
+  deleteSetlist: (setlistId: string) => ipcRenderer.invoke('delete-setlist', setlistId),
+  addSetlistItem: (setlistId: string, regionId: string, position?: number) =>
+    ipcRenderer.invoke('add-setlist-item', { setlistId, regionId, position }),
+  removeSetlistItem: (setlistId: string, itemId: string) =>
+    ipcRenderer.invoke('remove-setlist-item', { setlistId, itemId }),
+  moveSetlistItem: (setlistId: string, itemId: string, newPosition: number) =>
+    ipcRenderer.invoke('move-setlist-item', { setlistId, itemId, newPosition }),
 
   // Ping for latency measurement
   ping: () => ipcRenderer.invoke('ping'),
@@ -94,6 +105,11 @@ const api = {
     ipcRenderer.on('connection-change', (_, status: ConnectionStatus) => callback(status)),
   onSystemStats: (callback: (data: any) => void) =>
     ipcRenderer.on('system-stats', (_, data: any) => callback(data)),
+  // Setlist event listeners
+  onSetlistsUpdate: (callback: (data: any[]) => void) =>
+    ipcRenderer.on('setlists-update', (_, data: any[]) => callback(data)),
+  onSetlistUpdate: (callback: (data: any) => void) =>
+    ipcRenderer.on('setlist-update', (_, data: any) => callback(data)),
 
   // Remove event listeners
   removeAllListeners: (channel: string) => ipcRenderer.removeAllListeners(channel)

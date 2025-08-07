@@ -7,6 +7,13 @@
     markers,
     getEffectiveRegionLength
   } from '../stores';
+  import { setSelectedSetlist } from '../stores/playbackStore';
+  import {
+    setlists,
+    setlistLoading,
+    currentSetlist as storeCurrentSetlist,
+    fetchSetlist
+  } from '../stores/setlistStore';
   import { onMount } from 'svelte';
   import logger from '../lib/utils/logger';
   import ipcService from '../services/ipcService';
@@ -34,8 +41,30 @@
     end: number;
   }
 
-  // Current setlist (will be implemented later)
-  let currentSetlist: Setlist | null = null;
+  // Subscribe to the currentSetlist store
+  $: currentSetlist = $storeCurrentSetlist;
+
+  /**
+   * Handle setlist selection change
+   * @param event - The change event from the select element
+   */
+  function handleSetlistChange(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    const setlistId = select.value || null;
+
+    logger.log(`Setlist selection changed to: ${setlistId || 'All Regions'}`);
+
+    // Update the selected setlist
+    setSelectedSetlist(setlistId);
+
+    // If a setlist is selected, fetch it to update the currentSetlist store
+    if (setlistId) {
+      fetchSetlist(setlistId);
+    } else {
+      // Clear current setlist to show all regions
+      storeCurrentSetlist.set(null);
+    }
+  }
 
   /**
    * Computed property to determine which items to display
@@ -118,6 +147,18 @@
 
   onMount(() => {
     logger.log('RegionList component mounted');
+
+    // Initialize setlist store
+    import('../stores/setlistStore').then(module => {
+      module.initializeSetlistStore();
+      module.fetchSetlists();
+
+      // If there's a selected setlist in playbackState, fetch it
+      if ($playbackState.selectedSetlistId) {
+        module.fetchSetlist($playbackState.selectedSetlistId);
+      }
+    });
+
     // Initial regions refresh
     handleRefresh();
   });
@@ -125,6 +166,27 @@
 
 <div class="region-list-container">
   <h2>{currentSetlist ? currentSetlist.name : 'All Regions'}</h2>
+
+  {#if $setlists && $setlists.length > 0}
+    <div class="setlist-selector">
+      <label for="setlist-select">Select Setlist:</label>
+      <select
+        id="setlist-select"
+        value={$playbackState.selectedSetlistId || ''}
+        on:change={handleSetlistChange}
+        disabled={$setlistLoading}
+      >
+        <option value="">All Regions</option>
+        {#each $setlists as setlist (setlist.id)}
+          <option value={setlist.id}>{setlist.name}</option>
+        {/each}
+      </select>
+
+      {#if $setlistLoading}
+        <div class="loading-indicator">Loading...</div>
+      {/if}
+    </div>
+  {/if}
 
   {#if $statusMessage}
     <div class="status-message {$statusMessage.type}">
@@ -220,6 +282,62 @@
     margin-bottom: 1rem;
     font-size: 1.2rem;
     color: #ffffff;
+  }
+
+  .setlist-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background-color: #333;
+    border-radius: 4px;
+  }
+
+  .setlist-selector label {
+    font-weight: bold;
+    color: #ffffff;
+    white-space: nowrap;
+  }
+
+  .setlist-selector select {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #444;
+    background-color: #3a3a3a;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .setlist-selector select:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .loading-indicator {
+    font-size: 0.9rem;
+    color: #aaaaaa;
+    font-style: italic;
+    white-space: nowrap;
+  }
+
+  /* Responsive adjustments for setlist selector */
+  @media (max-width: 768px) {
+    .setlist-selector {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+      padding: 0.75rem;
+    }
+
+    .setlist-selector label {
+      margin-bottom: 0.25rem;
+    }
+
+    .setlist-selector select {
+      width: 100%;
+    }
   }
 
   .status-message {

@@ -32,11 +32,26 @@ export interface PlaybackState {
   isPlaying: boolean;
   position: number;
   currentRegionId?: string;
+  selectedSetlistId?: string | null;
   bpm: number;
   timeSignature: {
     numerator: number;
     denominator: number;
   };
+}
+
+export interface SetlistItem {
+  id: string;
+  regionId: string;
+  name: string;
+  position: number;
+}
+
+export interface Setlist {
+  id: string;
+  name: string;
+  projectId: string;
+  items: SetlistItem[];
 }
 
 export interface StatusMessage {
@@ -62,6 +77,23 @@ const mockMarkers: Marker[] = [
   { id: '4', name: 'Verse 2', position: 50 },
   { id: '5', name: 'Outro', position: 70 }
 ];
+
+// Mock setlists data
+const mockSetlists: Map<string, Setlist> = new Map();
+
+// Initialize with a sample setlist
+const sampleSetlist: Setlist = {
+  id: 'setlist-1',
+  name: 'Sample Setlist',
+  projectId: 'mock-project-id',
+  items: [
+    { id: 'item-1', regionId: '1', name: 'Intro', position: 0 },
+    { id: 'item-2', regionId: '2', name: 'Verse 1', position: 1 },
+    { id: 'item-3', regionId: '3', name: 'Chorus', position: 2 }
+  ]
+};
+
+mockSetlists.set(sampleSetlist.id, sampleSetlist);
 
 // Backend service class
 export class BackendService extends EventEmitter {
@@ -400,12 +432,380 @@ export class BackendService extends EventEmitter {
   }
 
   /**
+   * Get all setlists for the current project
+   * @returns Promise that resolves with the setlists
+   */
+  public async getSetlists(): Promise<Setlist[]> {
+    // Filter setlists by current project ID
+    const projectSetlists = Array.from(mockSetlists.values())
+      .filter(setlist => setlist.projectId === this.projectId);
+
+    // Emit setlists update
+    if (this.mainWindow) {
+      this.mainWindow.webContents.send('setlists-update', projectSetlists);
+    }
+
+    return projectSetlists;
+  }
+
+  /**
+   * Get a setlist by ID
+   * @param setlistId - The ID of the setlist to get
+   * @returns Promise that resolves with the setlist or null if not found
+   */
+  public async getSetlist(setlistId: string): Promise<Setlist | null> {
+    const setlist = mockSetlists.get(setlistId);
+
+    if (!setlist) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Setlist with ID ${setlistId} not found`,
+        timestamp: Date.now()
+      });
+      return null;
+    }
+
+    return setlist;
+  }
+
+  /**
+   * Create a new setlist
+   * @param name - The name of the setlist
+   * @returns Promise that resolves with the created setlist
+   */
+  public async createSetlist(name: string): Promise<Setlist> {
+    // Generate a unique ID
+    const id = `setlist-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Create the setlist
+    const setlist: Setlist = {
+      id,
+      name,
+      projectId: this.projectId,
+      items: []
+    };
+
+    // Add to mock data
+    mockSetlists.set(id, setlist);
+
+    // Emit status message
+    this.emitStatusMessage({
+      type: 'info',
+      message: `Created setlist "${name}"`,
+      timestamp: Date.now()
+    });
+
+    // Emit setlists update
+    await this.getSetlists();
+
+    return setlist;
+  }
+
+  /**
+   * Update a setlist
+   * @param setlistId - The ID of the setlist to update
+   * @param name - The new name for the setlist
+   * @returns Promise that resolves with the updated setlist or null if not found
+   */
+  public async updateSetlist(setlistId: string, name: string): Promise<Setlist | null> {
+    const setlist = mockSetlists.get(setlistId);
+
+    if (!setlist) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Setlist with ID ${setlistId} not found`,
+        timestamp: Date.now()
+      });
+      return null;
+    }
+
+    // Update the setlist
+    setlist.name = name;
+
+    // Update in mock data
+    mockSetlists.set(setlistId, setlist);
+
+    // Emit status message
+    this.emitStatusMessage({
+      type: 'info',
+      message: `Updated setlist "${name}"`,
+      timestamp: Date.now()
+    });
+
+    // Emit setlists update
+    await this.getSetlists();
+
+    return setlist;
+  }
+
+  /**
+   * Delete a setlist
+   * @param setlistId - The ID of the setlist to delete
+   * @returns Promise that resolves with true if deleted, false if not found
+   */
+  public async deleteSetlist(setlistId: string): Promise<boolean> {
+    const setlist = mockSetlists.get(setlistId);
+
+    if (!setlist) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Setlist with ID ${setlistId} not found`,
+        timestamp: Date.now()
+      });
+      return false;
+    }
+
+    // Delete from mock data
+    mockSetlists.delete(setlistId);
+
+    // Emit status message
+    this.emitStatusMessage({
+      type: 'info',
+      message: `Deleted setlist "${setlist.name}"`,
+      timestamp: Date.now()
+    });
+
+    // Emit setlists update
+    await this.getSetlists();
+
+    return true;
+  }
+
+  /**
+   * Add an item to a setlist
+   * @param setlistId - The ID of the setlist
+   * @param regionId - The ID of the region to add
+   * @param position - The position to add the item at (optional)
+   * @returns Promise that resolves with the added item or null if setlist not found
+   */
+  public async addSetlistItem(setlistId: string, regionId: string, position?: number): Promise<SetlistItem | null> {
+    const setlist = mockSetlists.get(setlistId);
+
+    if (!setlist) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Setlist with ID ${setlistId} not found`,
+        timestamp: Date.now()
+      });
+      return null;
+    }
+
+    // Find the region
+    const region = mockRegions.find(r => r.id === regionId);
+
+    if (!region) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Region with ID ${regionId} not found`,
+        timestamp: Date.now()
+      });
+      return null;
+    }
+
+    // Generate a unique ID
+    const id = `item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Determine position
+    const itemPosition = position !== undefined ? position : setlist.items.length;
+
+    // Create the item
+    const item: SetlistItem = {
+      id,
+      regionId,
+      name: region.name,
+      position: itemPosition
+    };
+
+    // Add to setlist
+    if (position !== undefined) {
+      // Insert at specific position
+      setlist.items.splice(position, 0, item);
+
+      // Update positions of subsequent items
+      for (let i = position + 1; i < setlist.items.length; i++) {
+        setlist.items[i].position = i;
+      }
+    } else {
+      // Add to end
+      setlist.items.push(item);
+    }
+
+    // Update in mock data
+    mockSetlists.set(setlistId, setlist);
+
+    // Emit status message
+    this.emitStatusMessage({
+      type: 'info',
+      message: `Added "${region.name}" to setlist "${setlist.name}"`,
+      timestamp: Date.now()
+    });
+
+    // Emit setlist update
+    if (this.mainWindow) {
+      this.mainWindow.webContents.send('setlist-update', setlist);
+    }
+
+    return item;
+  }
+
+  /**
+   * Remove an item from a setlist
+   * @param setlistId - The ID of the setlist
+   * @param itemId - The ID of the item to remove
+   * @returns Promise that resolves with true if removed, false if not found
+   */
+  public async removeSetlistItem(setlistId: string, itemId: string): Promise<boolean> {
+    const setlist = mockSetlists.get(setlistId);
+
+    if (!setlist) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Setlist with ID ${setlistId} not found`,
+        timestamp: Date.now()
+      });
+      return false;
+    }
+
+    // Find the item
+    const itemIndex = setlist.items.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Item with ID ${itemId} not found in setlist`,
+        timestamp: Date.now()
+      });
+      return false;
+    }
+
+    // Get the item name for the status message
+    const itemName = setlist.items[itemIndex].name;
+
+    // Remove from setlist
+    setlist.items.splice(itemIndex, 1);
+
+    // Update positions of subsequent items
+    for (let i = itemIndex; i < setlist.items.length; i++) {
+      setlist.items[i].position = i;
+    }
+
+    // Update in mock data
+    mockSetlists.set(setlistId, setlist);
+
+    // Emit status message
+    this.emitStatusMessage({
+      type: 'info',
+      message: `Removed "${itemName}" from setlist "${setlist.name}"`,
+      timestamp: Date.now()
+    });
+
+    // Emit setlist update
+    if (this.mainWindow) {
+      this.mainWindow.webContents.send('setlist-update', setlist);
+    }
+
+    return true;
+  }
+
+  /**
+   * Move an item within a setlist
+   * @param setlistId - The ID of the setlist
+   * @param itemId - The ID of the item to move
+   * @param newPosition - The new position for the item
+   * @returns Promise that resolves with the updated setlist or null if not found
+   */
+  public async moveSetlistItem(setlistId: string, itemId: string, newPosition: number): Promise<Setlist | null> {
+    const setlist = mockSetlists.get(setlistId);
+
+    if (!setlist) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Setlist with ID ${setlistId} not found`,
+        timestamp: Date.now()
+      });
+      return null;
+    }
+
+    // Find the item
+    const itemIndex = setlist.items.findIndex(item => item.id === itemId);
+
+    if (itemIndex === -1) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Item with ID ${itemId} not found in setlist`,
+        timestamp: Date.now()
+      });
+      return null;
+    }
+
+    // Validate new position
+    if (newPosition < 0 || newPosition >= setlist.items.length) {
+      this.emitStatusMessage({
+        type: 'error',
+        message: `Invalid position ${newPosition}`,
+        timestamp: Date.now()
+      });
+      return null;
+    }
+
+    // Move the item
+    const item = setlist.items[itemIndex];
+    setlist.items.splice(itemIndex, 1);
+    setlist.items.splice(newPosition, 0, item);
+
+    // Update positions
+    for (let i = 0; i < setlist.items.length; i++) {
+      setlist.items[i].position = i;
+    }
+
+    // Update in mock data
+    mockSetlists.set(setlistId, setlist);
+
+    // Emit status message
+    this.emitStatusMessage({
+      type: 'info',
+      message: `Moved "${item.name}" to position ${newPosition + 1} in setlist "${setlist.name}"`,
+      timestamp: Date.now()
+    });
+
+    // Emit setlist update
+    if (this.mainWindow) {
+      this.mainWindow.webContents.send('setlist-update', setlist);
+    }
+
+    return setlist;
+  }
+
+  /**
    * Set selected setlist
    * @param setlistId - The ID of the setlist to select
    * @returns Promise that resolves when the operation is complete
    */
   public async setSelectedSetlist(setlistId: string | null): Promise<void> {
-    // This is a mock implementation
+    // Update playback state
+    this.playbackState.selectedSetlistId = setlistId;
+
+    // Emit playback state update
+    this.emitPlaybackState();
+
+    // Emit status message
+    if (setlistId) {
+      const setlist = mockSetlists.get(setlistId);
+      if (setlist) {
+        this.emitStatusMessage({
+          type: 'info',
+          message: `Selected setlist "${setlist.name}"`,
+          timestamp: Date.now()
+        });
+      }
+    } else {
+      this.emitStatusMessage({
+        type: 'info',
+        message: 'Cleared setlist selection',
+        timestamp: Date.now()
+      });
+    }
+
     console.log(`Selected setlist: ${setlistId}`);
   }
 

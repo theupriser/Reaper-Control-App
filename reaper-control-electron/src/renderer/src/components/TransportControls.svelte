@@ -32,6 +32,34 @@
   import { writable, type Writable } from 'svelte/store';
   import { onMount, onDestroy } from 'svelte';
 
+  // Mock data for testing when no real data is available
+  // Mock current region
+  const mockCurrentRegion: Region = {
+    id: 1,
+    name: 'Mock Song Title',
+    start: 0,
+    end: 180, // 3 minutes
+    color: '#4CAF50'
+  };
+
+  // Mock next region
+  const mockNextRegion: Region = {
+    id: 2,
+    name: 'Next Mock Song',
+    start: 180,
+    end: 360, // 3 minutes
+    color: '#2196F3'
+  };
+
+  // Mock markers
+  const mockMarkers: Marker[] = [
+    { id: 1, name: 'Intro', position: 0, color: '#FFC107' },
+    { id: 2, name: 'Verse', position: 30, color: '#FF9800' },
+    { id: 3, name: 'Chorus', position: 60, color: '#F44336' },
+    { id: 4, name: 'Bridge', position: 120, color: '#9C27B0' },
+    { id: 5, name: 'Outro', position: 150, color: '#2196F3' }
+  ];
+
   // Store to track disabled state of transport buttons
   const transportButtonsDisabled: Writable<boolean> = writable(false);
 
@@ -48,6 +76,14 @@
 
   // Get sorted markers (visible markers only)
   const sortedMarkers = markers;
+
+  // Use mock data if no real data is available
+  $: displayRegion = $currentRegion || mockCurrentRegion;
+  $: displayNextRegion = $nextRegion || mockNextRegion;
+  $: displayMarkers = $markers.length > 0 ? $markers : mockMarkers;
+
+  // Initialize playback position if not available
+  $: currentPosition = $playbackState ? $playbackState.currentPosition || 0 : 0;
 
   /**
    * Safely execute a transport control function with button disabling
@@ -245,24 +281,16 @@
 <div class="transport-controls">
   <div class="playback-info">
     <div class="current-region">
-      {#if $currentRegion}
-        <span class="region-name">{$currentRegion.name}</span>
-      {:else}
-        <span class="region-name">No region selected</span>
-      {/if}
+      <span class="region-name">{displayRegion.name}</span>
     </div>
 
     <div class="info-display">
       <div class="time-display">
-        {#if $currentRegion}
-          <span class="current-time">
-            {formatTime(Math.max(0, $playbackState.currentPosition - $currentRegion.start))}
-          </span>
-          <span class="separator">/</span>
-          <span class="total-time">{formatTime(getEffectiveRegionLength($currentRegion, $markers))}</span>
-        {:else}
-          <span class="current-time">{formatTime($playbackState.currentPosition)}</span>
-        {/if}
+        <span class="current-time">
+          {formatTime(Math.max(0, currentPosition - displayRegion.start))}
+        </span>
+        <span class="separator">/</span>
+        <span class="total-time">{formatTime(getEffectiveRegionLength(displayRegion, displayMarkers))}</span>
       </div>
 
       <div class="bpm-display">
@@ -273,69 +301,89 @@
   </div>
 
   <!-- Progress bar -->
-  {#if $currentRegion}
-    <div class="progress-container"
-      on:click={$transportButtonsDisabled ? null : handleProgressBarClick}
-      class:disabled={$transportButtonsDisabled}>
-      <div
-        class="progress-bar"
-        style="width: {Math.min(100, Math.max(0, (($playbackState.currentPosition - $currentRegion.start) / getEffectiveRegionLength($currentRegion, $markers)) * 100))}%"
-      ></div>
+  <div class="progress-container"
+    on:click={$transportButtonsDisabled ? null : handleProgressBarClick}
+    class:disabled={$transportButtonsDisabled}>
+    <div
+      class="progress-bar"
+      style="width: {Math.min(100, Math.max(0, ((currentPosition - displayRegion.start) / getEffectiveRegionLength(displayRegion, displayMarkers)) * 100))}%"
+    ></div>
 
-      <!-- Hard stop message -->
-      {#if $atHardStop && !$playbackState.isPlaying && $nextRegion}
-        <div class="hard-stop-marker">
-          <div class="hard-stop-message">
-            Press play to continue
-          </div>
+    <!-- Hard stop message -->
+    {#if $atHardStop && !$playbackState.isPlaying && displayNextRegion}
+      <div class="hard-stop-marker">
+        <div class="hard-stop-message">
+          Press play to continue
         </div>
-      {/if}
+      </div>
+    {/if}
 
-      <!-- Markers -->
-      {#each $markers as marker}
-        {#if marker.position >= $currentRegion.start && marker.position <= $currentRegion.end}
-          <div
-            class="marker"
-            style="left: {((marker.position - $currentRegion.start) / getEffectiveRegionLength($currentRegion, $markers)) * 100}%"
-            title={marker.name}
-          >
-            <div class="marker-tooltip">
-              {marker.name}
-            </div>
-          </div>
-        {/if}
-      {/each}
-
-      <!-- Fake marker for length marker end position or !1008 marker -->
-      {#if $currentRegion}
-        {#if getCustomLengthForRegion($markers, $currentRegion) !== null || has1008MarkerInRegion($markers, $currentRegion)}
-          <div
-            class="marker hard-stop-marker-indicator"
-            style="left: 100%"
-            title="Hard stop point"
-          >
-            <div class="marker-tooltip">
-              Hard stop point
-            </div>
-          </div>
-        {/if}
-      {/if}
-
-      <!-- Time popover -->
-      {#if $popoverVisible}
+    <!-- Markers -->
+    {#each displayMarkers as marker}
+      {#if marker.position >= displayRegion.start && marker.position <= displayRegion.end}
         <div
-          class="time-popover"
-          style="left: {$popoverPosition.x}px; top: {$popoverPosition.y}px"
+          class="marker"
+          style="left: {((marker.position - displayRegion.start) / getEffectiveRegionLength(displayRegion, displayMarkers)) * 100}%"
+          title={marker.name}
         >
-          {formatTime($popoverTime)}
+          <div class="marker-tooltip">
+            {marker.name}
+          </div>
         </div>
       {/if}
+    {/each}
+
+    <!-- Fake marker for length marker end position or !1008 marker -->
+    {#if getCustomLengthForRegion(displayMarkers, displayRegion) !== null || has1008MarkerInRegion(displayMarkers, displayRegion)}
+      <div
+        class="marker hard-stop-marker-indicator"
+        style="left: 100%"
+        title="Hard stop point"
+      >
+        <div class="marker-tooltip">
+          Hard stop point
+        </div>
+      </div>
+    {/if}
+
+    <!-- Time popover -->
+    {#if $popoverVisible}
+      <div
+        class="time-popover"
+        style="left: {$popoverPosition.x}px; top: {$popoverPosition.y}px"
+      >
+        {formatTime($popoverTime)}
+      </div>
+    {/if}
+  </div>
+
+  <div class="toggle-container">
+    <div class="toggle-item">
+      <label class="toggle-switch">
+        <input
+          type="checkbox"
+          checked={$autoplayEnabled}
+          on:change={toggleAutoplay}
+          disabled={$transportButtonsDisabled}
+        />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label">Auto-resume playback</span>
     </div>
-  {:else}
-    <div class="progress-container" class:disabled={$transportButtonsDisabled}>
-      <div class="progress-bar" style="width: 0%"></div>
+
+    <div class="toggle-item">
+      <label class="toggle-switch">
+        <input
+          type="checkbox"
+          checked={$countInEnabled}
+          on:change={toggleCountIn}
+          disabled={$transportButtonsDisabled}
+        />
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label">Count-in when pressing marker</span>
     </div>
-  {/if}
+  </div>
 
   <div class="controls">
     <button
@@ -364,7 +412,7 @@
       class="control-button play-pause"
       on:click={() => safeTransportAction(() => ipcService.togglePlay())}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
-      disabled={$transportButtonsDisabled || (!$nextRegion && !$playbackState.isPlaying && $atHardStop)}
+      disabled={$transportButtonsDisabled || (!displayNextRegion && !$playbackState.isPlaying && $atHardStop)}
     >
       {#if $playbackState.isPlaying}
         <svg viewBox="0 0 24 24" width="32" height="32">
@@ -398,34 +446,6 @@
         <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" fill="currentColor"/>
       </svg>
     </button>
-  </div>
-
-  <div class="toggle-container">
-    <div class="toggle-item">
-      <label class="toggle-switch">
-        <input
-          type="checkbox"
-          checked={$autoplayEnabled}
-          on:change={toggleAutoplay}
-          disabled={$transportButtonsDisabled}
-        />
-        <span class="toggle-slider"></span>
-      </label>
-      <span class="toggle-label">Auto-resume playback</span>
-    </div>
-
-    <div class="toggle-item">
-      <label class="toggle-switch">
-        <input
-          type="checkbox"
-          checked={$countInEnabled}
-          on:change={toggleCountIn}
-          disabled={$transportButtonsDisabled}
-        />
-        <span class="toggle-slider"></span>
-      </label>
-      <span class="toggle-label">Count-in when pressing marker</span>
-    </div>
   </div>
 </div>
 
@@ -488,6 +508,150 @@
   .separator {
     margin: 0 0.3rem;
     opacity: 0.7;
+  }
+
+  /* Progress bar styles */
+  .progress-container {
+    width: 100%;
+    height: 6px;
+    background-color: #4a4a4a;
+    border-radius: 3px;
+    margin: 10px 0 20px 0;
+    overflow: visible;
+    position: relative;
+    cursor: pointer;
+    transition: opacity 0.2s ease-out;
+  }
+
+  /* Disabled progress container */
+  .progress-container.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background-color: #4CAF50;
+    border-radius: 3px;
+    transition: width 0.2s ease-out;
+  }
+
+  /* Marker styles */
+  .marker {
+    position: absolute;
+    top: -5px;
+    width: 3px;
+    height: 16px;
+    background-color: #FFC107;
+    transform: translateX(-50%);
+    z-index: 5;
+    cursor: pointer;
+  }
+
+  .marker:hover {
+    width: 5px;
+  }
+
+  /* Hard stop marker indicator styles */
+  .hard-stop-marker-indicator {
+    background-color: #ff5252;
+    width: 4px;
+    height: 20px;
+    top: -7px;
+  }
+
+  .hard-stop-marker-indicator:hover {
+    width: 6px;
+  }
+
+  .marker-tooltip {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  }
+
+  .marker:hover .marker-tooltip {
+    opacity: 1;
+  }
+
+  .marker-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+  }
+
+  /* Hard stop marker styles */
+  .hard-stop-marker {
+    position: absolute;
+    top: -40px;
+    right: 0;
+    width: auto;
+    z-index: 10;
+  }
+
+  .hard-stop-message {
+    background-color: #ff5252;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+  }
+
+  /* Time popover styles */
+  .time-popover {
+    position: absolute;
+    background-color: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    transform: translate(-50%, -100%);
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .time-popover::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translate(-50%, -90%); }
+    to { opacity: 1; transform: translate(-50%, -100%); }
   }
 
   /* Toggle container styles */
@@ -629,6 +793,16 @@
       align-items: center;
     }
 
+    .progress-container {
+      height: 5px;
+      margin-bottom: 0.8rem;
+    }
+
+    .time-popover {
+      padding: 3px 6px;
+      font-size: 0.7rem;
+    }
+
     .toggle-container {
       margin-top: 0.5rem;
     }
@@ -656,6 +830,18 @@
 
     .bpm-label {
       font-size: 0.7rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .progress-container {
+      height: 8px; /* Make the touch target larger on mobile */
+      margin-bottom: 0.6rem;
+    }
+
+    .progress-bar {
+      height: 4px;
+      margin-top: 2px; /* Center the bar in the container */
     }
   }
 </style>

@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: reaper-control-electron
+appId: com.theupriser.reaper-control
+productName: Reaper Control
 directories:
   buildResources: build
 files:
@@ -13,13 +13,14 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: reaper-control-electron
+  executableName: reaper-control
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  icon: resources/icon.icns
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -34,7 +35,7 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: theupriser.org
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}

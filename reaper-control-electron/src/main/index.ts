@@ -18,7 +18,8 @@ function createWindow(): void {
     height: 800,
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    title: 'Reaper Control',
+    icon, // Use the icon for all platforms, not just Linux
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false

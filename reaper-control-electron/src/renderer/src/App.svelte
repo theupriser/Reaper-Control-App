@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import SystemStats from './components/SystemStats.svelte';
-  import ConnectionStatus from './components/ConnectionStatus.svelte';
   import RegionList from './components/RegionList.svelte';
   import TransportControls from './components/TransportControls.svelte';
   import SetlistEditor from './components/SetlistEditor.svelte';

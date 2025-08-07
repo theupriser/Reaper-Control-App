@@ -252,7 +252,16 @@ export function formatLongTime(seconds: number | undefined): string {
  * Toggle play/pause
  */
 export function togglePlay(): void {
-  safeTransportAction(ipcService.togglePlay);
+  safeTransportAction(() => {
+    // Toggle the playback state immediately for better UI feedback
+    playbackState.update(state => ({
+      ...state,
+      isPlaying: !state.isPlaying
+    }));
+
+    // Then send the command to the backend
+    ipcService.togglePlay();
+  });
 }
 
 /**
@@ -611,7 +620,7 @@ export function updateTimerOnRegionChange(): void {
       previousRegionId = currentRegionValue.id;
 
       // Check if the new region has a length marker
-      const customLength = getCustomLengthForRegion(markersValue, currentRegionValue);
+      const customLength = getCustomLengthForRegion(currentRegionValue, markersValue);
       if (customLength !== null) {
         // Find the actual length marker to get its position
         const lengthMarker = findLengthMarkerInRegion(markersValue, currentRegionValue);

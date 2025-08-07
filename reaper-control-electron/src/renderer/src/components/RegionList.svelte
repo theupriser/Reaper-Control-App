@@ -5,7 +5,8 @@
     statusMessage,
     type Region,
     markers,
-    getEffectiveRegionLength
+    getEffectiveRegionLength,
+    autoplayEnabled
   } from '../stores';
   import { setSelectedSetlist } from '../stores/playbackStore';
   import {
@@ -133,7 +134,8 @@
    */
   function selectRegion(regionId: number): void {
     logger.log(`Seeking to region: ${regionId}`);
-    ipcService.seekToRegion(regionId.toString());
+    // Pass the autoplayEnabled value from the store to control auto-resume behavior
+    ipcService.seekToRegion(regionId.toString(), $autoplayEnabled);
   }
 
   /**

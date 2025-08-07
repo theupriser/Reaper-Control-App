@@ -56,12 +56,18 @@ export function updateRegions(data: Region[] | null | undefined): boolean {
       return false;
     }
 
+    // Convert region IDs from strings to numbers if needed
+    const convertedRegions = data.map(region => ({
+      ...region,
+      id: typeof region.id === 'string' ? parseInt(region.id, 10) : region.id
+    }));
+
     // Log the first region for debugging
-    if (data.length > 0) {
-      logger.log('First region:', data[0]);
+    if (convertedRegions.length > 0) {
+      logger.log('First region (after ID conversion):', convertedRegions[0]);
 
       // Validate region structure
-      const firstRegion = data[0];
+      const firstRegion = convertedRegions[0];
       if (!firstRegion.id || !firstRegion.name || firstRegion.start === undefined || firstRegion.end === undefined) {
         logger.warn('Region data may be malformed:', firstRegion);
       }
@@ -70,7 +76,7 @@ export function updateRegions(data: Region[] | null | undefined): boolean {
     }
 
     // Update the regions store
-    regions.set(data);
+    regions.set(convertedRegions);
     return true;
   } catch (error) {
     logger.error('Error processing regions data:', error);

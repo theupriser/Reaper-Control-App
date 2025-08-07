@@ -82,7 +82,7 @@
   // Use real data or null if not available
   $: displayRegion = $currentRegion;
   $: displayNextRegion = $nextRegion;
-  $: displayMarkers = $markers;
+  $: displayMarkers = $sortedMarkers; // Use sortedMarkers to filter out command-only markers
 
   // Initialize playback position if not available
   $: currentPosition = $useLocalTimer
@@ -183,7 +183,7 @@
           {/each}
 
           <!-- Fake marker for length marker end position or !1008 marker -->
-          {#if getCustomLengthForRegion(displayMarkers, displayRegion) !== null || has1008MarkerInRegion(displayMarkers, displayRegion)}
+          {#if getCustomLengthForRegion(displayRegion, $markers) !== null || has1008MarkerInRegion($markers, displayRegion)}
             <div
               class="marker hard-stop-marker-indicator"
               style="left: 100%"
@@ -202,7 +202,7 @@
       <h2>{displayNextRegion ? `Next: ${displayNextRegion.name}` : 'End of setlist'}</h2>
       <div class="next-song-duration">
         {#if displayNextRegion}
-          Duration: {formatTime(displayRegion ? getEffectiveRegionLength(displayNextRegion, displayMarkers) : (displayNextRegion.end - displayNextRegion.start))}
+          Duration: {formatTime(displayRegion ? getEffectiveRegionLength(displayNextRegion, $markers) : (displayNextRegion.end - displayNextRegion.start))}
         {:else}
           &nbsp;
         {/if}

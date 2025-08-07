@@ -72,6 +72,7 @@ export class IpcHandler {
 
     // Playback control
     ipcMain.handle(IPC_CHANNELS.TOGGLE_PLAY, this.handleTogglePlay.bind(this));
+    ipcMain.handle(IPC_CHANNELS.PLAY_WITH_COUNT_IN, this.handlePlayWithCountIn.bind(this));
     ipcMain.handle(IPC_CHANNELS.SEEK_TO_POSITION, this.handleSeekToPosition.bind(this));
     ipcMain.handle(IPC_CHANNELS.SEEK_TO_REGION, this.handleSeekToRegion.bind(this));
     ipcMain.handle(IPC_CHANNELS.NEXT_REGION, this.handleNextRegion.bind(this));
@@ -224,7 +225,10 @@ export class IpcHandler {
           break;
         case 'seekToRegion':
           if (params && params.regionId) {
-            await this.regionService.seekToRegion(params.regionId);
+            const region = this.regionService.getRegionById(params.regionId);
+            if (region) {
+              await this.regionService.seekToRegionAndPlay(region, params.autoplay, params.countIn);
+            }
           }
           break;
         case 'seekToPosition':
@@ -331,19 +335,40 @@ export class IpcHandler {
   }
 
   /**
+   * Handle play with count-in
+   */
+  private async handlePlayWithCountIn(): Promise<void> {
+    try {
+      await this.reaperConnector.playWithCountIn();
+    } catch (error) {
+      logger.error('Error playing with count-in', { error });
+      this.sendStatusMessage(this.createErrorMessage('Failed to play with count-in', String(error)));
+      throw error;
+    }
+  }
+
+  /**
    * Handle seek to position
    * @param _ - IPC event
-   * @param position - Position to seek to
+   * @param params - Parameters including position and useCountIn flag
    */
-  private async handleSeekToPosition(_: any, position: string): Promise<void> {
+  private async handleSeekToPosition(_: any, params: { position: string, useCountIn?: boolean }): Promise<void> {
     try {
+      // Extract position and useCountIn from params
+      const { position, useCountIn = false } = params;
+
+      // Parse position to float
       const pos = parseFloat(position);
       if (isNaN(pos)) {
         throw new Error('Invalid position');
       }
-      await this.reaperConnector.seekToPosition(pos);
+
+      logger.debug('Seeking to position', { position: pos, useCountIn });
+
+      // Call seekToPosition with the useCountIn parameter
+      await this.reaperConnector.seekToPosition(pos, useCountIn);
     } catch (error) {
-      logger.error('Error seeking to position', { error, position });
+      logger.error('Error seeking to position', { error, params });
       this.sendStatusMessage(this.createErrorMessage('Failed to seek to position', String(error)));
       throw error;
     }
@@ -352,13 +377,27 @@ export class IpcHandler {
   /**
    * Handle seek to region
    * @param _ - IPC event
-   * @param regionId - Region ID
+   * @param params - Parameters including regionId, autoplay flag, and countIn flag
    */
-  private async handleSeekToRegion(_: any, regionId: string): Promise<void> {
+  private async handleSeekToRegion(_: any, params: { regionId: string, autoplay: boolean, countIn?: boolean }): Promise<void> {
     try {
-      await this.regionService.seekToRegion(regionId);
+      const { regionId, autoplay, countIn } = params;
+      logger.debug('Seeking to region with options', { regionId, autoplay, countIn });
+
+      // Get the region
+      const region = this.regionService.getRegionById(regionId);
+      if (!region) {
+        throw new Error(`Region not found: ${regionId}`);
+      }
+
+      // Use the new seekToRegionAndPlay method
+      const result = await this.regionService.seekToRegionAndPlay(region, autoplay, countIn);
+
+      if (!result) {
+        throw new Error('Failed to seek to region and play');
+      }
     } catch (error) {
-      logger.error('Error seeking to region', { error, regionId });
+      logger.error('Error seeking to region', { error, params });
       this.sendStatusMessage(this.createErrorMessage('Failed to seek to region', String(error)));
       throw error;
     }
@@ -641,6 +680,7 @@ export class IpcHandler {
     ipcMain.removeHandler(IPC_CHANNELS.REFRESH_MARKERS);
     ipcMain.removeHandler(IPC_CHANNELS.GET_MARKERS);
     ipcMain.removeHandler(IPC_CHANNELS.TOGGLE_PLAY);
+    ipcMain.removeHandler(IPC_CHANNELS.PLAY_WITH_COUNT_IN);
     ipcMain.removeHandler(IPC_CHANNELS.SEEK_TO_POSITION);
     ipcMain.removeHandler(IPC_CHANNELS.SEEK_TO_REGION);
     ipcMain.removeHandler(IPC_CHANNELS.NEXT_REGION);

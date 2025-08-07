@@ -20,6 +20,7 @@ export const IPC_CHANNELS = {
 
   // Playback control
   TOGGLE_PLAY: 'toggle-play',
+  PLAY_WITH_COUNT_IN: 'play-with-count-in',
   SEEK_TO_POSITION: 'seek-to-position',
   SEEK_TO_REGION: 'seek-to-region',
   NEXT_REGION: 'next-region',

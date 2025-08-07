@@ -10,6 +10,7 @@ import logger from '../utils/logger';
 export class ProjectService extends EventEmitter {
   private projectId: string = '';
   private setlists: Map<string, Setlist> = new Map();
+  private selectedSetlistId: string | null = null;
   private reaperConnector: ReaperConnector;
 
   /**
@@ -405,7 +406,116 @@ export class ProjectService extends EventEmitter {
   public setSelectedSetlist(setlistId: string | null): void {
     logger.info('Selected setlist', { setlistId });
 
+    // Store the selected setlist ID
+    this.selectedSetlistId = setlistId;
+
     // Emit selected setlist event
     this.emit('selectedSetlist', setlistId);
+  }
+
+  /**
+   * Get the currently selected setlist ID
+   * @returns The selected setlist ID or null if none is selected
+   */
+  public getSelectedSetlistId(): string | null {
+    return this.selectedSetlistId;
+  }
+
+  /**
+   * Get the next item in a setlist based on the current region
+   * @param currentRegionId - ID of the current region
+   * @returns Next setlist item or null if at the end or no setlist is selected
+   */
+  public getNextSetlistItem(currentRegionId: string): SetlistItem | null {
+    try {
+      // Check if a setlist is selected
+      if (!this.selectedSetlistId) {
+        logger.debug('No setlist selected, cannot get next item');
+        return null;
+      }
+
+      // Get the selected setlist
+      const setlist = this.getSetlist(this.selectedSetlistId);
+      if (!setlist || setlist.items.length === 0) {
+        logger.debug('Selected setlist not found or empty', { setlistId: this.selectedSetlistId });
+        return null;
+      }
+
+      // If no current region, return the first item in the setlist
+      if (!currentRegionId) {
+        logger.debug('No current region, returning first item in setlist');
+        return setlist.items[0];
+      }
+
+      // Find the current item in the setlist
+      const currentItemIndex = setlist.items.findIndex(item => item.regionId === currentRegionId);
+
+      // If current region is not in the setlist or it's the last item, return null
+      if (currentItemIndex === -1 || currentItemIndex >= setlist.items.length - 1) {
+        logger.debug('Current region not in setlist or at the end', { currentRegionId, currentItemIndex });
+        return null;
+      }
+
+      // Return the next item
+      const nextItem = setlist.items[currentItemIndex + 1];
+      logger.debug('Found next setlist item', {
+        currentRegionId,
+        nextRegionId: nextItem.regionId,
+        nextItemName: nextItem.name
+      });
+      return nextItem;
+    } catch (error) {
+      logger.error('Error getting next setlist item', { error, currentRegionId });
+      return null;
+    }
+  }
+
+  /**
+   * Get the previous item in a setlist based on the current region
+   * @param currentRegionId - ID of the current region
+   * @returns Previous setlist item or null if at the beginning or no setlist is selected
+   */
+  public getPreviousSetlistItem(currentRegionId: string): SetlistItem | null {
+    try {
+      // Check if a setlist is selected
+      if (!this.selectedSetlistId) {
+        logger.debug('No setlist selected, cannot get previous item');
+        return null;
+      }
+
+      // Get the selected setlist
+      const setlist = this.getSetlist(this.selectedSetlistId);
+      if (!setlist || setlist.items.length === 0) {
+        logger.debug('Selected setlist not found or empty', { setlistId: this.selectedSetlistId });
+        return null;
+      }
+
+      // If no current region, return the first item in the setlist
+      if (!currentRegionId) {
+        logger.debug('No current region, returning first item in setlist');
+        return setlist.items[0];
+      }
+
+      // Find the current item in the setlist
+      const currentItemIndex = setlist.items.findIndex(item => item.regionId === currentRegionId);
+
+      // If current region is not in the setlist or it's the first item, return null
+      if (currentItemIndex <= 0) {
+        logger.debug('Current region not in setlist or at the beginning', { currentRegionId, currentItemIndex });
+        return null;
+      }
+
+      // Return the previous item
+      const prevItem = setlist.items[currentItemIndex - 1];
+      logger.debug('Found previous setlist item', {
+        currentRegionId,
+        prevRegionId: prevItem.regionId,
+        prevItemName: prevItem.name
+      });
+      return prevItem;
+    } catch (error) {
+      logger.error('Error getting previous setlist item', { error, currentRegionId });
+      return null;
+    }
   }
 }

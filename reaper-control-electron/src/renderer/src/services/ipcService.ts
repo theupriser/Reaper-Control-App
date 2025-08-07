@@ -66,8 +66,9 @@ interface StatusMessage {
 
 interface IpcControl {
   refreshRegions: () => Promise<Region[]>;
-  seekToPosition: (position: number) => Promise<void>;
+  seekToPosition: (position: number, useCountIn?: boolean) => Promise<void>;
   togglePlay: () => Promise<void>;
+  playWithCountIn: () => Promise<void>;
   seekToRegion: (regionId: string) => Promise<void>;
   nextRegion: () => Promise<void>;
   previousRegion: () => Promise<void>;
@@ -300,8 +301,13 @@ function handleMidiActivity(): void {
 function createIpcControl(): IpcControl {
   return {
     refreshRegions: () => window.electronAPI.refreshRegions(),
-    seekToPosition: (position: number) => window.electronAPI.seekToPosition(position),
+    seekToPosition: (position: number, useCountIn: boolean = false) => {
+      // Pass both position and useCountIn to the IPC method
+      // The backend will handle positioning the cursor 2 bars before the target if useCountIn is true
+      return window.electronAPI.seekToPosition(position.toString(), useCountIn);
+    },
     togglePlay: () => window.electronAPI.togglePlay(),
+    playWithCountIn: () => window.electronAPI.playWithCountIn(),
     seekToRegion: (regionId: string) => window.electronAPI.seekToRegion(regionId),
     nextRegion: () => window.electronAPI.nextRegion(),
     previousRegion: () => window.electronAPI.previousRegion(),
@@ -331,8 +337,9 @@ function createIpcControl(): IpcControl {
 function createDefaultIpcControl(): IpcControl {
   return {
     refreshRegions: () => Promise.resolve([]),
-    seekToPosition: () => Promise.resolve(),
+    seekToPosition: (position: number, useCountIn: boolean = false) => Promise.resolve(),
     togglePlay: () => Promise.resolve(),
+    playWithCountIn: () => Promise.resolve(),
     seekToRegion: () => Promise.resolve(),
     nextRegion: () => Promise.resolve(),
     previousRegion: () => Promise.resolve(),

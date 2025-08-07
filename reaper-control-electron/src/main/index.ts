@@ -91,10 +91,13 @@ function initializeServices(): void {
     reaperConnector = new ReaperConnector();
 
     // Initialize services
-    regionService = new RegionService(reaperConnector);
     markerService = new MarkerService(reaperConnector);
+    regionService = new RegionService(reaperConnector, markerService);
     midiService = new MidiService();
     projectService = new ProjectService(reaperConnector);
+
+    // Set the project service in the region service for setlist navigation
+    regionService.setProjectService(projectService);
 
     // Initialize IPC handler
     ipcHandler = new IpcHandler(

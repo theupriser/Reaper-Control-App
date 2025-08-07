@@ -20,6 +20,7 @@
     autoplayEnabled,
     countInEnabled,
     markers,
+    sortedMarkers,
     nextRegion,
     getEffectiveRegionLength,
     getCustomLengthForRegion,
@@ -56,8 +57,7 @@
   const popoverPosition: Writable<{x: number, y: number}> = writable({ x: 0, y: 0 });
   const popoverTime: Writable<number> = writable(0);
 
-  // Get sorted markers (visible markers only)
-  const sortedMarkers = markers;
+  // We'll use the sortedMarkers store which filters out command-only markers
 
   // Store previous playback state to detect significant changes
   let previousPlaybackPosition = 0;
@@ -69,27 +69,35 @@
   // Set up loading state handling
   onMount(() => {
     // Set loading state to false once we have data
-    const unsubscribeRegions = markers.subscribe(value => {
+    const unsubscribeRegions = sortedMarkers.subscribe(value => {
       if (value && value.length > 0) {
         isLoading.set(false);
       }
     });
 
+    // Add a timeout to clear the loading state after 5 seconds
+    // This ensures the UI doesn't stay in loading state indefinitely
+    const loadingTimeout = setTimeout(() => {
+      isLoading.set(false);
+      logger.log('Loading timeout reached, clearing loading state');
+    }, 5000);
+
     return () => {
       unsubscribeRegions();
+      clearTimeout(loadingTimeout);
     };
   });
 
   // Use real data or null if not available
   $: displayRegion = $currentRegion;
   $: displayNextRegion = $nextRegion;
-  $: displayMarkers = $markers;
+  $: displayMarkers = $sortedMarkers; // Use sortedMarkers to filter out command-only markers
 
   // Initialize playback position if not available
   $: currentPosition = $useLocalTimer ? $localPosition : ($playbackState ? $playbackState.currentPosition || 0 : 0);
 
   // Helper function to check if we have data
-  $: hasData = $markers && $markers.length > 0;
+  $: hasData = $sortedMarkers && $sortedMarkers.length > 0;
 
   /**
    * Safely execute a transport control function with button disabling
@@ -137,9 +145,11 @@
   function toggleCountIn(): void {
     logger.log('Toggling count-in');
     safeTransportAction(() => {
-      // This will be implemented with IPC
-      // For now, just toggle the store directly
+      // Toggle the count-in store value
       countInEnabled.update(value => !value);
+
+      // Log the new state
+      logger.log(`Count-in ${$countInEnabled ? 'enabled' : 'disabled'}`);
     });
   }
 
@@ -171,7 +181,7 @@
 
       // Check if we've reached the end of the length marker or if we have a !1008 marker
       if ($currentRegion) {
-        const customLength = getCustomLengthForRegion($markers, $currentRegion);
+        const customLength = getCustomLengthForRegion($currentRegion, $markers);
         const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
 
         // For length markers, set the hard stop flag but continue the timer
@@ -292,11 +302,17 @@
     popoverVisible.set(true);
 
     // Seek to the position (either marker position or calculated position)
-    // Pass isNearMarker flag to indicate whether the click was on a marker
-    safeTransportAction(() => ipcService.seekToPosition(finalPosition.toString(), isNearMarker));
+    // If the click was on a marker and count-in is enabled, use count-in
+    if (isNearMarker && $countInEnabled) {
+      logger.log(`Using count-in for marker click at position ${finalPosition}`);
+      safeTransportAction(() => ipcService.seekToPosition(finalPosition, true));
+    } else {
+      // Otherwise, just seek to the position
+      safeTransportAction(() => ipcService.seekToPosition(finalPosition));
+    }
 
     // Check if we should use the local timer based on the position
-    const customLength = getCustomLengthForRegion($markers, $currentRegion!);
+    const customLength = getCustomLengthForRegion($currentRegion!, $markers);
     if (customLength !== null) {
       // Find the actual length marker to get its position
       const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion!);
@@ -348,7 +364,7 @@
   // Watch for changes in playback state and current region
   $: {
     if ($currentRegion) {
-      const customLength = getCustomLengthForRegion($markers, $currentRegion);
+      const customLength = getCustomLengthForRegion($currentRegion, $markers);
 
       // If there's a length marker, check if we should use the local timer
       if (customLength !== null) {
@@ -449,7 +465,7 @@
       previousRegionId = $currentRegion.id;
 
       // Check if the new region has a length marker
-      const customLength = getCustomLengthForRegion($markers, $currentRegion);
+      const customLength = getCustomLengthForRegion($currentRegion, $markers);
       if (customLength !== null) {
         // Find the actual length marker to get its position
         const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
@@ -479,7 +495,20 @@
   // Initialize markers when component is mounted
   onMount(() => {
     logger.log('TransportControls component mounted');
-    ipcService.refreshMarkers();
+
+    // Add a delay to ensure IPC handlers are registered before we try to use them
+    setTimeout(() => {
+      logger.log('Attempting to refresh markers and regions after delay');
+      // Refresh markers and regions and handle potential errors
+      try {
+        ipcService.refreshMarkers();
+        ipcService.refreshRegions();
+      } catch (error) {
+        logger.error('Error refreshing data:', error);
+        // Ensure loading state is cleared even if there's an error
+        isLoading.set(false);
+      }
+    }, 2000); // 2 second delay to ensure IPC handlers are registered
   });
 
   // Clean up the timer when the component is destroyed
@@ -495,8 +524,24 @@
   </div>
 {:else if !hasData}
   <div class="no-data-container">
-    <p>No regions found in REAPER project.</p>
+    <p>No markers or regions found in REAPER project.</p>
     <p>Please create regions in your REAPER project to use this application.</p>
+    <button class="retry-button" on:click={() => {
+      isLoading.set(true);
+      // Use the same delay pattern for the retry button
+      setTimeout(() => {
+        logger.log('Attempting to refresh data after retry');
+        try {
+          ipcService.refreshMarkers();
+          ipcService.refreshRegions();
+        } catch (error) {
+          logger.error('Error refreshing data:', error);
+          isLoading.set(false);
+        }
+      }, 2000); // 2 second delay to ensure IPC handlers are registered
+    }}>
+      Retry
+    </button>
   </div>
 {/if}
 
@@ -558,7 +603,7 @@
     {/if}
 
     <!-- Fake marker for length marker end position or !1008 marker -->
-    {#if displayRegion && (getCustomLengthForRegion(displayMarkers, displayRegion) !== null || has1008MarkerInRegion(displayMarkers, displayRegion))}
+    {#if displayRegion && (getCustomLengthForRegion(displayRegion, $markers) !== null || has1008MarkerInRegion($markers, displayRegion))}
       <div
         class="marker hard-stop-marker-indicator"
         style="left: 100%"
@@ -634,7 +679,11 @@
 
     <button
       class="control-button play-pause"
-      on:click={() => safeTransportAction(() => ipcService.togglePlay())}
+      on:click={() => safeTransportAction(() => {
+
+        // Then send the command to the backend
+        ipcService.togglePlay();
+      })}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
       disabled={$transportButtonsDisabled || (!displayNextRegion && !$playbackState.isPlaying && $atHardStop)}
     >
@@ -1105,6 +1154,26 @@
     font-weight: bold;
     font-size: 1.2rem;
     margin-bottom: 1rem;
+  }
+
+  .retry-button {
+    margin-top: 1rem;
+    padding: 0.5rem 1.5rem;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .retry-button:hover {
+    background-color: #45a049;
+  }
+
+  .retry-button:active {
+    background-color: #3d8b40;
   }
 
   /* Hide transport controls when loading or no data */

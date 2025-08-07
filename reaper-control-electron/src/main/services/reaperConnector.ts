@@ -7,6 +7,7 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import config from '../utils/config';
 import logger from '../utils/logger';
 import { ConnectionStatus, Region, Marker, PlaybackState } from '../types';
+import { bpmCalculator } from '../utils/bpmUtils';
 
 export class ReaperConnector extends EventEmitter {
   private axiosInstance: AxiosInstance;
@@ -73,6 +74,16 @@ export class ReaperConnector extends EventEmitter {
 
       // Get initial project ID
       await this.refreshProjectId();
+
+      // Load initial markers and regions
+      try {
+        logger.info('Loading initial markers and regions');
+        await this.refreshMarkers();
+        await this.refreshRegions();
+      } catch (error) {
+        logger.error('Failed to load initial markers and regions', { error });
+        // Continue even if loading markers/regions fails
+      }
 
       logger.info('Connected to REAPER successfully');
     } catch (error) {
@@ -216,10 +227,19 @@ export class ReaperConnector extends EventEmitter {
         this.lastPlaybackState = {
           isPlaying: transportState.isPlaying,
           position: transportState.position,
-          currentRegionId: transportState.currentRegionId,
+          // Preserve the current region ID if it's not provided in the transport state
+          currentRegionId: transportState.currentRegionId !== undefined ?
+            transportState.currentRegionId : this.lastPlaybackState.currentRegionId,
           bpm: transportState.bpm,
           timeSignature: transportState.timeSignature
         };
+
+        // Log if we're preserving the current region ID
+        if (transportState.currentRegionId === undefined && this.lastPlaybackState.currentRegionId !== null) {
+          logger.debug('Preserving current region ID in playback state', {
+            currentRegionId: this.lastPlaybackState.currentRegionId
+          });
+        }
 
         // Emit playback state update
         this.emit('playbackState', this.lastPlaybackState);
@@ -419,6 +439,14 @@ export class ReaperConnector extends EventEmitter {
   }
 
   /**
+   * Get the last known playback state
+   * @returns The last known playback state
+   */
+  public getLastPlaybackState(): PlaybackState {
+    return this.lastPlaybackState;
+  }
+
+  /**
    * Get transport state from REAPER
    * @returns Transport state
    */
@@ -433,6 +461,32 @@ export class ReaperConnector extends EventEmitter {
       // Add project ID to transport state
       transportState.projectId = this.projectId || '';
 
+      // Determine current region based on cursor position
+      try {
+        // Get the current regions
+        const regions = await this.getRegions();
+
+        // Find the region that contains the current cursor position
+        const currentPosition = transportState.position;
+        const currentRegion = regions.find(region =>
+          currentPosition >= region.start && currentPosition <= region.end
+        );
+
+        // Set the current region ID if found
+        if (currentRegion) {
+          transportState.currentRegionId = currentRegion.id;
+          logger.debug('Current region determined by cursor position', {
+            regionId: currentRegion.id,
+            regionName: currentRegion.name,
+            cursorPosition: currentPosition
+          });
+        }
+      } catch (regionError) {
+        logger.warn('Failed to determine current region by cursor position', { error: regionError });
+        // Keep the previous currentRegionId if we couldn't determine a new one
+        transportState.currentRegionId = this.lastPlaybackState.currentRegionId;
+      }
+
       return transportState;
     } catch (error) {
       logger.error('Failed to get transport state', { error });
@@ -443,7 +497,8 @@ export class ReaperConnector extends EventEmitter {
         position: this.lastPlaybackState.position,
         projectId: this.projectId || '',
         bpm: this.lastPlaybackState.bpm,
-        timeSignature: this.lastPlaybackState.timeSignature
+        timeSignature: this.lastPlaybackState.timeSignature,
+        currentRegionId: this.lastPlaybackState.currentRegionId
       };
     }
   }
@@ -476,8 +531,8 @@ export class ReaperConnector extends EventEmitter {
         if (parts[0] === 'REGION' && parts.length >= 5) {
           // Extract region information
           const region: Region = {
-            id: parts[1],
-            name: parts[2],
+            id: parts[2],
+            name: parts[1],
             start: parseFloat(parts[3]),
             end: parseFloat(parts[4])
           };
@@ -566,8 +621,8 @@ export class ReaperConnector extends EventEmitter {
         if (parts[0] === 'MARKER' && parts.length >= 4) {
           // Extract marker information
           const marker: Marker = {
-            id: parts[1],
-            name: parts[2],
+            id: parts[2],
+            name: parts[1],
             position: parseFloat(parts[3])
           };
 
@@ -634,19 +689,40 @@ export class ReaperConnector extends EventEmitter {
     try {
       logger.debug('Toggling play/pause in REAPER');
 
-      // Send the play/pause toggle command to REAPER (action ID 1007)
-      await this.makeRequest<string>('GET', '_/1007');
+      // Store the current state before toggling
+      const wasPlaying = this.lastPlaybackState.isPlaying;
 
-      // Get updated transport state
-      const transportState = await this.getTransportState();
+      // Immediately toggle the isPlaying state for faster UI feedback
+      this.lastPlaybackState.isPlaying = !wasPlaying;
 
-      // Update last playback state
-      this.lastPlaybackState = transportState;
-
-      // Emit playback state update
+      // Emit playback state update immediately for responsive UI
       this.emit('playbackState', this.lastPlaybackState);
 
-      logger.debug('Play/pause toggled', { isPlaying: this.lastPlaybackState.isPlaying });
+      logger.debug('Playback state toggled immediately', { isPlaying: this.lastPlaybackState.isPlaying });
+
+      // Use different action IDs for play and pause to avoid issues
+      if (!wasPlaying) {
+        // If it was paused, send play command
+        // Action ID 1007 is for play (consistent with old backend)
+        logger.debug('Sending play command to REAPER (action ID 1007)');
+        await this.makeRequest<string>('GET', '_/1007');
+      } else {
+        // If it was playing, send pause command
+        // Action ID 1008 is for pause (consistent with old backend)
+        logger.debug('Sending pause command to REAPER (action ID 1008)');
+        await this.makeRequest<string>('GET', '_/1008');
+      }
+
+      // Get updated transport state from REAPER to ensure we're in sync
+      const transportState = await this.getTransportState();
+
+      // Update last playback state with the actual state from REAPER
+      this.lastPlaybackState = transportState;
+
+      // Emit playback state update again with the confirmed state from REAPER
+      this.emit('playbackState', this.lastPlaybackState);
+
+      logger.debug('Play/pause toggled and confirmed with REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
     } catch (error) {
       logger.error('Failed to toggle play', { error });
       throw error;
@@ -654,15 +730,95 @@ export class ReaperConnector extends EventEmitter {
   }
 
   /**
+   * Start playback with count-in in REAPER
+   */
+  public async playWithCountIn(): Promise<void> {
+    try {
+      logger.debug('Starting playback with count-in in REAPER');
+
+      // Immediately set isPlaying state for faster UI feedback
+      this.lastPlaybackState.isPlaying = true;
+
+      // Emit playback state update immediately for responsive UI
+      this.emit('playbackState', this.lastPlaybackState);
+
+      logger.debug('Playback state updated immediately for count-in', { isPlaying: true });
+
+      // Enable count-in (Action ID 40363)
+      logger.debug('Enabling count-in in REAPER (action ID 40363)');
+      await this.makeRequest<string>('GET', '_/40363');
+
+      // Start playback (Action ID 1007)
+      logger.debug('Starting playback in REAPER (action ID 1007)');
+      await this.makeRequest<string>('GET', '_/1007');
+
+      // Get updated transport state from REAPER to ensure we're in sync
+      const transportState = await this.getTransportState();
+
+      // Update last playback state with the actual state from REAPER
+      this.lastPlaybackState = transportState;
+
+      // Emit playback state update again with the confirmed state from REAPER
+      this.emit('playbackState', this.lastPlaybackState);
+
+      logger.debug('Playback with count-in started and confirmed with REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
+    } catch (error) {
+      logger.error('Failed to start playback with count-in', { error });
+      throw error;
+    }
+  }
+
+  /**
    * Seek to position in REAPER
    * @param position - Position to seek to
+   * @param useCountIn - Whether to use count-in when seeking (positions cursor 2 bars before)
    */
-  public async seekToPosition(position: number): Promise<void> {
+  public async seekToPosition(position: number, useCountIn: boolean = false): Promise<void> {
     try {
-      logger.debug('Seeking to position in REAPER', { position });
+      logger.debug('Seeking to position in REAPER', { position, useCountIn });
+
+      // Store the current playback state before seeking
+      const wasPlaying = this.lastPlaybackState.isPlaying;
+      logger.debug(`Current playback state before seeking: playing=${wasPlaying}`);
+
+      let positionToSeek = position;
+
+      // If count-in is enabled, position the cursor 2 bars before the marker
+      if (useCountIn) {
+        try {
+          logger.debug('Count-in enabled, calculating position 2 bars before target position');
+
+          // Get the duration of 2 bars in seconds based on the current time signature
+          const countInDuration = await this.calculateBarsToSeconds(2);
+
+          // Calculate position 2 bars before target position
+          // Ensure we don't go before the start of the project (negative time)
+          positionToSeek = Math.max(0, position - countInDuration);
+          logger.debug(`Positioning cursor 2 bars (${countInDuration.toFixed(2)}s) before target at ${positionToSeek.toFixed(2)}s`);
+        } catch (error) {
+          // Fallback to default calculation if there's an error
+          logger.error('Error calculating count-in position, using default', { error });
+          positionToSeek = Math.max(0, position - 4); // Default to 4 seconds (2 bars at 4/4 and 120 BPM)
+          logger.debug(`Using fallback: positioning cursor 2 bars (4s) before target at ${positionToSeek.toFixed(2)}s`);
+        }
+      }
+
+      // If currently playing, pause first
+      if (wasPlaying) {
+        logger.debug('Currently playing, pausing before seeking');
+        await this.makeRequest<string>('GET', '_/1008'); // Pause (action ID 1008)
+        await new Promise(resolve => setTimeout(resolve, 150)); // Short delay
+      }
 
       // Send the seek command to REAPER
-      await this.makeRequest<string>('GET', `_/SET/POS/${position}`);
+      await this.makeRequest<string>('GET', `_/SET/POS/${positionToSeek}`);
+
+      // If was playing before, resume playback
+      if (wasPlaying) {
+        logger.debug('Resuming playback after seeking');
+        await new Promise(resolve => setTimeout(resolve, 150)); // Short delay
+        await this.makeRequest<string>('GET', '_/1007'); // Play (action ID 1007)
+      }
 
       // Get updated transport state
       const transportState = await this.getTransportState();
@@ -673,9 +829,16 @@ export class ReaperConnector extends EventEmitter {
       // Emit playback state update
       this.emit('playbackState', this.lastPlaybackState);
 
-      logger.debug('Seeked to position', { position: this.lastPlaybackState.position });
+      logger.debug('Seeked to position', {
+        requestedPosition: position,
+        actualPosition: positionToSeek,
+        currentPosition: this.lastPlaybackState.position,
+        wasPlaying,
+        isPlayingNow: this.lastPlaybackState.isPlaying,
+        useCountIn
+      });
     } catch (error) {
-      logger.error('Failed to seek to position', { error, position });
+      logger.error('Failed to seek to position', { error, position, useCountIn });
       throw error;
     }
   }
@@ -699,8 +862,9 @@ export class ReaperConnector extends EventEmitter {
 
       logger.debug('Found region', { region });
 
-      // Seek to region start
-      await this.seekToPosition(region.start);
+      // Seek to region start with a small margin to ensure cursor is within the region
+      const positionWithMargin = region.start + 0.001;
+      await this.seekToPosition(positionWithMargin);
 
       // Update current region ID
       this.lastPlaybackState.currentRegionId = regionId;
@@ -711,7 +875,7 @@ export class ReaperConnector extends EventEmitter {
       logger.debug('Seeked to region', {
         regionId,
         regionName: region.name,
-        position: region.start
+        position: positionWithMargin
       });
     } catch (error) {
       logger.error('Failed to seek to region', { error, regionId });
@@ -843,13 +1007,14 @@ export class ReaperConnector extends EventEmitter {
         start: currentRegion.start
       });
 
-      // Seek to region start
-      await this.seekToPosition(currentRegion.start);
+      // Seek to region start with a small margin to ensure cursor is within the region
+      const positionWithMargin = currentRegion.start + 0.001;
+      await this.seekToPosition(positionWithMargin);
 
       logger.debug('Seeked to current region start', {
         regionId: currentRegion.id,
         regionName: currentRegion.name,
-        position: currentRegion.start
+        position: positionWithMargin
       });
     } catch (error) {
       logger.error('Failed to seek to current region start', { error });
@@ -957,6 +1122,169 @@ export class ReaperConnector extends EventEmitter {
     } catch (error) {
       logger.error('Failed to set project extended state', { error, section, key });
       throw error;
+    }
+  }
+
+  /**
+   * Get beat position and time signature from REAPER
+   * @returns Raw beat position response
+   */
+  public async getBeatPosition(): Promise<string> {
+    try {
+      logger.debug('Getting beat position from REAPER');
+      return await this.makeRequest<string>('GET', '_/BEATPOS');
+    } catch (error) {
+      logger.error('Failed to get beat position', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get the current BPM from REAPER by calculating it from the BEATPOS response
+   * Uses the bpmCalculator utility for consistent BPM calculation
+   * @returns Current BPM
+   */
+  public async getBPM(): Promise<number> {
+    try {
+      logger.debug('Getting BPM from REAPER');
+
+      // Get the beat position data from REAPER
+      const beatPosResponse = await this.getBeatPosition();
+
+      // Parse the response
+      const parts = beatPosResponse.split('\t');
+
+      // BEATPOS response format:
+      // BEATPOS \t playstate \t position_seconds \t full_beat_position \t measure_cnt \t beats_in_measure \t ts_numerator \t ts_denominator
+      if (parts.length >= 4 && parts[0] === 'BEATPOS') {
+        // Extract position in seconds and beat position
+        const positionSeconds = parseFloat(parts[2]);
+        const beatPosition = parseFloat(parts[3]);
+
+        logger.debug('Beat position data', { positionSeconds, beatPosition });
+
+        // Add the beat position to the calculator
+        bpmCalculator.addBeatPosition(positionSeconds, beatPosition);
+
+        // Calculate BPM using the utility
+        const bpm = bpmCalculator.calculateBPM(120); // Default to 120 BPM if calculation fails
+
+        return bpm;
+      } else {
+        logger.warn('Invalid BEATPOS response format, using fallback BPM calculation');
+        const bpm = bpmCalculator.calculateBPM(120);
+        return bpm;
+      }
+    } catch (error) {
+      logger.error('Error calculating BPM from BEATPOS', { error });
+      return bpmCalculator.calculateBPM(120);
+    }
+  }
+
+  /**
+   * Reset the beat positions array
+   * This should be called when the region changes or when the tempo changes significantly
+   * @param initialBpm - Optional initial BPM to use (from !bpm marker)
+   */
+  public resetBeatPositions(initialBpm: number | null = null): void {
+    logger.debug('Resetting beat positions', { initialBpm });
+
+    // Use the bpmCalculator utility to reset beat positions
+    bpmCalculator.resetBeatPositions(initialBpm);
+  }
+
+  /**
+   * Get the current time signature from REAPER
+   * @returns Time signature as an object
+   */
+  public async getTimeSignature(): Promise<{ numerator: number; denominator: number }> {
+    try {
+      logger.debug('Getting time signature from REAPER');
+      const beatPosResponse = await this.getBeatPosition();
+      const parts = beatPosResponse.split('\t');
+
+      // BEATPOS response format:
+      // BEATPOS \t playstate \t position_seconds \t full_beat_position \t measure_cnt \t beats_in_measure \t ts_numerator \t ts_denominator
+      if (parts.length >= 8 && parts[0] === 'BEATPOS') {
+        const numerator = parseInt(parts[6], 10);
+        const denominator = parseInt(parts[7], 10);
+
+        logger.debug('Time signature', { numerator, denominator });
+
+        return {
+          numerator,
+          denominator
+        };
+      } else {
+        // Default to 4/4 if we can't parse the response
+        logger.warn('Could not parse time signature from BEATPOS response, defaulting to 4/4');
+
+        return {
+          numerator: 4,
+          denominator: 4
+        };
+      }
+    } catch (error) {
+      logger.error('Error getting time signature', { error });
+
+      // Default to 4/4 in case of error
+      return {
+        numerator: 4,
+        denominator: 4
+      };
+    }
+  }
+
+  /**
+   * Calculate the duration of a specified number of bars in seconds
+   * based on the current time signature and BPM
+   * @param bars - Number of bars to calculate
+   * @param defaultBpm - Default BPM to use if not available from REAPER
+   * @returns Duration in seconds
+   */
+  public async calculateBarsToSeconds(bars: number, defaultBpm: number = 90): Promise<number> {
+    try {
+      logger.debug(`Calculating duration for ${bars} bars`);
+
+      // Get the current time signature
+      const timeSignature = await this.getTimeSignature();
+      logger.debug(`Using time signature: ${timeSignature.numerator}/${timeSignature.denominator}`);
+
+      // Get the current BPM from REAPER
+      let bpm = await this.getBPM();
+
+      // If BPM is 0 or invalid, use the default BPM
+      if (!bpm || bpm <= 0) {
+        logger.debug(`Invalid BPM (${bpm}), using default BPM: ${defaultBpm}`);
+        bpm = defaultBpm;
+      } else {
+        logger.debug(`Using BPM: ${bpm}`);
+      }
+
+      // Calculate beats per bar based on time signature
+      const beatsPerBar = timeSignature.numerator;
+
+      // Calculate seconds per beat based on BPM
+      // Formula: 60 seconds / BPM = duration of one beat in seconds
+      const secondsPerBeat = 60 / bpm;
+
+      // Calculate total seconds
+      // Formula: bars * beats per bar * seconds per beat
+      const totalSeconds = bars * beatsPerBar * secondsPerBeat;
+
+      logger.debug(`Calculated ${bars} bars at ${timeSignature.numerator}/${timeSignature.denominator} and ${bpm} BPM: ${totalSeconds.toFixed(2)} seconds`);
+
+      return totalSeconds;
+    } catch (error) {
+      logger.error('Error calculating bars to seconds', { error });
+
+      // Default calculation assuming 4/4 time at default BPM
+      // 4 beats per bar * (60 / BPM) seconds per beat * number of bars
+      const defaultSeconds = 4 * (60 / defaultBpm) * bars;
+
+      logger.debug(`Using default calculation for ${bars} bars: ${defaultSeconds.toFixed(2)} seconds`);
+
+      return defaultSeconds;
     }
   }
 

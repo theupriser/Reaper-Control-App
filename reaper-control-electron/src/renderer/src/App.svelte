@@ -14,9 +14,11 @@
     logger.log('App component mounted');
 
     // Initial data refresh
-    ipcService.refreshRegions();
-    ipcService.refreshMarkers();
-    ipcService.refreshProjectId();
+    setTimeout(() => {
+      ipcService.refreshRegions();
+      ipcService.refreshMarkers();
+      ipcService.refreshProjectId();
+    }, 1000);
 
     // Set up cleanup on component destroy
     return () => {

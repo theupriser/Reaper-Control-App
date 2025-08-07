@@ -56,8 +56,9 @@ const api = {
 
   // Playback control
   togglePlay: () => ipcRenderer.invoke('toggle-play'),
-  seekToPosition: (position: string) => ipcRenderer.invoke('seek-to-position', position),
-  seekToRegion: (regionId: string) => ipcRenderer.invoke('seek-to-region', regionId),
+  playWithCountIn: () => ipcRenderer.invoke('play-with-count-in'),
+  seekToPosition: (position: string, useCountIn: boolean = false) => ipcRenderer.invoke('seek-to-position', { position, useCountIn }),
+  seekToRegion: (regionId: string, autoplay: boolean = true) => ipcRenderer.invoke('seek-to-region', { regionId, autoplay }),
   nextRegion: () => ipcRenderer.invoke('next-region'),
   previousRegion: () => ipcRenderer.invoke('previous-region'),
   seekToCurrentRegionStart: () => ipcRenderer.invoke('seek-to-current-region-start'),

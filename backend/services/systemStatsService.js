@@ -1,15 +1,11 @@
 /**
  * System Stats Service
- * Provides application-specific CPU and memory usage information
+ * Provides system-wide CPU and application-specific memory usage information
  */
 
 const si = require('systeminformation');
 const logger = require('../utils/logger');
 const os = require('os');
-
-// Store previous CPU usage for calculating CPU percentage
-let prevCpuUsage = process.cpuUsage();
-let prevTimestamp = Date.now();
 
 // Cache for stats to avoid too frequent updates
 let statsCache = {
@@ -31,35 +27,23 @@ let statsCache = {
 const UPDATE_INTERVAL = 2000;
 
 /**
- * Get current application-specific stats (CPU and memory usage)
+ * Get current system-wide CPU and application-specific memory usage stats
  * Uses cache if data is fresh enough
  */
 async function getStats() {
   const now = Date.now();
   
-  // Return cached data if it's fresh enough
-  if (now - statsCache.lastUpdated < UPDATE_INTERVAL) {
-    return statsCache;
-  }
-  
   try {
-    // Get application CPU usage
-    const currentCpuUsage = process.cpuUsage();
-    const elapsedTime = now - prevTimestamp;
+    // Always get current system CPU usage for accurate tracking
+    const cpuLoad = await si.currentLoad();
+    const totalCpuPercent = Math.round(cpuLoad.currentLoad);
     
-    // Calculate CPU usage percentage
-    // (user + system) time divided by elapsed time, multiplied by 100 for percentage
-    // Divided by number of cores to get per-core percentage (max 100%)
-    const userDiff = currentCpuUsage.user - prevCpuUsage.user;
-    const systemDiff = currentCpuUsage.system - prevCpuUsage.system;
-    const totalCpuTime = userDiff + systemDiff;
-    
-    // Convert microseconds to milliseconds and calculate percentage
-    const cpuPercent = Math.min(100, Math.round((totalCpuTime / 1000) / elapsedTime * 100));
-    
-    // Store current values for next calculation
-    prevCpuUsage = currentCpuUsage;
-    prevTimestamp = now;
+    // Return cached data if it's fresh enough, but update the CPU usage
+    if (now - statsCache.lastUpdated < UPDATE_INTERVAL) {
+      // Update only the CPU usage in the cache
+      statsCache.cpu.usage = totalCpuPercent;
+      return statsCache;
+    }
     
     // Get application memory usage
     const memoryUsage = process.memoryUsage();
@@ -70,7 +54,7 @@ async function getStats() {
     // Update cache
     statsCache = {
       cpu: {
-        usage: cpuPercent,
+        usage: totalCpuPercent,
         cores: os.cpus().length,
         speed: os.cpus()[0].speed / 1000 // Convert MHz to GHz
       },
@@ -88,7 +72,7 @@ async function getStats() {
     
     return statsCache;
   } catch (error) {
-    logger.error('Error getting application stats:', error);
+    logger.error('Error getting system stats:', error);
     return statsCache;
   }
 }

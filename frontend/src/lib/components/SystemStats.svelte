@@ -151,7 +151,7 @@
   {#if showPopover}
     <div class="system-stats-popover">
       <div class="popover-header">
-        <h3>Application Resources</h3>
+        <h3>Application Status</h3>
       </div>
       
       <div class="popover-content">
@@ -196,7 +196,7 @@
         </div>
         
         <div class="stats-section">
-          <h4>CPU Usage</h4>
+          <h4>System CPU Usage</h4>
           <div class="usage-bar">
             <div class="usage-fill {getUsageClass(stats.cpu.usage)}" style="width: {stats.cpu.usage}%"></div>
             <span class="usage-text">{stats.cpu.usage}%</span>

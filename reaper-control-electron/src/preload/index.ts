@@ -33,6 +33,8 @@ interface PlaybackState {
     numerator: number;
     denominator: number;
   };
+  autoplayEnabled?: boolean;
+  countInEnabled?: boolean;
 }
 
 interface StatusMessage {
@@ -62,6 +64,8 @@ const api = {
   nextRegion: () => ipcRenderer.invoke('next-region'),
   previousRegion: () => ipcRenderer.invoke('previous-region'),
   seekToCurrentRegionStart: () => ipcRenderer.invoke('seek-to-current-region-start'),
+  setAutoplayEnabled: (enabled: boolean) => ipcRenderer.invoke('set-autoplay-enabled', enabled),
+  setCountInEnabled: (enabled: boolean) => ipcRenderer.invoke('set-count-in-enabled', enabled),
 
   // Project management
   refreshProjectId: () => ipcRenderer.invoke('refresh-project-id'),
@@ -74,8 +78,8 @@ const api = {
   createSetlist: (name: string) => ipcRenderer.invoke('create-setlist', name),
   updateSetlist: (setlistId: string, name: string) => ipcRenderer.invoke('update-setlist', { setlistId, name }),
   deleteSetlist: (setlistId: string) => ipcRenderer.invoke('delete-setlist', setlistId),
-  addSetlistItem: (setlistId: string, regionId: string, position?: number) =>
-    ipcRenderer.invoke('add-setlist-item', { setlistId, regionId, position }),
+  addSetlistItem: (setlistId: string, regionId: string, regionName?: string, position?: number) =>
+    ipcRenderer.invoke('add-setlist-item', { setlistId, regionId, regionName, position }),
   removeSetlistItem: (setlistId: string, itemId: string) =>
     ipcRenderer.invoke('remove-setlist-item', { setlistId, itemId }),
   moveSetlistItem: (setlistId: string, itemId: string, newPosition: number) =>

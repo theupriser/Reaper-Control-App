@@ -55,6 +55,8 @@ interface PlaybackState {
     numerator: number;
     denominator: number;
   };
+  autoplayEnabled?: boolean;
+  countInEnabled?: boolean;
 }
 
 interface StatusMessage {
@@ -242,7 +244,11 @@ function handlePlaybackStateUpdate(data: PlaybackState): void {
     timeSignature: (data.timeSignature &&
       typeof data.timeSignature.numerator === 'number' &&
       typeof data.timeSignature.denominator === 'number') ?
-      data.timeSignature : { numerator: 4, denominator: 4 }
+      data.timeSignature : { numerator: 4, denominator: 4 },
+
+    // For autoplayEnabled and countInEnabled, explicitly convert to boolean with default values
+    autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : true,
+    countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : false
   };
 
   // Log the mapped data for debugging

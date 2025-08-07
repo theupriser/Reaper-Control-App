@@ -33,6 +33,8 @@ interface PlaybackState {
     numerator: number;
     denominator: number;
   };
+  autoplayEnabled?: boolean;
+  countInEnabled?: boolean;
 }
 
 interface SetlistItem {
@@ -75,6 +77,8 @@ interface ElectronReaperAPI {
   nextRegion: () => Promise<void>;
   previousRegion: () => Promise<void>;
   seekToCurrentRegionStart: () => Promise<void>;
+  setAutoplayEnabled: (enabled: boolean) => Promise<void>;
+  setCountInEnabled: (enabled: boolean) => Promise<void>;
 
   // Project management
   refreshProjectId: () => Promise<string>;
@@ -87,7 +91,7 @@ interface ElectronReaperAPI {
   createSetlist: (name: string) => Promise<Setlist>;
   updateSetlist: (setlistId: string, name: string) => Promise<Setlist | null>;
   deleteSetlist: (setlistId: string) => Promise<boolean>;
-  addSetlistItem: (setlistId: string, regionId: string, position?: number) => Promise<SetlistItem | null>;
+  addSetlistItem: (setlistId: string, regionId: string, regionName?: string, position?: number) => Promise<SetlistItem | null>;
   removeSetlistItem: (setlistId: string, itemId: string) => Promise<boolean>;
   moveSetlistItem: (setlistId: string, itemId: string, newPosition: number) => Promise<Setlist | null>;
 

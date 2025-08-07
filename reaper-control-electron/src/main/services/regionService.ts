@@ -14,6 +14,8 @@ export class RegionService extends EventEmitter {
   private reaperConnector: ReaperConnector;
   private markerService: MarkerService;
   private projectService: any; // Will be set after initialization
+  private endOfRegionPollingInterval: NodeJS.Timeout | null = null;
+  private isTransitioning: boolean = false;
 
   /**
    * Constructor
@@ -28,7 +30,121 @@ export class RegionService extends EventEmitter {
     // Set up event listeners
     this.setupEventListeners();
 
+    // Start polling for end of region detection
+    this.startEndOfRegionPolling();
+
     logger.info('Region service initialized');
+  }
+
+  /**
+   * Start polling for end of region detection at 15Hz (approximately 67ms interval)
+   */
+  private startEndOfRegionPolling(): void {
+    if (this.endOfRegionPollingInterval) {
+      clearInterval(this.endOfRegionPollingInterval);
+    }
+
+    this.endOfRegionPollingInterval = setInterval(async () => {
+      try {
+        const playbackState = this.reaperConnector.getLastPlaybackState();
+        if (this.projectService && this.projectService.getSelectedSetlistId() && playbackState.isPlaying) {
+          await this.checkEndOfRegion(playbackState);
+        }
+      } catch (error) {
+        logger.error('Error in end of region polling:', error);
+      }
+    }, 67);
+
+    logger.debug('Started polling for end of region detection');
+  }
+
+  /**
+   * Stop polling for end of region detection
+   */
+  private stopEndOfRegionPolling(): void {
+    if (this.endOfRegionPollingInterval) {
+      clearInterval(this.endOfRegionPollingInterval);
+      this.endOfRegionPollingInterval = null;
+      logger.debug('Stopped polling for end of region detection');
+    }
+  }
+
+  /**
+   * Restart the polling mechanism
+   */
+  private restartPolling(): void {
+    this.stopEndOfRegionPolling();
+    this.isTransitioning = false;
+
+    setTimeout(() => {
+      this.startEndOfRegionPolling();
+    }, 100);
+  }
+
+  /**
+   * Check if we're at or approaching the end of the current region
+   * @param playbackState - Current playback state
+   */
+  private async checkEndOfRegion(playbackState: any): Promise<void> {
+    try {
+      if (!playbackState.currentRegionId) {
+        return;
+      }
+
+      const currentPosition = playbackState.position;
+      const currentRegion = this.getRegionById(playbackState.currentRegionId);
+
+      if (!currentRegion) {
+        return;
+      }
+
+      if (this.isTransitioning) {
+        return;
+      }
+
+      // Check if we're within 0.6 seconds of the end of the region
+      // or if we've just passed the end (within 0.1 seconds past)
+      const timeToEnd = currentRegion.end - currentPosition;
+
+      if ((timeToEnd > 0 && timeToEnd < 0.6) || (timeToEnd >= -0.1 && timeToEnd <= 0)) {
+        logger.debug('Approaching end of region, initiating transition');
+        this.isTransitioning = true;
+
+        try {
+          if (this.projectService) {
+            const nextSetlistItem = this.projectService.getNextSetlistItem(playbackState.currentRegionId);
+            if (nextSetlistItem) {
+              logger.debug(`Found next setlist item: ${nextSetlistItem.name || nextSetlistItem.regionId}`);
+              const region = this.getRegionById(nextSetlistItem.regionId);
+              if (region) {
+                logger.debug(`Found next region: ${region.name}`);
+
+                // Check if the region has a !bpm marker
+                const markers = this.markerService.getMarkers();
+                const bpm = getBpmForRegion(region, markers);
+
+                // Reset BPM when automatically transitioning to the next song
+                logger.debug('Resetting BPM calculation for next region');
+                this.reaperConnector.resetBeatPositions(bpm);
+
+                logger.debug('Seeking to next region and playing');
+                await this.seekToRegionAndPlay(region, true, false);
+              } else {
+                logger.debug('Next region not found');
+              }
+            } else {
+              logger.debug('No next setlist item found');
+            }
+          }
+        } finally {
+          this.isTransitioning = false;
+          logger.debug('Transition completed');
+        }
+      }
+    } catch (error) {
+      this.isTransitioning = false;
+      logger.error('Error checking end of region', error);
+    }
   }
 
   /**
@@ -328,13 +444,11 @@ export class RegionService extends EventEmitter {
       const playbackState = this.reaperConnector.getLastPlaybackState();
       const isPlaying = playbackState.isPlaying;
 
-      // If autoplay is null, use the current playback state
-      // In a real implementation, this would use a stored autoplay setting
-      const isAutoplayEnabled = autoplay !== null ? autoplay : true;
+      // If autoplay is null, use the current playback state's autoplayEnabled setting
+      const isAutoplayEnabled = autoplay !== null ? autoplay : playbackState.autoplayEnabled !== undefined ? playbackState.autoplayEnabled : true;
 
-      // If countIn is null, use the current countIn setting
-      // In a real implementation, this would use a stored countIn setting
-      const isCountInEnabled = countIn !== null ? countIn : false;
+      // If countIn is null, use the current playback state's countInEnabled setting
+      const isCountInEnabled = countIn !== null ? countIn : playbackState.countInEnabled !== undefined ? playbackState.countInEnabled : false;
 
       logger.debug(`Current state: playing=${isPlaying}, autoplay=${isAutoplayEnabled}, countIn=${isCountInEnabled}`);
 
@@ -383,9 +497,9 @@ export class RegionService extends EventEmitter {
       logger.debug(`Seeking to position: ${positionToSeek.toFixed(3)}s`);
       await this.reaperConnector.seekToPosition(positionToSeek);
 
-      // If was playing and autoplay is enabled, resume playback
-      if ((isPlaying || autoplay === true) && isAutoplayEnabled) {
-        logger.debug('Autoplay enabled, resuming playback after short delay');
+      // Only resume playback if it was already playing AND autoplay is enabled
+      if (isPlaying && isAutoplayEnabled) {
+        logger.debug('Was playing and autoplay enabled, resuming playback after short delay');
         await new Promise(resolve => setTimeout(resolve, 150));
 
         // If count-in is enabled, use playWithCountIn, otherwise use normal togglePlay
@@ -397,8 +511,11 @@ export class RegionService extends EventEmitter {
           await this.reaperConnector.togglePlay();
         }
       } else {
-        logger.debug('Autoplay disabled, not resuming playback');
+        logger.debug('Not resuming playback: either was not playing or autoplay disabled');
       }
+
+      // Restart the polling mechanism
+      this.restartPolling();
 
       logger.debug('Successfully seeked to region and configured playback');
       return true;

@@ -46,6 +46,8 @@ export interface PlaybackState {
     numerator: number;
     denominator: number;
   };
+  autoplayEnabled?: boolean;
+  countInEnabled?: boolean;
 }
 
 /**

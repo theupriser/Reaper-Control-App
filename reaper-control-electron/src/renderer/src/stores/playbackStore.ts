@@ -24,6 +24,8 @@ export interface PlaybackState {
   selectedSetlistId: string | null;
   bpm: number;
   timeSignature: TimeSignature;
+  autoplayEnabled?: boolean;
+  countInEnabled?: boolean;
 }
 
 /**
@@ -38,7 +40,9 @@ export const playbackState: Writable<PlaybackState> = writable({
   timeSignature: {
     numerator: 4,
     denominator: 4
-  } // Default time signature (4/4)
+  }, // Default time signature (4/4)
+  autoplayEnabled: true, // Default to enabled
+  countInEnabled: false // Default to disabled
 });
 
 /**
@@ -109,7 +113,11 @@ export function updatePlaybackState(data: Partial<PlaybackState>): boolean {
       timeSignature: (data.timeSignature &&
         typeof data.timeSignature.numerator === 'number' &&
         typeof data.timeSignature.denominator === 'number') ?
-        data.timeSignature : currentState.timeSignature
+        data.timeSignature : currentState.timeSignature,
+
+      // For autoplayEnabled and countInEnabled, use explicit Boolean conversion with fallbacks
+      autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : currentState.autoplayEnabled,
+      countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : currentState.countInEnabled
     };
 
     // Update the playback state store
@@ -180,7 +188,26 @@ export function getAutoplayEnabled(): boolean {
  * Toggles the autoplay setting
  */
 export function toggleAutoplay(): void {
-  autoplayEnabled.update(current => !current);
+  // Get the current value
+  let current: boolean;
+  const unsubscribe = autoplayEnabled.subscribe(value => {
+    current = value;
+  });
+  unsubscribe();
+
+  // Toggle the value
+  const newValue = !current;
+
+  // Update the local store
+  autoplayEnabled.set(newValue);
+
+  // Send to main process via IPC
+  if (window.electronAPI) {
+    window.electronAPI.setAutoplayEnabled(newValue);
+    logger.log(`Sent autoplay enabled (${newValue}) to main process`);
+  } else {
+    logger.warn('Electron API not available, autoplay enabled not sent to main process');
+  }
 }
 
 /**
@@ -200,7 +227,26 @@ export function getCountInEnabled(): boolean {
  * Toggles the count-in setting
  */
 export function toggleCountIn(): void {
-  countInEnabled.update(current => !current);
+  // Get the current value
+  let current: boolean;
+  const unsubscribe = countInEnabled.subscribe(value => {
+    current = value;
+  });
+  unsubscribe();
+
+  // Toggle the value
+  const newValue = !current;
+
+  // Update the local store
+  countInEnabled.set(newValue);
+
+  // Send to main process via IPC
+  if (window.electronAPI) {
+    window.electronAPI.setCountInEnabled(newValue);
+    logger.log(`Sent count-in enabled (${newValue}) to main process`);
+  } else {
+    logger.warn('Electron API not available, count-in enabled not sent to main process');
+  }
 }
 
 /**

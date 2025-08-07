@@ -25,6 +25,8 @@
     getEffectiveRegionLength,
     getCustomLengthForRegion,
     has1008MarkerInRegion,
+    toggleAutoplay,
+    toggleCountIn,
     type Region,
     type Marker
   } from '../stores';
@@ -132,21 +134,22 @@
   }
 
   // Toggle autoplay function
-  function toggleAutoplay(): void {
+  function handleToggleAutoplay(): void {
     logger.log('Toggling autoplay');
     safeTransportAction(() => {
-      // This will be implemented with IPC
-      // For now, just toggle the store directly
-      autoplayEnabled.update(value => !value);
+      // Use the toggleAutoplay function from the playbackStore
+      // This properly communicates the change to the main process via IPC
+      toggleAutoplay();
     });
   }
 
   // Toggle count-in function
-  function toggleCountIn(): void {
+  function handleToggleCountIn(): void {
     logger.log('Toggling count-in');
     safeTransportAction(() => {
-      // Toggle the count-in store value
-      countInEnabled.update(value => !value);
+      // Use the toggleCountIn function from the playbackStore
+      // This properly communicates the change to the main process via IPC
+      toggleCountIn();
 
       // Log the new state
       logger.log(`Count-in ${$countInEnabled ? 'enabled' : 'disabled'}`);
@@ -632,7 +635,7 @@
         <input
           type="checkbox"
           checked={$autoplayEnabled}
-          on:change={toggleAutoplay}
+          on:change={handleToggleAutoplay}
           disabled={$transportButtonsDisabled}
         />
         <span class="toggle-slider"></span>
@@ -645,7 +648,7 @@
         <input
           type="checkbox"
           checked={$countInEnabled}
-          on:change={toggleCountIn}
+          on:change={handleToggleCountIn}
           disabled={$transportButtonsDisabled}
         />
         <span class="toggle-slider"></span>

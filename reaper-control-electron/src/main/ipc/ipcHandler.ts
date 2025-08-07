@@ -78,6 +78,8 @@ export class IpcHandler {
     ipcMain.handle(IPC_CHANNELS.NEXT_REGION, this.handleNextRegion.bind(this));
     ipcMain.handle(IPC_CHANNELS.PREVIOUS_REGION, this.handlePreviousRegion.bind(this));
     ipcMain.handle(IPC_CHANNELS.SEEK_TO_CURRENT_REGION_START, this.handleSeekToCurrentRegionStart.bind(this));
+    ipcMain.handle(IPC_CHANNELS.SET_AUTOPLAY_ENABLED, this.handleSetAutoplayEnabled.bind(this));
+    ipcMain.handle(IPC_CHANNELS.SET_COUNT_IN_ENABLED, this.handleSetCountInEnabled.bind(this));
 
     // Project
     ipcMain.handle(IPC_CHANNELS.REFRESH_PROJECT_ID, this.handleRefreshProjectId.bind(this));
@@ -442,6 +444,50 @@ export class IpcHandler {
     }
   }
 
+  /**
+   * Handle set autoplay enabled
+   * @param _ - IPC event
+   * @param enabled - Autoplay enabled flag
+   */
+  private async handleSetAutoplayEnabled(_: any, enabled: boolean): Promise<void> {
+    try {
+      logger.info('Setting autoplay enabled', { enabled });
+
+      // Update the autoplayEnabled setting in the reaperConnector's lastPlaybackState
+      const playbackState = this.reaperConnector.getLastPlaybackState();
+      playbackState.autoplayEnabled = enabled;
+
+      // Emit a playback state update to the renderer
+      this.sendToRenderer(IPC_EVENTS.PLAYBACK_STATE_UPDATE, playbackState);
+    } catch (error) {
+      logger.error('Error setting autoplay enabled', { error, enabled });
+      this.sendStatusMessage(this.createErrorMessage('Failed to set autoplay enabled', String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * Handle set count-in enabled
+   * @param _ - IPC event
+   * @param enabled - Count-in enabled flag
+   */
+  private async handleSetCountInEnabled(_: any, enabled: boolean): Promise<void> {
+    try {
+      logger.info('Setting count-in enabled', { enabled });
+
+      // Update the countInEnabled setting in the reaperConnector's lastPlaybackState
+      const playbackState = this.reaperConnector.getLastPlaybackState();
+      playbackState.countInEnabled = enabled;
+
+      // Emit a playback state update to the renderer
+      this.sendToRenderer(IPC_EVENTS.PLAYBACK_STATE_UPDATE, playbackState);
+    } catch (error) {
+      logger.error('Error setting count-in enabled', { error, enabled });
+      this.sendStatusMessage(this.createErrorMessage('Failed to set count-in enabled', String(error)));
+      throw error;
+    }
+  }
+
   // Project handlers
 
   /**
@@ -540,12 +586,41 @@ export class IpcHandler {
    * @param params - Add parameters
    * @returns Added item
    */
-  private async handleAddSetlistItem(_: any, params: { setlistId: string, regionId: string, position?: number }): Promise<any> {
+  private async handleAddSetlistItem(_: any, params: { setlistId: string, regionId: string, regionName?: string, position?: number }): Promise<any> {
     try {
-      // Get region name
-      const region = this.regionService.getRegionById(params.regionId);
+      // If regionName is provided, use it directly
+      if (params.regionName) {
+        logger.info(`Using provided region name: ${params.regionName}`);
+        return this.projectService.addSetlistItem(
+          params.setlistId,
+          params.regionId,
+          params.regionName,
+          params.position
+        );
+      }
+
+      // Otherwise, try to get the region
+      let region = this.regionService.getRegionById(params.regionId);
+
+      // If region not found, try refreshing regions first
       if (!region) {
-        throw new Error(`Region not found: ${params.regionId}`);
+        logger.info(`Region ${params.regionId} not found, refreshing regions...`);
+        await this.regionService.refreshRegions();
+
+        // Try to get the region again after refresh
+        region = this.regionService.getRegionById(params.regionId);
+
+        // If still not found, create a placeholder region
+        if (!region) {
+          logger.warn(`Region ${params.regionId} still not found after refresh, using placeholder`);
+          // Use a placeholder name for the region
+          return this.projectService.addSetlistItem(
+            params.setlistId,
+            params.regionId,
+            `Region ${params.regionId}`,
+            params.position
+          );
+        }
       }
 
       return this.projectService.addSetlistItem(params.setlistId, params.regionId, region.name, params.position);
@@ -686,6 +761,8 @@ export class IpcHandler {
     ipcMain.removeHandler(IPC_CHANNELS.NEXT_REGION);
     ipcMain.removeHandler(IPC_CHANNELS.PREVIOUS_REGION);
     ipcMain.removeHandler(IPC_CHANNELS.SEEK_TO_CURRENT_REGION_START);
+    ipcMain.removeHandler(IPC_CHANNELS.SET_AUTOPLAY_ENABLED);
+    ipcMain.removeHandler(IPC_CHANNELS.SET_COUNT_IN_ENABLED);
     ipcMain.removeHandler(IPC_CHANNELS.REFRESH_PROJECT_ID);
     ipcMain.removeHandler(IPC_CHANNELS.GET_PROJECT_ID);
     ipcMain.removeHandler(IPC_CHANNELS.GET_SETLISTS);

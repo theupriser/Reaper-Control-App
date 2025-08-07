@@ -162,7 +162,7 @@ The application includes a dedicated Performer Mode designed for live performanc
 - Real-time progress bar for the current song
 - Elapsed and remaining time displays for both current song and total setlist
 - Current time display for stage timing reference
-- Auto-resume toggle for automatic playback continuation
+- Auto-resume toggle for automatic playback continuation (only continues playback when navigating between songs if playback was already playing)
 - Large, touch-friendly transport controls
 - Responsive design that works on various screen sizes
 
@@ -213,6 +213,19 @@ The application includes a count-in feature that can be used when clicking on ma
 - **Purpose**: This helps musicians prepare for the upcoming section with a rhythmic count-in
 
 This feature is specifically designed for marker clicks and is not used for region selection or navigation buttons.
+
+## Project ID System
+
+The application uses a project ID system to track and manage Reaper projects:
+
+- Each Reaper project is assigned a unique ID when first opened in the application
+- Project IDs are stored in Reaper's extended state system under `ReaperControl/ProjectId`
+- The application uses these IDs to:
+  - Track project-specific data (like setlists)
+  - Detect when a user has switched to a different project
+  - Associate saved settings with specific projects
+
+For more details, see the [Project ID Implementation](./reaper-control-electron/docs/project-id-implementation.md) documentation.
 
 ## Custom Markers
 

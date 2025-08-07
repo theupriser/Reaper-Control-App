@@ -23,7 +23,9 @@ export class ReaperConnector extends EventEmitter {
     timeSignature: {
       numerator: 4,
       denominator: 4
-    }
+    },
+    autoplayEnabled: true,
+    countInEnabled: false
   };
 
   constructor() {
@@ -361,7 +363,7 @@ export class ReaperConnector extends EventEmitter {
    * @param response - Raw response from REAPER
    * @returns Formatted transport state
    */
-  private formatTransportResponse(response: string): any {
+  private async formatTransportResponse(response: string): Promise<any> {
     logger.debug('Formatting transport response');
 
     try {
@@ -373,12 +375,14 @@ export class ReaperConnector extends EventEmitter {
       const transportState = {
         isPlaying: false,
         position: 0,
-        projectId: this.projectId || '',
+        projectId: this.projectId || '', // Use current project ID if available
         bpm: 120,
         timeSignature: {
           numerator: 4,
           denominator: 4
-        }
+        },
+        autoplayEnabled: this.lastPlaybackState.autoplayEnabled,
+        countInEnabled: this.lastPlaybackState.countInEnabled
       };
 
       // Process each line
@@ -405,8 +409,9 @@ export class ReaperConnector extends EventEmitter {
         // Check if this is a tempo line
         else if (parts[0] === 'TEMPO') {
           if (parts.length >= 2) {
-            // Extract BPM
-            transportState.bpm = parseFloat(parts[1]);
+            // Extract BPM from REAPER's response
+            const reaperBpm = parseFloat(parts[1]);
+            transportState.bpm = reaperBpm;
           }
 
           if (parts.length >= 4) {
@@ -417,6 +422,17 @@ export class ReaperConnector extends EventEmitter {
             };
           }
         }
+      }
+
+      // Get the BPM from the bpmCalculator, which may include !bpm marker values
+      try {
+        const calculatedBpm = bpmCalculator.calculateBPM(transportState.bpm);
+        if (calculatedBpm !== transportState.bpm) {
+          logger.debug(`Using calculated BPM (${calculatedBpm}) instead of REAPER BPM (${transportState.bpm})`);
+          transportState.bpm = calculatedBpm;
+        }
+      } catch (bpmError) {
+        logger.warn('Error getting calculated BPM, using REAPER BPM', { error: bpmError });
       }
 
       logger.debug('Formatted transport state', transportState);
@@ -433,7 +449,9 @@ export class ReaperConnector extends EventEmitter {
         timeSignature: {
           numerator: 4,
           denominator: 4
-        }
+        },
+        autoplayEnabled: this.lastPlaybackState.autoplayEnabled,
+        countInEnabled: this.lastPlaybackState.countInEnabled
       };
     }
   }
@@ -455,8 +473,8 @@ export class ReaperConnector extends EventEmitter {
       // Make a request to the REAPER API to get transport state
       const response = await this.makeRequest<string>('GET', '_/TRANSPORT');
 
-      // Format the response
-      const transportState = this.formatTransportResponse(response);
+      // Format the response (now async)
+      const transportState = await this.formatTransportResponse(response);
 
       // Add project ID to transport state
       transportState.projectId = this.projectId || '';
@@ -1028,9 +1046,33 @@ export class ReaperConnector extends EventEmitter {
    */
   public async refreshProjectId(): Promise<string> {
     try {
-      // In a real implementation, this would make a request to the REAPER API
-      // For now, we'll use the mock project ID
-      const projectId = this.projectId || 'mock-project-id';
+      logger.debug('Refreshing project ID from REAPER');
+
+      // Define section and key for project ID in REAPER's extended state
+      const projectSection = 'ReaperControl';
+      const projectIdKey = 'ProjectId';
+
+      // Try to get the existing project ID
+      let projectId = await this.getProjectExtState(projectSection, projectIdKey);
+
+      // If no project ID exists, generate one and save it
+      if (!projectId) {
+        // Generate a unique ID (using a similar approach to UUID)
+        projectId = `project-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        logger.info(`Generated new project ID: ${projectId}`);
+
+        try {
+          // Save the project ID to REAPER's extended state
+          await this.setProjectExtState(projectSection, projectIdKey, projectId);
+          logger.info('Saved project ID to REAPER project');
+        } catch (saveError) {
+          logger.error('Error saving project ID to REAPER project', { error: saveError });
+          // Continue with the new ID even if saving fails
+          logger.info('Continuing with new project ID despite save error');
+        }
+      } else {
+        logger.info(`Retrieved existing project ID: ${projectId}`);
+      }
 
       // Update project ID
       this.projectId = projectId;
@@ -1041,7 +1083,24 @@ export class ReaperConnector extends EventEmitter {
       return projectId;
     } catch (error) {
       logger.error('Failed to refresh project ID', { error });
-      throw error;
+
+      // If there's an error, generate a fallback ID
+      try {
+        // Generate a fallback ID
+        const fallbackId = `project-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+        logger.info(`Generated fallback project ID due to error: ${fallbackId}`);
+
+        // Update project ID
+        this.projectId = fallbackId;
+
+        // Emit project ID update
+        this.emit('projectId', fallbackId);
+
+        return fallbackId;
+      } catch (fallbackError) {
+        logger.error('Error generating fallback project ID', { error: fallbackError });
+        throw error; // Throw the original error
+      }
     }
   }
 
@@ -1050,7 +1109,13 @@ export class ReaperConnector extends EventEmitter {
    * @returns Project ID
    */
   public async getProjectId(): Promise<string> {
-    return this.projectId || await this.refreshProjectId();
+    // If we already have a project ID, return it
+    if (this.projectId) {
+      return this.projectId;
+    }
+
+    // Otherwise, refresh the project ID from REAPER
+    return await this.refreshProjectId();
   }
 
   /**

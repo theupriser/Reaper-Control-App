@@ -239,7 +239,7 @@ export async function addSetlistItem(
   setlistError.set(null);
 
   try {
-    const item = await window.electronAPI.addSetlistItem(setlistId, regionId, position);
+    const item = await window.electronAPI.addSetlistItem(setlistId, regionId, regionName, position);
     return item;
   } catch (err) {
     logger.error(`Error adding item to setlist ${setlistId}:`, err);

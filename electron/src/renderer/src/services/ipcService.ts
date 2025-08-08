@@ -118,9 +118,8 @@ function initialize(): IpcControl {
  */
 function setupEventListeners(): void {
   // Register event listeners using the exposed electronAPI
-  window.electronAPI.onRegionsUpdate(handleRegionsUpdate);
-  window.electronAPI.onMarkersUpdate(handleMarkersUpdate);
-  window.electronAPI.onPlaybackStateUpdate(handlePlaybackStateUpdate);
+  setupRegionAndPlaybackListeners();
+
   window.electronAPI.onStatusMessage(handleStatusMessage);
   window.electronAPI.onProjectIdUpdate(handleProjectIdUpdate);
   window.electronAPI.onProjectChanged(handleProjectChanged);
@@ -132,6 +131,21 @@ function setupEventListeners(): void {
     logger.log('Initial regions refresh...');
     window.electronAPI.refreshRegions();
   }, 500);
+}
+
+/**
+ * Sets up event listeners specifically for regions and playback state
+ * This function can be called after cleanup to reinitialize these listeners
+ */
+export function setupRegionAndPlaybackListeners(): void {
+  logger.log('Setting up region and playback event listeners');
+
+  if (window.electronAPI) {
+    window.electronAPI.onRegionsUpdate(handleRegionsUpdate);
+    window.electronAPI.onMarkersUpdate(handleMarkersUpdate);
+    window.electronAPI.onPlaybackStateUpdate(handlePlaybackStateUpdate);
+    logger.debug('Registered region and playback update listeners');
+  }
 }
 
 /**
@@ -296,6 +310,21 @@ function handleProjectChanged(projectId: string): void {
 function handleMidiActivity(): void {
   logger.log('MIDI activity detected');
   setMidiActive();
+}
+
+/**
+ * Cleanup function for region and playback event listeners
+ * Removes listeners for regions, markers, and playback state updates
+ */
+export function cleanupRegionAndPlaybackListeners(): void {
+  logger.log('Cleaning up region and playback event listeners');
+
+  if (window.electronAPI) {
+    window.electronAPI.removeAllListeners(IPC_CHANNELS.REGIONS_UPDATE);
+    window.electronAPI.removeAllListeners(IPC_CHANNELS.MARKERS_UPDATE);
+    window.electronAPI.removeAllListeners(IPC_CHANNELS.PLAYBACK_STATE_UPDATE);
+    logger.debug('Removed region and playback update listeners');
+  }
 }
 
 /**

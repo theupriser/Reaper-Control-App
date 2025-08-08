@@ -64,31 +64,60 @@ export const currentSetlistWithRegions: Readable<Setlist | null> = derived(
 export function initializeSetlistStore(): void {
   logger.log('Initializing setlist store');
 
+  // Clean up any existing listeners first to prevent memory leaks
+  cleanupSetlistStore();
+
   // Set up event listeners for setlist updates
+  let previousSetlistsData: string = '[]';
   window.electronAPI.onSetlistsUpdate((data: Setlist[]) => {
-    logger.log('Received setlists update:', data);
-    setlists.set(data);
+    // Only update if the data has actually changed
+    const newData = JSON.stringify(data);
+    if (newData !== previousSetlistsData) {
+      logger.log('Received setlists update with changes:', data);
+      setlists.set(data);
+      previousSetlistsData = newData;
+    } else {
+      logger.debug('Received setlists update, but data unchanged - ignoring');
+    }
   });
 
+  // Track previous state of individual setlists
+  const previousSetlistsState = new Map<string, string>();
+
   window.electronAPI.onSetlistUpdate((data: Setlist) => {
-    logger.log('Received setlist update:', data);
+    // Only update if the setlist data has actually changed
+    const newData = JSON.stringify(data);
+    const prevData = previousSetlistsState.get(data.id) || '';
 
-    // Update the current setlist if it's the one being updated
-    currentSetlist.update(current => {
-      if (current && current.id === data.id) {
-        return data;
-      }
-      return current;
-    });
+    if (newData !== prevData) {
+      logger.log('Received setlist update with changes:', data);
 
-    // Update the setlist in the setlists store
-    setlists.update(current =>
-      current.map(setlist => setlist.id === data.id ? data : setlist)
-    );
+      // Update the current setlist if it's the one being updated
+      currentSetlist.update(current => {
+        if (current && current.id === data.id) {
+          return data;
+        }
+        return current;
+      });
+
+      // Update the setlist in the setlists store
+      setlists.update(current =>
+        current.map(setlist => setlist.id === data.id ? data : setlist)
+      );
+
+      // Update the previous state
+      previousSetlistsState.set(data.id, newData);
+    } else {
+      logger.debug('Received setlist update, but data unchanged - ignoring', { setlistId: data.id });
+    }
   });
 
   // Listen for project ID changes and refresh setlists
   projectId.subscribe(async (id) => {
+    // Reset cached data when project ID changes to ensure fresh comparisons
+    previousSetlistsData = '[]';
+    previousSetlistsState.clear();
+
     if (id) {
       await fetchSetlists();
     } else {
@@ -338,6 +367,29 @@ export function resetSetlistStore(): void {
   currentSetlist.set(null);
   setlistLoading.set(false);
   setlistError.set(null);
+
+  // Reset cached data when store is reset
+  if (typeof previousSetlistsData !== 'undefined') {
+    previousSetlistsData = '[]';
+  }
+  if (typeof previousSetlistsState !== 'undefined') {
+    previousSetlistsState.clear();
+  }
+}
+
+/**
+ * Clean up setlist event listeners
+ * Removes all event listeners for setlist updates
+ */
+export function cleanupSetlistStore(): void {
+  logger.log('Cleaning up setlist store event listeners');
+
+  // Remove all listeners for setlist updates
+  if (window.electronAPI) {
+    window.electronAPI.removeAllListeners('setlists-update');
+    window.electronAPI.removeAllListeners('setlist-update');
+    logger.debug('Removed setlist update listeners');
+  }
 }
 
 // Export all functions
@@ -348,6 +400,7 @@ export default {
   setlistError,
   currentSetlistWithRegions,
   initializeSetlistStore,
+  cleanupSetlistStore,
   fetchSetlists,
   fetchSetlist,
   createSetlist,

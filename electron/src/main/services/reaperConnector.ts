@@ -979,13 +979,20 @@ export class ReaperConnector extends EventEmitter {
   /**
    * Seek to region in REAPER
    * @param regionId - Region ID to seek to
+   * @param skipRegionRefresh - Skip refreshing regions if we already have them
    */
-  public async seekToRegion(regionId: string | number): Promise<void> {
+  public async seekToRegion(regionId: string | number, skipRegionRefresh: boolean = false): Promise<void> {
     try {
-      logger.debug('Seeking to region in REAPER', { regionId, regionIdType: typeof regionId });
+      logger.debug('Seeking to region in REAPER', { regionId, regionIdType: typeof regionId, skipRegionRefresh });
 
-      // Get regions
-      const regions = await this.getRegions();
+      // Get regions - either use cached regions if skipRegionRefresh is true and we have regions,
+      // or fetch new ones if needed
+      let regions = this.regions;
+      if (!skipRegionRefresh || !regions || regions.length === 0) {
+        regions = await this.getRegions();
+      } else {
+        logger.debug('Using cached regions instead of refreshing', { regionCount: regions.length });
+      }
 
       // First try an exact string match
       let region = regions.find(r => String(r.id) === String(regionId));
@@ -1502,7 +1509,7 @@ export class ReaperConnector extends EventEmitter {
   }
 
   /**
-   * Clean up resources
+   * Clean up resources and event listeners
    */
   public cleanup(): void {
     // Stop polling
@@ -1513,5 +1520,11 @@ export class ReaperConnector extends EventEmitter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+
+    // Remove all event listeners to prevent memory leaks
+    logger.debug('Removing all event listeners from ReaperConnector');
+    this.removeAllListeners();
+
+    logger.info('ReaperConnector cleanup complete');
   }
 }

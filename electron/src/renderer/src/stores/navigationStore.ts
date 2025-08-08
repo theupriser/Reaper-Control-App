@@ -7,6 +7,7 @@ import { writable, type Writable, get } from 'svelte/store';
 import logger from '../lib/utils/logger';
 import { currentSetlist } from './setlistStore';
 import { setSelectedSetlist } from './playbackStore';
+import { cleanupRegionAndPlaybackListeners, setupRegionAndPlaybackListeners } from '../services/ipcService';
 
 /**
  * Available views in the application
@@ -32,6 +33,10 @@ export function navigateTo(view: View): void {
   // Get the current view before changing it
   const prevView = get(currentView);
 
+  // Clean up region and playback event listeners to prevent duplicate listeners
+  cleanupRegionAndPlaybackListeners();
+  logger.debug('Cleaned up region and playback listeners before navigation');
+
   // When navigating from setlist editor to player, sync the selected setlist
   if (prevView === View.SETLISTS && view === View.MAIN) {
     const currentEditedSetlist = get(currentSetlist);
@@ -45,6 +50,10 @@ export function navigateTo(view: View): void {
 
   // Update the current view
   currentView.set(view);
+
+  // Re-initialize region and playback event listeners
+  setupRegionAndPlaybackListeners();
+  logger.debug('Re-initialized region and playback listeners after navigation');
 }
 
 /**

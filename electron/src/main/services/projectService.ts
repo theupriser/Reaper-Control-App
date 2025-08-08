@@ -20,6 +20,7 @@ export class ProjectService extends EventEmitter {
   private selectedSetlistId: string | null = null;
   private reaperConnector: ReaperConnector;
   private setlistStorage: SetlistStorage;
+  private hasCleanedUp: boolean = false;
 
   /**
    * Constructor
@@ -1012,7 +1013,8 @@ export class ProjectService extends EventEmitter {
           logger.info(`Selecting first region in setlist: ${firstItem.name}`);
 
           // Seek to the first region
-          await this.reaperConnector.seekToRegion(firstItem.regionId);
+          // Skip region refresh since we're just changing views and already have the region data
+          await this.reaperConnector.seekToRegion(firstItem.regionId, true);
 
           // Ensure the player is paused
           if (this.reaperConnector.lastPlaybackState.isPlaying) {
@@ -1136,5 +1138,32 @@ export class ProjectService extends EventEmitter {
       logger.error('Error getting previous setlist item', { error, currentRegionId });
       return null;
     }
+  }
+
+  /**
+   * Clean up resources and event listeners
+   * This method should be called when the service is no longer needed
+   * to prevent memory leaks from unremoved event listeners
+   */
+  public cleanup(): void {
+    // Prevent multiple cleanups
+    if (this.hasCleanedUp) {
+      logger.debug('ProjectService already cleaned up, skipping');
+      return;
+    }
+
+    logger.debug('Cleaning up ProjectService event listeners');
+
+    // Remove event listeners from reaperConnector
+    this.reaperConnector.removeAllListeners('projectId');
+    this.reaperConnector.removeAllListeners('projectChanged');
+
+    // Remove all listeners from this instance
+    this.removeAllListeners();
+
+    // Mark as cleaned up
+    this.hasCleanedUp = true;
+
+    logger.info('ProjectService cleanup complete');
   }
 }

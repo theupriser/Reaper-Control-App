@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import {
     setlists,
     currentSetlist,
@@ -14,7 +14,8 @@
     addSetlistItem,
     removeSetlistItem,
     moveSetlistItem,
-    initializeSetlistStore
+    initializeSetlistStore,
+    cleanupSetlistStore
   } from '../stores/setlistStore';
   import { regions } from '../stores/regionStore';
   import ipcService from '../services/ipcService';
@@ -35,6 +36,11 @@
     initializeSetlistStore();
     fetchSetlists();
     ipcService.refreshRegions();
+  });
+
+  // Clean up event listeners when component is destroyed
+  onDestroy(() => {
+    cleanupSetlistStore();
   });
 
   /**
@@ -113,6 +119,9 @@
    */
   async function selectSetlist(id: string): Promise<void> {
     await fetchSetlist(id);
+    // Refresh regions to ensure available songs are loaded
+    // This is especially important when navigating from player mode
+    ipcService.refreshRegions();
   }
 
   /**

@@ -40,6 +40,8 @@ jobs:
       - name: Build application
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "Adding node_modules/.bin to PATH for Windows"
+            export PATH="$PWD/node_modules/.bin:$PATH"
             npm run build:win
           elif [ "${{ matrix.os }}" = "macos-latest" ]; then
             npm run build:mac

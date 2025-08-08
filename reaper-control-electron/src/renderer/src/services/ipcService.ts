@@ -206,9 +206,6 @@ function handleMarkersUpdate(data: Marker[]): void {
  * Handles the playback state update event
  */
 function handlePlaybackStateUpdate(data: PlaybackState): void {
-  // Log the received data for debugging
-  logger.log('Received playback state update:', data);
-
   // Check for missing required fields
   if (data === undefined || data === null) {
     logger.error('Received playback state is null or undefined');
@@ -252,9 +249,6 @@ function handlePlaybackStateUpdate(data: PlaybackState): void {
     autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : true,
     countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : false
   };
-
-  // Log the mapped data for debugging
-  logger.log('Mapped playback state data:', mappedData);
 
   // Update the playback state with the mapped data
   const result = updatePlaybackState(mappedData);

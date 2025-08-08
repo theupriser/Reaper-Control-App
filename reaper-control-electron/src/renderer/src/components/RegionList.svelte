@@ -147,19 +147,33 @@
     ipcService.refreshRegions();
   }
 
-  onMount(() => {
+  onMount(async () => {
     logger.log('RegionList component mounted');
 
-    // Initialize setlist store
-    import('../stores/setlistStore').then(module => {
-      module.initializeSetlistStore();
-      module.fetchSetlists();
+    try {
+      // Import setlistStore synchronously to ensure it's available immediately
+      const setlistModule = await import('../stores/setlistStore');
+
+      // Initialize setlist store
+      setlistModule.initializeSetlistStore();
+
+      // Fetch all setlists first
+      await setlistModule.fetchSetlists();
 
       // If there's a selected setlist in playbackState, fetch it
       if ($playbackState.selectedSetlistId) {
-        module.fetchSetlist($playbackState.selectedSetlistId);
+        logger.log(`Loading selected setlist: ${$playbackState.selectedSetlistId}`);
+        await setlistModule.fetchSetlist($playbackState.selectedSetlistId);
       }
-    });
+
+      // Log the current state for debugging
+      logger.log('Setlist initialization complete', {
+        selectedSetlistId: $playbackState.selectedSetlistId,
+        currentSetlist: $storeCurrentSetlist ? $storeCurrentSetlist.name : 'none'
+      });
+    } catch (error) {
+      logger.error('Error initializing setlist store:', error);
+    }
 
     // Initial regions refresh
     handleRefresh();

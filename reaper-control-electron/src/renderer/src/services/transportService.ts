@@ -1,19 +1,22 @@
 /**
- * Performer Store
- * Manages the state and logic for the Performer Mode component
+ * Transport Service
+ *
+ * This service provides common functionality for transport controls used by
+ * both TransportControls.svelte and PerformerMode.svelte components.
  */
 
 import { writable, derived, type Writable, type Readable } from 'svelte/store';
 import {
   regions,
   currentRegion,
+  previousRegion as prevRegion,
   type Region
-} from './regionStore';
+} from '../stores/regionStore';
 import {
   playbackState,
   autoplayEnabled,
   countInEnabled
-} from './playbackStore';
+} from '../stores/playbackStore';
 import {
   markers,
   sortedMarkers,
@@ -22,12 +25,9 @@ import {
   has1008MarkerInRegion,
   getEffectiveRegionLength,
   type Marker
-} from './markerStore';
-import {
-  currentSetlist,
-  type Setlist
-} from './setlistStore';
-import ipcService from '../services/ipcService';
+} from '../stores/markerStore';
+import { currentSetlist } from '../stores/setlistStore';
+import ipcService from './ipcService';
 import logger from '../lib/utils/logger';
 
 // Store to track disabled state of transport buttons
@@ -50,9 +50,6 @@ let previousPlaybackIsPlaying = false;
 
 // Store previous region ID to detect actual region changes
 let previousRegionId: number | null = null;
-
-// Store for the current time
-export const currentTime: Writable<Date> = writable(new Date());
 
 /**
  * Safely execute a transport control function with button disabling
@@ -260,7 +257,7 @@ export function togglePlay(): void {
     unsubscribePlayback();
 
     // Get current setlist if one is selected
-    let currentSetlistValue: Setlist | null = null;
+    let currentSetlistValue: any = null;
     const unsubscribeSetlist = currentSetlist.subscribe(value => { currentSetlistValue = value; });
     unsubscribeSetlist();
 
@@ -356,7 +353,7 @@ export function previousRegionHandler(): void {
 
   // Get the previous region value
   let previousRegionValue: Region | null = null;
-  const unsubscribePreviousRegion = previousRegion.subscribe(value => {
+  const unsubscribePreviousRegion = prevRegion.subscribe(value => {
     previousRegionValue = value;
   });
   unsubscribePreviousRegion();
@@ -450,11 +447,6 @@ export function handleProgressBarClick(event: MouseEvent): void {
   unsubscribeRegion();
 
   if (!currentRegionValue) return;
-
-  // Get popover state from the component if available
-  const popoverVisible = (window as any).performerPopoverVisible;
-  const popoverPosition = (window as any).performerPopoverPosition;
-  const popoverTime = (window as any).performerPopoverTime;
 
   // Get the click position relative to the progress container
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -568,46 +560,6 @@ export function handleProgressBarClick(event: MouseEvent): void {
       atHardStop.set(false);
     }
   }
-}
-
-/**
- * Handle keyboard shortcuts
- * @param event - The keyboard event
- */
-export function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === ' ') {
-    // Space bar - toggle play/pause
-    togglePlay();
-    event.preventDefault();
-  } else if (event.key === 'ArrowRight') {
-    // Right arrow - next region
-    nextRegionHandler();
-    event.preventDefault();
-  } else if (event.key === 'ArrowLeft') {
-    // Left arrow - previous region
-    previousRegionHandler();
-    event.preventDefault();
-  } else if (event.key === 'a') {
-    // 'a' key - toggle autoplay
-    toggleAutoplayHandler();
-    event.preventDefault();
-  }
-}
-
-/**
- * Initialize the page
- * - Sets up keyboard event listeners
- * @returns Cleanup function
- */
-export function initializePage(): () => void {
-  // Add keyboard event listener
-  window.addEventListener('keydown', handleKeydown);
-
-  // Return a cleanup function
-  return () => {
-    window.removeEventListener('keydown', handleKeydown);
-    stopLocalTimer();
-  };
 }
 
 /**
@@ -799,12 +751,7 @@ export function updateTimerOnRegionChange(): void {
   }
 }
 
-// Derived stores for computed values
-
-/**
- * Derived store for the next region
- * Takes setlists into account when determining the next region
- */
+// Derived store for the next region
 export const nextRegion: Readable<Region | null> = derived(
   [currentRegion, playbackState, currentSetlist, regions],
   ([$currentRegion, $playbackState, $currentSetlist, $regions]) => {
@@ -824,161 +771,5 @@ export const nextRegion: Readable<Region | null> = derived(
       return currentIndex !== -1 && currentIndex < $regions.length - 1 ?
         $regions[currentIndex + 1] : null;
     }
-  }
-);
-
-/**
- * Derived store for the previous region
- * Takes setlists into account when determining the previous region
- */
-export const previousRegion: Readable<Region | null> = derived(
-  [currentRegion, playbackState, currentSetlist, regions],
-  ([$currentRegion, $playbackState, $currentSetlist, $regions]) => {
-    if (!$currentRegion) {
-      logger.debug('previousRegion: No current region, returning null');
-      return null;
-    }
-
-    // Log current state for debugging
-    logger.debug('previousRegion calculation:', {
-      currentRegionId: $currentRegion.id,
-      currentRegionName: $currentRegion.name,
-      hasSetlist: Boolean($playbackState.selectedSetlistId && $currentSetlist),
-      selectedSetlistId: $playbackState.selectedSetlistId,
-      regionsCount: $regions.length
-    });
-
-    if ($playbackState.selectedSetlistId && $currentSetlist) {
-      // If a setlist is selected, get the previous item from the setlist
-      const currentItemIndex = $currentSetlist.items.findIndex(item => Number(item.regionId) === $currentRegion.id);
-      logger.debug('previousRegion: In setlist mode, current item index:', currentItemIndex);
-
-      if (currentItemIndex !== -1 && currentItemIndex > 0) {
-        const prevItem = $currentSetlist.items[currentItemIndex - 1];
-        const prevRegion = $regions.find(region => region.id === Number(prevItem.regionId)) || null;
-        logger.debug('previousRegion: Found previous region in setlist:', prevRegion ? prevRegion.name : 'null');
-        return prevRegion;
-      }
-      logger.debug('previousRegion: No previous region in setlist, returning null');
-      return null;
-    } else {
-      // Otherwise, get the previous region from all regions
-      const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
-      logger.debug('previousRegion: In regular mode, current index:', currentIndex);
-
-      // Explicitly check if this is the first region (index 0)
-      if (currentIndex === 0) {
-        logger.debug('previousRegion: This is the first region, returning null');
-        return null;
-      }
-
-      if (currentIndex !== -1 && currentIndex > 0) {
-        const prevRegion = $regions[currentIndex - 1];
-        logger.debug('previousRegion: Found previous region:', prevRegion.name);
-        return prevRegion;
-      }
-      logger.debug('previousRegion: No previous region, returning null');
-      return null;
-    }
-  }
-);
-
-/**
- * Derived store for the total time of all regions or setlist items
- */
-export const totalRegionsTime: Readable<number> = derived(
-  [playbackState, currentSetlist, regions, displayMarkers],
-  ([$playbackState, $currentSetlist, $regions, $displayMarkers]) => {
-    if ($playbackState.selectedSetlistId && $currentSetlist) {
-      // If a setlist is selected, calculate total time from setlist items
-      return $currentSetlist.items.reduce((total, item) => {
-        const region = $regions.find(r => r.id === Number(item.regionId));
-        return total + (region ? getEffectiveRegionLength(region, $displayMarkers) : 0);
-      }, 0);
-    } else {
-      // Otherwise, calculate from all regions
-      return $regions.reduce((total, region) => total + getEffectiveRegionLength(region, $displayMarkers), 0);
-    }
-  }
-);
-
-/**
- * Derived store for the elapsed time before the current region
- */
-export const elapsedTimeBeforeCurrentRegion: Readable<number> = derived(
-  [currentRegion, playbackState, currentSetlist, regions, displayMarkers],
-  ([$currentRegion, $playbackState, $currentSetlist, $regions, $displayMarkers]) => {
-    if (!$currentRegion) return 0;
-
-    if ($playbackState.selectedSetlistId && $currentSetlist) {
-      // If a setlist is selected, calculate elapsed time from setlist items
-      return $currentSetlist.items
-        .filter((_item, index) => {
-          const currentItemIndex = $currentSetlist.items.findIndex(i => Number(i.regionId) === $currentRegion.id);
-          return currentItemIndex !== -1 && index < currentItemIndex;
-        })
-        .reduce((total, item) => {
-          const region = $regions.find(r => r.id === Number(item.regionId));
-          return total + (region ? getEffectiveRegionLength(region, $displayMarkers) : 0);
-        }, 0);
-    } else {
-      // Otherwise, calculate from all regions
-      return $regions
-        .filter(region => $regions.findIndex(r => r.id === region.id) < $regions.findIndex(r => r.id === $currentRegion.id))
-        .reduce((total, region) => total + getEffectiveRegionLength(region, $displayMarkers), 0);
-    }
-  }
-);
-
-/**
- * Derived store for the total elapsed time
- */
-export const totalElapsedTime: Readable<number> = derived(
-  [currentRegion, elapsedTimeBeforeCurrentRegion, useLocalTimer, localPosition, playbackState],
-  ([$currentRegion, $elapsedTimeBeforeCurrentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
-    if (!$currentRegion) return 0;
-    return $elapsedTimeBeforeCurrentRegion + Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
-  }
-);
-
-/**
- * Derived store for the total remaining time
- */
-export const totalRemainingTime: Readable<number> = derived(
-  [totalRegionsTime, totalElapsedTime],
-  ([$totalRegionsTime, $totalElapsedTime]) => {
-    return Math.max(0, $totalRegionsTime - $totalElapsedTime);
-  }
-);
-
-/**
- * Derived store for the current song time
- */
-export const currentSongTime: Readable<number> = derived(
-  [currentRegion, useLocalTimer, localPosition, playbackState],
-  ([$currentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
-    if (!$currentRegion) return 0;
-    return Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
-  }
-);
-
-/**
- * Derived store for the song duration
- */
-export const songDuration: Readable<number> = derived(
-  [currentRegion, displayMarkers],
-  ([$currentRegion, $displayMarkers]) => {
-    if (!$currentRegion) return 0;
-    return getEffectiveRegionLength($currentRegion, $displayMarkers);
-  }
-);
-
-/**
- * Derived store for the song remaining time
- */
-export const songRemainingTime: Readable<number> = derived(
-  [songDuration, currentSongTime],
-  ([$songDuration, $currentSongTime]) => {
-    return Math.max(0, $songDuration - $currentSongTime);
   }
 );

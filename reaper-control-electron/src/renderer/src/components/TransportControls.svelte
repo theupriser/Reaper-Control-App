@@ -26,8 +26,6 @@
     getEffectiveRegionLength,
     getCustomLengthForRegion,
     has1008MarkerInRegion,
-    toggleAutoplay,
-    toggleCountIn,
     type Region,
     type Marker
   } from '../stores';
@@ -35,39 +33,36 @@
   import logger from '../lib/utils/logger';
   import { writable, type Writable } from 'svelte/store';
   import { onMount, onDestroy } from 'svelte';
+  import {
+    // Functions
+    safeTransportAction,
+    formatTime,
+    togglePlay,
+    nextRegionHandler,
+    previousRegionHandler,
+    toggleAutoplayHandler,
+    toggleCountInHandler,
+    handleProgressBarClick,
+    updateTimer,
+    updateTimerOnRegionChange,
+    startLocalTimer,
+    stopLocalTimer,
+    findLengthMarkerInRegion,
+
+    // Stores
+    transportButtonsDisabled,
+    localPosition,
+    useLocalTimer,
+    atHardStop
+  } from '../services/transportService';
 
   // Track loading state
   const isLoading: Writable<boolean> = writable(true);
-
-  // Store to track disabled state of transport buttons
-  const transportButtonsDisabled: Writable<boolean> = writable(false);
-
-  // Last playback state update timestamp
-  let lastPlaybackStateUpdate = Date.now();
-
-  // Local timer state
-  let localTimer: NodeJS.Timeout | null = null;
-  let localPosition: Writable<number> = writable(0);
-  let useLocalTimer: Writable<boolean> = writable(false);
-  let timerStartTime = 0;
-  let timerStartPosition = 0;
-
-  // Variable to track if we've reached a hard stop at a length marker
-  const atHardStop: Writable<boolean> = writable(false);
 
   // Progress bar click handling
   const popoverVisible: Writable<boolean> = writable(false);
   const popoverPosition: Writable<{x: number, y: number}> = writable({ x: 0, y: 0 });
   const popoverTime: Writable<number> = writable(0);
-
-  // We'll use the sortedMarkers store which filters out command-only markers
-
-  // Store previous playback state to detect significant changes
-  let previousPlaybackPosition = 0;
-  let previousPlaybackIsPlaying = false;
-
-  // Store previous region ID to detect actual region changes
-  let previousRegionId: string | null = null;
 
   // Set up loading state handling
   onMount(() => {
@@ -97,8 +92,8 @@
   $: displayPreviousRegion = $previousRegion;
   $: displayMarkers = $sortedMarkers; // Use sortedMarkers to filter out command-only markers
 
-    // Calculate song duration reactively, similar to performerStore.ts
-    $: songDuration = displayRegion ? getEffectiveRegionLength(displayRegion, $markers) : 0;
+  // Calculate song duration reactively
+  $: songDuration = displayRegion ? getEffectiveRegionLength(displayRegion, $markers) : 0;
 
   // Debug reactive statement to log button states
   $: {
@@ -117,147 +112,22 @@
   // Helper function to check if we have data
   $: hasData = $sortedMarkers && $sortedMarkers.length > 0;
 
-  /**
-   * Safely execute a transport control function with button disabling
-   * This prevents multiple rapid clicks from causing the application to freeze
-   *
-   * @param actionFn - The transport control function to execute
-   * @param args - Arguments to pass to the function
-   */
-  function safeTransportAction(actionFn: Function, ...args: any[]): void {
-    // Step 1: Disable all transport buttons
-    transportButtonsDisabled.set(true);
-
-    // Step 2: Execute the transport action
-    actionFn(...args);
-
-    // Step 3: Store the current timestamp when the action was triggered
-    lastPlaybackStateUpdate = Date.now();
-
-    // Step 4: Set a safety timeout to re-enable buttons after a maximum wait time
-    setTimeout(() => {
-      transportButtonsDisabled.set(false);
-    }, 2000); // 2 seconds maximum wait time
-  }
-
-  // Format time in seconds to MM:SS format
-  function formatTime(seconds: number | undefined | null): string {
-    if (seconds === undefined || seconds === null) return '--:--';
-
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-
   // Toggle autoplay function
   function handleToggleAutoplay(): void {
     logger.log('Toggling autoplay');
-    safeTransportAction(() => {
-      // Use the toggleAutoplay function from the playbackStore
-      // This properly communicates the change to the main process via IPC
-      toggleAutoplay();
-    });
+    toggleAutoplayHandler();
   }
 
   // Toggle count-in function
   function handleToggleCountIn(): void {
     logger.log('Toggling count-in');
-    safeTransportAction(() => {
-      // Use the toggleCountIn function from the playbackStore
-      // This properly communicates the change to the main process via IPC
-      toggleCountIn();
-
-      // Log the new state
-      logger.log(`Count-in ${$countInEnabled ? 'enabled' : 'disabled'}`);
-    });
+    toggleCountInHandler();
+    // Log the new state
+    logger.log(`Count-in ${$countInEnabled ? 'enabled' : 'disabled'}`);
   }
 
-  // Function to start the local timer
-  function startLocalTimer(startPosition: number): void {
-    // Clear any existing timer
-    if (localTimer) {
-      clearInterval(localTimer);
-    }
-
-    // Set the start time and position
-    timerStartTime = Date.now();
-    timerStartPosition = startPosition;
-
-    // Initialize the local position to match the current playback position
-    // This ensures a smooth transition when the local timer takes over
-    localPosition.set(startPosition);
-
-    // Start the timer
-    localTimer = setInterval(() => {
-      // Calculate the elapsed time
-      const elapsed = (Date.now() - timerStartTime) / 1000;
-
-      // Calculate the current position
-      const currentPos = timerStartPosition + elapsed;
-
-      // Update the local position
-      localPosition.set(currentPos);
-
-      // Check if we've reached the end of the length marker or if we have a !1008 marker
-      if ($currentRegion) {
-        const customLength = getCustomLengthForRegion($currentRegion, $markers);
-        const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
-
-        // For length markers, set the hard stop flag and stop the timer at the custom length
-        // Match the performerStore.ts implementation by checking both has1008Marker AND customLength
-        if (has1008Marker && (customLength !== null && (currentPos - $currentRegion.start) >= customLength)) {
-          // Set the hard stop flag
-          atHardStop.set(true);
-
-          // When hard stop is reached, we should stop at the fake hard stop marker
-          // which is at the end of the custom length
-          const hardStopPosition = $currentRegion.start + customLength;
-          localPosition.set(hardStopPosition);
-        }
-
-        // We don't set atHardStop for !1008 markers without custom length
-        // This ensures "Press play to continue" only shows at the fake hard stop marker (custom length)
-      }
-    }, 100); // Update every 100ms for smooth display
-  }
-
-  // Function to stop the local timer
-  function stopLocalTimer(): void {
-    if (localTimer) {
-      clearInterval(localTimer);
-      localTimer = null;
-    }
-  }
-
-  // Function to find the length marker in the current region
-  function findLengthMarkerInRegion(markerList: Marker[], region: Region): Marker | null {
-    if (!region || !markerList || markerList.length === 0) return null;
-
-    // Find markers that are within the region and have a !length tag
-    const lengthMarkers = markerList.filter(marker =>
-      marker.position >= region.start &&
-      marker.position <= region.end
-    );
-
-    // Check each marker for !length tag
-    for (const marker of lengthMarkers) {
-      const length = extractLengthFromMarker(marker.name);
-      if (length !== null) {
-        return marker;
-      }
-    }
-
-    return null;
-  }
-
-  // Helper function to extract length from marker name
-  function extractLengthFromMarker(name: string): number | null {
-    const lengthMatch = name.match(/!length:(\d+(\.\d+)?)/);
-    return lengthMatch ? parseFloat(lengthMatch[1]) : null;
-  }
-
-  // Progress bar click handling
-  function handleProgressBarClick(event: MouseEvent): void {
+  // Enhanced progress bar click handling with popover
+  function handleProgressBarClickWithPopover(event: MouseEvent): void {
     if (!$currentRegion) return;
 
     // Get the click position relative to the progress container
@@ -268,39 +138,8 @@
     // Calculate the percentage of the click position
     const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
 
-    // Check if the click is near a marker
-    let finalPosition: number;
-    let isNearMarker = false;
-    const clickThreshold = 10; // Pixel threshold for considering a click "on" a marker
-
-    // Find markers within the current region
-    const markersInRegion = $markers.filter(marker =>
-      marker.position >= $currentRegion!.start &&
-      marker.position <= $currentRegion!.end
-    );
-
-    // Check if click is near any marker
-    for (const marker of markersInRegion) {
-      // Calculate marker's pixel position in the progress bar
-      const markerPercentage = (marker.position - $currentRegion!.start) / songDuration;
-      const markerPixelPosition = markerPercentage * containerWidth;
-
-      // Check if click is within threshold of marker
-      if (Math.abs(clickX - markerPixelPosition) <= clickThreshold) {
-        // Click is near a marker, use exact marker position
-        finalPosition = marker.position;
-        isNearMarker = true;
-
-        // Log that we're using exact marker position
-        logger.log(`Click near marker "${marker.name}" at position ${marker.position}s, using exact marker position`);
-        break;
-      }
-    }
-
-    // If not near a marker, calculate position based on click percentage
-    if (!isNearMarker) {
-      finalPosition = $currentRegion!.start + (percentage * songDuration);
-    }
+    // Calculate position based on percentage
+    const finalPosition = $currentRegion.start + (percentage * songDuration);
 
     // Calculate popover position, ensuring it stays within viewport
     let popoverX = clickX;
@@ -319,46 +158,11 @@
       x: popoverX,
       y: rect.top - 30 // Position above the progress bar
     });
-    popoverTime.set(finalPosition - $currentRegion!.start); // Time relative to region start
+    popoverTime.set(finalPosition - $currentRegion.start); // Time relative to region start
     popoverVisible.set(true);
 
-    // Seek to the position (either marker position or calculated position)
-    // If the click was on a marker and count-in is enabled, use count-in
-    if (isNearMarker && $countInEnabled) {
-      logger.log(`Using count-in for marker click at position ${finalPosition}`);
-      safeTransportAction(() => ipcService.seekToPosition(finalPosition, true));
-    } else {
-      // Otherwise, just seek to the position without count-in
-      safeTransportAction(() => ipcService.seekToPosition(finalPosition, false));
-    }
-
-    // Check if we should use the local timer based on the position
-    const customLength = getCustomLengthForRegion($currentRegion!, $markers);
-    if (customLength !== null) {
-      // Find the actual length marker to get its position
-      const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion!);
-
-      if (lengthMarker && finalPosition >= lengthMarker.position) {
-        // Position is past the length marker, use local timer
-        const wasUsingLocalTimer = $useLocalTimer;
-        useLocalTimer.set(true);
-
-        // Update the local position immediately for a smooth transition
-        localPosition.set(finalPosition);
-
-        // Restart the timer from the position
-        startLocalTimer(finalPosition);
-      } else {
-        // Position is before the length marker
-        useLocalTimer.set(false);
-        stopLocalTimer();
-      }
-    }
-
-    // We don't set atHardStop for !1008 markers without custom length
-    // This ensures "Press play to continue" only shows at the fake hard stop marker (custom length)
-
-    // Only the startLocalTimer function should set atHardStop when a custom length is reached
+    // Call the original handler
+    handleProgressBarClick(event);
 
     // Hide the popover after 2 seconds
     setTimeout(() => {
@@ -368,117 +172,14 @@
 
   // Watch for changes in playback state and current region
   $: {
-    if ($currentRegion) {
-      const customLength = getCustomLengthForRegion($currentRegion, $markers);
-
-      // If there's a length marker, check if we should use the local timer
-      if (customLength !== null) {
-        // Find the actual length marker to get its position
-        const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
-
-        if (lengthMarker) {
-          // Only start the timer if playback position has passed the marker position
-          if ($playbackState.currentPosition >= lengthMarker.position) {
-            // Check if we're transitioning from regular playback to local timer
-            const wasUsingLocalTimer = $useLocalTimer;
-
-            // Set the flag to use local timer
-            useLocalTimer.set(true);
-
-            // If we're just transitioning to local timer or the timer isn't running, start it
-            if (!wasUsingLocalTimer || !localTimer) {
-              // Initialize with current playback position for smooth transition
-              startLocalTimer($playbackState.currentPosition);
-            } else {
-              // Only restart timer if position changed significantly (e.g., due to seeking)
-              // We don't restart on play/pause changes since timer should continue regardless
-              const positionChanged = Math.abs($playbackState.currentPosition - previousPlaybackPosition) > 0.5;
-
-              if (positionChanged) {
-                startLocalTimer($playbackState.currentPosition);
-                // Reset hard stop flag when seeking
-                atHardStop.set(false);
-              }
-            }
-          } else {
-            // Playback hasn't reached the length marker yet, use regular playback state
-            useLocalTimer.set(false);
-            stopLocalTimer();
-            // Reset hard stop flag
-            atHardStop.set(false);
-          }
-        }
-      } else {
-        // No length marker, use the regular playback state
-        useLocalTimer.set(false);
-        stopLocalTimer();
-
-        // We don't set atHardStop for !1008 markers without custom length
-        // This ensures "Press play to continue" only shows at the fake hard stop marker (custom length)
-
-        // Reset hard stop flag since we're not using a custom length marker
-        atHardStop.set(false);
-      }
-    } else {
-      // No current region, use the regular playback state
-      useLocalTimer.set(false);
-      stopLocalTimer();
-      // Reset hard stop flag
-      atHardStop.set(false);
-    }
-
-    // If playback state changes from stopped to playing, reset hard stop flag
-    if ($playbackState.isPlaying && !previousPlaybackIsPlaying) {
-      atHardStop.set(false);
-    }
-
-    // Update previous state values
-    previousPlaybackPosition = $playbackState.currentPosition;
-    previousPlaybackIsPlaying = $playbackState.isPlaying;
-
-    // Step 5 of safeTransportAction: Re-enable transport buttons when playback state updates
-    // Only re-enable if at least 100ms have passed since the last action
-    if (Date.now() - lastPlaybackStateUpdate > 100) {
-      transportButtonsDisabled.set(false);
+    if ($playbackState || $currentRegion) {
+      updateTimer();
     }
   }
 
   // Watch for changes in the current region
   $: if ($currentRegion) {
-    // Only reset timer if the region ID actually changed
-    if (previousRegionId !== $currentRegion.id) {
-      previousRegionId = $currentRegion.id;
-
-      // Check if the new region has a length marker
-      const customLength = getCustomLengthForRegion($currentRegion, $markers);
-      if (customLength !== null) {
-        // Find the actual length marker to get its position
-        const lengthMarker = findLengthMarkerInRegion($markers, $currentRegion);
-
-        if (lengthMarker && $playbackState.currentPosition >= lengthMarker.position) {
-          // Check if we're transitioning from regular playback to local timer
-          const wasUsingLocalTimer = $useLocalTimer;
-
-          // Set the flag to use local timer
-          useLocalTimer.set(true);
-
-          // Initialize with current playback position for smooth transition
-          localPosition.set($playbackState.currentPosition);
-          startLocalTimer($playbackState.currentPosition);
-        } else {
-          // Playback hasn't reached the length marker yet
-          useLocalTimer.set(false);
-          stopLocalTimer();
-          // Reset hard stop flag
-          atHardStop.set(false);
-        }
-      } else {
-        useLocalTimer.set(false);
-        stopLocalTimer();
-        // Reset hard stop flag
-        atHardStop.set(false);
-      }
-    }
+    updateTimerOnRegionChange();
   }
 
   // Initialize markers when component is mounted
@@ -646,7 +347,7 @@
   <div class="controls">
     <button
       class="control-button previous"
-      on:click={() => safeTransportAction(() => ipcService.previousRegion())}
+      on:click={() => safeTransportAction(() => previousRegionHandler())}
       aria-label="Previous region"
       disabled={$transportButtonsDisabled || !displayRegion || !displayPreviousRegion}
     >
@@ -668,11 +369,7 @@
 
     <button
       class="control-button play-pause"
-      on:click={() => safeTransportAction(() => {
-
-        // Then send the command to the backend
-        ipcService.togglePlay();
-      })}
+      on:click={() => safeTransportAction(() => togglePlay())}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
       disabled={$transportButtonsDisabled || (!displayNextRegion && !$playbackState.isPlaying && $atHardStop)}
     >
@@ -689,7 +386,7 @@
 
     <button
       class="control-button next"
-      on:click={() => safeTransportAction(() => ipcService.nextRegion())}
+      on:click={() => safeTransportAction(() => nextRegionHandler())}
       aria-label="Next region"
       disabled={$transportButtonsDisabled || !displayNextRegion}
     >

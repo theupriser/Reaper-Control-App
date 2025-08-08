@@ -21,35 +21,28 @@
   import { View, navigateTo } from '../stores/navigationStore';
   import SystemStats from './SystemStats.svelte';
   import {
-    // Stores
-    currentTime,
-    localPosition,
-    useLocalTimer,
-    atHardStop,
-    transportButtonsDisabled,
-
-    // Derived stores
-    nextRegion,
-    totalRegionsTime,
-    totalElapsedTime,
-    totalRemainingTime,
-    currentSongTime,
-    songDuration,
-    songRemainingTime,
-
     // Functions
+    safeTransportAction,
     formatTime,
     formatLongTime,
     togglePlay,
     nextRegionHandler,
     previousRegionHandler,
-    toggleAutoplayHandler as toggleAutoplay,
-    toggleCountInHandler as toggleCountIn,
+    toggleAutoplayHandler,
+    toggleCountInHandler,
     handleProgressBarClick,
-    initializePage,
     updateTimer,
-    updateTimerOnRegionChange
-  } from '../stores/performerStore';
+    updateTimerOnRegionChange,
+
+    // Stores
+    transportButtonsDisabled,
+    localPosition,
+    useLocalTimer,
+    atHardStop,
+
+    // Derived store
+    nextRegion
+  } from '../services/transportService';
 
   import { writable } from 'svelte/store';
 
@@ -61,9 +54,102 @@
   const popoverPosition = writable({ x: 0, y: 0 });
   const popoverTime = writable(0);
 
+  // Store for the current time
+  const currentTime = writable(new Date());
+
+  // Derived stores for performer mode
+  import { derived, type Readable } from 'svelte/store';
+
+  // Total time of all regions or setlist items
+  const totalRegionsTime: Readable<number> = derived(
+    [playbackState, currentSetlist, regions, markers, useLocalTimer],
+    ([$playbackState, $currentSetlist, $regions, $markers, $useLocalTimer]) => {
+      if ($playbackState.selectedSetlistId && $currentSetlist) {
+        // If a setlist is selected, calculate total time from setlist items
+        return $currentSetlist.items.reduce((total, item) => {
+          const region = $regions.find(r => r.id === Number(item.regionId));
+          return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
+        }, 0);
+      } else {
+        // Otherwise, calculate from all regions
+        return $regions.reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
+      }
+    }
+  );
+
+  // Elapsed time before the current region
+  const elapsedTimeBeforeCurrentRegion: Readable<number> = derived(
+    [currentRegion, playbackState, currentSetlist, regions, markers, useLocalTimer],
+    ([$currentRegion, $playbackState, $currentSetlist, $regions, $markers, $useLocalTimer]) => {
+      if (!$currentRegion) return 0;
+
+      if ($playbackState.selectedSetlistId && $currentSetlist) {
+        // If a setlist is selected, calculate elapsed time from setlist items
+        return $currentSetlist.items
+          .filter((_item, index) => {
+            const currentItemIndex = $currentSetlist.items.findIndex(i => Number(i.regionId) === $currentRegion.id);
+            return currentItemIndex !== -1 && index < currentItemIndex;
+          })
+          .reduce((total, item) => {
+            const region = $regions.find(r => r.id === Number(item.regionId));
+            return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
+          }, 0);
+      } else {
+        // Otherwise, calculate from all regions
+        return $regions
+          .filter(region => $regions.findIndex(r => r.id === region.id) < $regions.findIndex(r => r.id === $currentRegion.id))
+          .reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
+      }
+    }
+  );
+
+  // Total elapsed time
+  const totalElapsedTime: Readable<number> = derived(
+    [currentRegion, elapsedTimeBeforeCurrentRegion, useLocalTimer, localPosition, playbackState],
+    ([$currentRegion, $elapsedTimeBeforeCurrentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
+      if (!$currentRegion) return 0;
+      return $elapsedTimeBeforeCurrentRegion + Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
+    }
+  );
+
+  // Total remaining time
+  const totalRemainingTime: Readable<number> = derived(
+    [totalRegionsTime, totalElapsedTime],
+    ([$totalRegionsTime, $totalElapsedTime]) => {
+      return Math.max(0, $totalRegionsTime - $totalElapsedTime);
+    }
+  );
+
+  // Current song time
+  const currentSongTime: Readable<number> = derived(
+    [currentRegion, useLocalTimer, localPosition, playbackState],
+    ([$currentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
+      if (!$currentRegion) return 0;
+      return Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
+    }
+  );
+
+  // Song duration
+  const songDuration: Readable<number> = derived(
+    [currentRegion, sortedMarkers, markers, useLocalTimer],
+    ([$currentRegion, $sortedMarkers, $markers, $useLocalTimer]) => {
+      if (!$currentRegion) return 0;
+      return getEffectiveRegionLength($currentRegion, $markers);
+    }
+  );
+
+  // Song remaining time
+  const songRemainingTime: Readable<number> = derived(
+    [songDuration, currentSongTime],
+    ([$songDuration, $currentSongTime]) => {
+      return Math.max(0, $songDuration - $currentSongTime);
+    }
+  );
+
   // Initialize the page on mount
   onMount(() => {
-    const cleanup = initializePage();
+    // Set up keyboard event listeners
+    window.addEventListener('keydown', handleKeydown);
 
     // Set up an interval to update the current time
     const timeInterval = setInterval(() => {
@@ -79,11 +165,32 @@
 
     // Return a cleanup function
     return () => {
-      cleanup();
+      window.removeEventListener('keydown', handleKeydown);
       clearInterval(timeInterval);
       unsubscribeRegions();
     };
   });
+
+  // Handle keyboard shortcuts
+  function handleKeydown(event: KeyboardEvent): void {
+    if (event.key === ' ') {
+      // Space bar - toggle play/pause
+      togglePlay();
+      event.preventDefault();
+    } else if (event.key === 'ArrowRight') {
+      // Right arrow - next region
+      nextRegionHandler();
+      event.preventDefault();
+    } else if (event.key === 'ArrowLeft') {
+      // Left arrow - previous region
+      previousRegionHandler();
+      event.preventDefault();
+    } else if (event.key === 'a') {
+      // 'a' key - toggle autoplay
+      toggleAutoplayHandler();
+      event.preventDefault();
+    }
+  }
 
   // Use real data or null if not available
   $: displayRegion = $currentRegion;
@@ -234,7 +341,7 @@
           {/each}
 
           <!-- Fake marker for length marker end position or !1008 marker -->
-          {#if getCustomLengthForRegion(displayRegion, $markers) !== null || has1008MarkerInRegion($markers, displayRegion)}
+          {#if displayRegion && (getCustomLengthForRegion(displayRegion, $markers) !== null || has1008MarkerInRegion($markers, displayRegion))}
             <div
               class="marker hard-stop-marker-indicator"
               style="left: 100%"
@@ -318,7 +425,7 @@
     <div class="toggle-item">
       <div
         class="status-indicator {$autoplayEnabled ? 'enabled' : 'disabled'}"
-        on:click={$transportButtonsDisabled ? null : toggleAutoplay}
+        on:click={$transportButtonsDisabled ? null : toggleAutoplayHandler}
         class:button-disabled={$transportButtonsDisabled}
       >
         Auto-resume: {$autoplayEnabled ? 'ON' : 'OFF'}
@@ -327,7 +434,7 @@
     <div class="toggle-item">
       <div
         class="status-indicator {$countInEnabled ? 'enabled' : 'disabled'}"
-        on:click={$transportButtonsDisabled ? null : toggleCountIn}
+        on:click={$transportButtonsDisabled ? null : toggleCountInHandler}
         class:button-disabled={$transportButtonsDisabled}
       >
         Count-in when pressing marker: {$countInEnabled ? 'ON' : 'OFF'}

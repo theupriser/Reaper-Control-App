@@ -25,7 +25,8 @@ export class ReaperConnector extends EventEmitter {
       denominator: 4
     },
     autoplayEnabled: true,
-    countInEnabled: false
+    countInEnabled: false,
+    selectedSetlistId: null
   };
 
   constructor() {
@@ -313,6 +314,9 @@ export class ReaperConnector extends EventEmitter {
           // Preserve the current region ID if it's not provided in the transport state
           currentRegionId: transportState.currentRegionId !== undefined ?
             transportState.currentRegionId : this.lastPlaybackState.currentRegionId,
+          // Preserve the selected setlist ID
+          selectedSetlistId: transportState.selectedSetlistId !== undefined ?
+            transportState.selectedSetlistId : this.lastPlaybackState.selectedSetlistId,
           bpm: transportState.bpm,
           timeSignature: transportState.timeSignature,
           // Preserve autoplay and count-in settings
@@ -551,6 +555,23 @@ export class ReaperConnector extends EventEmitter {
   }
 
   /**
+   * Set the selected setlist ID in the playback state
+   * @param setlistId - Setlist ID or null for all regions
+   */
+  public setSelectedSetlistId(setlistId: string | null): void {
+    // Update the last playback state
+    this.lastPlaybackState = {
+      ...this.lastPlaybackState,
+      selectedSetlistId: setlistId
+    };
+
+    // Emit playback state update
+    this.emit('playbackState', this.lastPlaybackState);
+
+    logger.info('Updated selected setlist ID in playback state', { setlistId });
+  }
+
+  /**
    * Get transport state from REAPER
    * @returns Transport state
    */
@@ -591,6 +612,9 @@ export class ReaperConnector extends EventEmitter {
         transportState.currentRegionId = this.lastPlaybackState.currentRegionId;
       }
 
+      // Preserve the selected setlist ID
+      transportState.selectedSetlistId = this.lastPlaybackState.selectedSetlistId;
+
       return transportState;
     } catch (error) {
       logger.error('Failed to get transport state', { error });
@@ -602,7 +626,8 @@ export class ReaperConnector extends EventEmitter {
         projectId: this.projectId || '',
         bpm: this.lastPlaybackState.bpm,
         timeSignature: this.lastPlaybackState.timeSignature,
-        currentRegionId: this.lastPlaybackState.currentRegionId
+        currentRegionId: this.lastPlaybackState.currentRegionId,
+        selectedSetlistId: this.lastPlaybackState.selectedSetlistId
       };
     }
   }

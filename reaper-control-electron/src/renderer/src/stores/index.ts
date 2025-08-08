@@ -3,6 +3,25 @@
  * Re-exports all stores for easier importing
  */
 
+// Re-export from transport service
+export {
+  nextRegionHandler,
+  previousRegionHandler,
+  togglePlay,
+  formatTime,
+  formatLongTime,
+  safeTransportAction,
+  toggleAutoplayHandler,
+  toggleCountInHandler,
+  handleProgressBarClick,
+  updateTimer,
+  updateTimerOnRegionChange,
+  transportButtonsDisabled,
+  localPosition,
+  useLocalTimer,
+  atHardStop
+} from '../services/transportService';
+
 // Re-export from connection store
 export {
   connectionStatus,

@@ -63,15 +63,7 @@ export function updateRegions(data: Region[] | null | undefined): boolean {
     }));
 
     // Log the first region for debugging
-    if (convertedRegions.length > 0) {
-      logger.log('First region (after ID conversion):', convertedRegions[0]);
-
-      // Validate region structure
-      const firstRegion = convertedRegions[0];
-      if (!firstRegion.id || !firstRegion.name || firstRegion.start === undefined || firstRegion.end === undefined) {
-        logger.warn('Region data may be malformed:', firstRegion);
-      }
-    } else {
+    if (!convertedRegions.length) {
       logger.warn('No regions received (empty array)');
     }
 

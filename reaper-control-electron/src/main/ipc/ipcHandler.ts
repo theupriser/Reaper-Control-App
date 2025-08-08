@@ -544,7 +544,7 @@ export class IpcHandler {
    */
   private async handleCreateSetlist(_: any, name: string): Promise<any> {
     try {
-      return this.projectService.createSetlist(name);
+      return await this.projectService.createSetlist(name);
     } catch (error) {
       logger.error('Error creating setlist', { error, name });
       this.sendStatusMessage(this.createErrorMessage('Failed to create setlist', String(error)));
@@ -560,7 +560,7 @@ export class IpcHandler {
    */
   private async handleUpdateSetlist(_: any, params: { setlistId: string, name: string }): Promise<any> {
     try {
-      return this.projectService.updateSetlist(params.setlistId, params.name);
+      return await this.projectService.updateSetlist(params.setlistId, params.name);
     } catch (error) {
       logger.error('Error updating setlist', { error, params });
       this.sendStatusMessage(this.createErrorMessage('Failed to update setlist', String(error)));
@@ -576,7 +576,7 @@ export class IpcHandler {
    */
   private async handleDeleteSetlist(_: any, setlistId: string): Promise<boolean> {
     try {
-      return this.projectService.deleteSetlist(setlistId);
+      return await this.projectService.deleteSetlist(setlistId);
     } catch (error) {
       logger.error('Error deleting setlist', { error, setlistId });
       this.sendStatusMessage(this.createErrorMessage('Failed to delete setlist', String(error)));
@@ -595,7 +595,7 @@ export class IpcHandler {
       // If regionName is provided, use it directly
       if (params.regionName) {
         logger.info(`Using provided region name: ${params.regionName}`);
-        return this.projectService.addSetlistItem(
+        return await this.projectService.addSetlistItem(
           params.setlistId,
           params.regionId,
           params.regionName,
@@ -618,7 +618,7 @@ export class IpcHandler {
         if (!region) {
           logger.warn(`Region ${params.regionId} still not found after refresh, using placeholder`);
           // Use a placeholder name for the region
-          return this.projectService.addSetlistItem(
+          return await this.projectService.addSetlistItem(
             params.setlistId,
             params.regionId,
             `Region ${params.regionId}`,
@@ -627,7 +627,7 @@ export class IpcHandler {
         }
       }
 
-      return this.projectService.addSetlistItem(params.setlistId, params.regionId, region.name, params.position);
+      return await this.projectService.addSetlistItem(params.setlistId, params.regionId, region.name, params.position);
     } catch (error) {
       logger.error('Error adding setlist item', { error, params });
       this.sendStatusMessage(this.createErrorMessage('Failed to add setlist item', String(error)));
@@ -643,7 +643,7 @@ export class IpcHandler {
    */
   private async handleRemoveSetlistItem(_: any, params: { setlistId: string, itemId: string }): Promise<boolean> {
     try {
-      return this.projectService.removeSetlistItem(params.setlistId, params.itemId);
+      return await this.projectService.removeSetlistItem(params.setlistId, params.itemId);
     } catch (error) {
       logger.error('Error removing setlist item', { error, params });
       this.sendStatusMessage(this.createErrorMessage('Failed to remove setlist item', String(error)));
@@ -659,7 +659,7 @@ export class IpcHandler {
    */
   private async handleMoveSetlistItem(_: any, params: { setlistId: string, itemId: string, newPosition: number }): Promise<any> {
     try {
-      return this.projectService.moveSetlistItem(params.setlistId, params.itemId, params.newPosition);
+      return await this.projectService.moveSetlistItem(params.setlistId, params.itemId, params.newPosition);
     } catch (error) {
       logger.error('Error moving setlist item', { error, params });
       this.sendStatusMessage(this.createErrorMessage('Failed to move setlist item', String(error)));
@@ -674,7 +674,7 @@ export class IpcHandler {
    */
   private async handleSetSelectedSetlist(_: any, setlistId: string | null): Promise<void> {
     try {
-      this.projectService.setSelectedSetlist(setlistId);
+      await this.projectService.setSelectedSetlist(setlistId);
     } catch (error) {
       logger.error('Error setting selected setlist', { error, setlistId });
       this.sendStatusMessage(this.createErrorMessage('Failed to set selected setlist', String(error)));

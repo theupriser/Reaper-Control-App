@@ -285,9 +285,9 @@ export class RegionService extends EventEmitter {
 
   /**
    * Go to next region
-   * @returns Promise that resolves when the operation is complete
+   * @returns Promise that resolves with a boolean indicating success or failure
    */
-  public async nextRegion(): Promise<void> {
+  public async nextRegion(): Promise<boolean> {
     try {
       logger.debug('Going to next region');
 
@@ -313,8 +313,8 @@ export class RegionService extends EventEmitter {
           if (region) {
             // Use seekToRegionAndPlay with autoplay=null (use current setting) and countIn=false
             await this.seekToRegionAndPlay(region, null, false);
+            return true;
           }
-          return;
         }
 
         logger.debug('No next item in setlist, falling back to standard next region');
@@ -326,10 +326,10 @@ export class RegionService extends EventEmitter {
         if (this.regions.length > 0) {
           const firstRegion = this.regions[0];
           await this.seekToRegionAndPlay(firstRegion, null, false);
-          return;
+          return true;
         } else {
           logger.debug('No regions available');
-          return;
+          return false;
         }
       }
 
@@ -338,21 +338,28 @@ export class RegionService extends EventEmitter {
       if (nextRegion) {
         // Use seekToRegionAndPlay with autoplay=null (use current setting) and countIn=false
         await this.seekToRegionAndPlay(nextRegion, null, false);
+        return true;
       } else {
-        // If no next region found, fall back to the REAPER connector method
-        await this.reaperConnector.nextRegion();
+        try {
+          // If no next region found, fall back to the REAPER connector method
+          await this.reaperConnector.nextRegion();
+          return true;
+        } catch (error) {
+          logger.error('No next region available', { error });
+          return false;
+        }
       }
     } catch (error) {
       logger.error('Failed to go to next region', { error });
-      throw error;
+      return false;
     }
   }
 
   /**
    * Go to previous region
-   * @returns Promise that resolves when the operation is complete
+   * @returns Promise that resolves with a boolean indicating success or failure
    */
-  public async previousRegion(): Promise<void> {
+  public async previousRegion(): Promise<boolean> {
     try {
       logger.debug('Going to previous region');
 
@@ -378,8 +385,8 @@ export class RegionService extends EventEmitter {
           if (region) {
             // Use seekToRegionAndPlay with autoplay=null (use current setting) and countIn=false
             await this.seekToRegionAndPlay(region, null, false);
+            return true;
           }
-          return;
         }
 
         logger.debug('No previous item in setlist, falling back to standard previous region');
@@ -391,10 +398,10 @@ export class RegionService extends EventEmitter {
         if (this.regions.length > 0) {
           const lastRegion = this.regions[this.regions.length - 1];
           await this.seekToRegionAndPlay(lastRegion, null, false);
-          return;
+          return true;
         } else {
           logger.debug('No regions available');
-          return;
+          return false;
         }
       }
 
@@ -403,13 +410,20 @@ export class RegionService extends EventEmitter {
       if (prevRegion) {
         // Use seekToRegionAndPlay with autoplay=null (use current setting) and countIn=false
         await this.seekToRegionAndPlay(prevRegion, null, false);
+        return true;
       } else {
-        // If no previous region found, fall back to the REAPER connector method
-        await this.reaperConnector.previousRegion();
+        try {
+          // If no previous region found, fall back to the REAPER connector method
+          await this.reaperConnector.previousRegion();
+          return true;
+        } catch (error) {
+          logger.error('No previous region available', { error });
+          return false;
+        }
       }
     } catch (error) {
       logger.error('Failed to go to previous region', { error });
-      throw error;
+      return false;
     }
   }
 

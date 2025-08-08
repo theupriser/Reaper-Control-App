@@ -183,3 +183,19 @@ export const nextRegion: Readable<Region | null> = derived(
       $regions[currentIndex + 1] : null;
   }
 );
+
+/**
+ * Derived store for the next region
+ * For now, this is a simplified version without setlist support
+ */
+export const previousRegion: Readable<Region | null> = derived(
+  [currentRegion, regions],
+  ([$currentRegion, $regions]) => {
+    if (!$currentRegion) return null;
+
+    // Get the next region from all regions
+    const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
+    return currentIndex !== -1 && currentIndex > 0 ?
+      $regions[currentIndex - 1] : null;
+  }
+);

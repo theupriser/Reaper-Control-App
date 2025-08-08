@@ -351,9 +351,9 @@ export class BackendService extends EventEmitter {
 
   /**
    * Go to the next region in REAPER
-   * @returns Promise that resolves when the operation is complete
+   * @returns Promise that resolves with a boolean indicating success or failure
    */
-  public async nextRegion(): Promise<void> {
+  public async nextRegion(): Promise<boolean> {
     try {
       await this.reaperConnector.nextRegion();
 
@@ -364,6 +364,8 @@ export class BackendService extends EventEmitter {
         message: 'Moved to next region',
         timestamp: Date.now()
       });
+
+      return true;
     } catch (error) {
       logger.error('Failed to move to next region', { error });
 
@@ -373,14 +375,16 @@ export class BackendService extends EventEmitter {
         timestamp: Date.now(),
         details: error instanceof Error ? error.message : String(error)
       });
+
+      return false;
     }
   }
 
   /**
    * Go to the previous region in REAPER
-   * @returns Promise that resolves when the operation is complete
+   * @returns Promise that resolves with a boolean indicating success or failure
    */
-  public async previousRegion(): Promise<void> {
+  public async previousRegion(): Promise<boolean> {
     try {
       await this.reaperConnector.previousRegion();
 
@@ -391,6 +395,8 @@ export class BackendService extends EventEmitter {
         message: 'Moved to previous region',
         timestamp: Date.now()
       });
+
+      return true;
     } catch (error) {
       logger.error('Failed to move to previous region', { error });
 
@@ -400,6 +406,8 @@ export class BackendService extends EventEmitter {
         timestamp: Date.now(),
         details: error instanceof Error ? error.message : String(error)
       });
+
+      return false;
     }
   }
 

@@ -7,7 +7,7 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import config from '../utils/config';
 import logger from '../utils/logger';
 import { ConnectionStatus, Region, Marker, PlaybackState } from '../types';
-import { bpmCalculator } from '../utils/bpmUtils';
+import { bpmCalculator, getBpmForRegion } from '../utils/bpmUtils';
 
 export class ReaperConnector extends EventEmitter {
   private axiosInstance: AxiosInstance;
@@ -82,6 +82,56 @@ export class ReaperConnector extends EventEmitter {
         logger.info('Loading initial markers and regions');
         await this.refreshMarkers();
         await this.refreshRegions();
+
+        // Check if REAPER is not playing and get the current region
+        const transportState = await this.getTransportState();
+        if (!transportState.isPlaying) {
+          logger.info('REAPER is not playing, checking for !bpm markers in current region');
+
+          // Get the current regions and markers
+          const regions = await this.getRegions();
+          const markers = await this.getMarkers();
+
+          // Find the current region based on cursor position if currentRegionId is not available
+          let currentRegion = null;
+          if (transportState.currentRegionId) {
+            currentRegion = regions.find(region => region.id === transportState.currentRegionId);
+          } else {
+            // Find the region that contains the current cursor position
+            const currentPosition = transportState.position;
+            currentRegion = regions.find(region =>
+              currentPosition >= region.start && currentPosition <= region.end
+            );
+
+            if (currentRegion) {
+              logger.info(`Found current region by cursor position: ${currentRegion.name}`);
+            }
+          }
+
+          if (currentRegion) {
+            // Check if there's a !bpm marker in the current region
+            const bpm = getBpmForRegion(currentRegion, markers);
+
+            if (bpm !== null) {
+              logger.info(`Found !bpm marker in current region: ${bpm} BPM`);
+
+              // Set the initial BPM in the calculator
+              bpmCalculator.resetBeatPositions(bpm);
+
+              // Update the transport state with the BPM from the marker
+              transportState.bpm = bpm;
+
+              // Update the last playback state
+              this.lastPlaybackState = {
+                ...this.lastPlaybackState,
+                bpm: bpm
+              };
+
+              // Emit updated playback state
+              this.emit('playbackState', this.lastPlaybackState);
+            }
+          }
+        }
       } catch (error) {
         logger.error('Failed to load initial markers and regions', { error });
         // Continue even if loading markers/regions fails
@@ -225,6 +275,37 @@ export class ReaperConnector extends EventEmitter {
           await this.refreshMarkers();
         }
 
+        // Get beat position data from REAPER for BPM calculation
+        try {
+          const beatPosResponse = await this.getBeatPosition();
+          const parts = beatPosResponse.split('\t');
+
+          // BEATPOS response format:
+          // BEATPOS \t playstate \t position_seconds \t full_beat_position \t measure_cnt \t beats_in_measure \t ts_numerator \t ts_denominator
+          if (parts.length >= 4 && parts[0] === 'BEATPOS') {
+            // Extract position in seconds and beat position
+            const positionSeconds = parseFloat(parts[2]);
+            const beatPosition = parseFloat(parts[3]);
+
+            // Add the beat position to the calculator
+            bpmCalculator.addBeatPosition(positionSeconds, beatPosition);
+
+            // Calculate BPM using the last 2 playback states
+            const calculatedBpm = bpmCalculator.calculateBPM(transportState.bpm);
+
+            // Use the calculated BPM instead of the one from transportState
+            transportState.bpm = calculatedBpm;
+
+            logger.debug('Updated BPM using last 2 playback states', {
+              calculatedBpm,
+              originalBpm: transportState.bpm
+            });
+          }
+        } catch (bpmError) {
+          logger.warn('Error calculating BPM from beat positions', { error: bpmError });
+          // Continue with the BPM from transportState if there's an error
+        }
+
         // Update playback state
         this.lastPlaybackState = {
           isPlaying: transportState.isPlaying,
@@ -233,7 +314,12 @@ export class ReaperConnector extends EventEmitter {
           currentRegionId: transportState.currentRegionId !== undefined ?
             transportState.currentRegionId : this.lastPlaybackState.currentRegionId,
           bpm: transportState.bpm,
-          timeSignature: transportState.timeSignature
+          timeSignature: transportState.timeSignature,
+          // Preserve autoplay and count-in settings
+          autoplayEnabled: transportState.autoplayEnabled !== undefined ?
+            transportState.autoplayEnabled : this.lastPlaybackState.autoplayEnabled,
+          countInEnabled: transportState.countInEnabled !== undefined ?
+            transportState.countInEnabled : this.lastPlaybackState.countInEnabled
         };
 
         // Log if we're preserving the current region ID

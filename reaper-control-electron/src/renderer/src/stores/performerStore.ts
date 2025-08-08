@@ -268,14 +268,71 @@ export function togglePlay(): void {
  * Go to next region
  */
 export function nextRegionHandler(): void {
-  safeTransportAction(ipcService.nextRegion);
+  // Get the current nextRegion value
+  let nextRegionValue: Region | null = null;
+  const unsubscribeNextRegion = nextRegion.subscribe(value => {
+    nextRegionValue = value;
+  });
+  unsubscribeNextRegion();
+
+  // Only proceed if there is a next region
+  if (nextRegionValue) {
+    safeTransportAction(async () => {
+      try {
+        const success = await ipcService.nextRegion();
+        if (!success) {
+          logger.warn('Next region navigation failed');
+          // Force a refresh of regions to ensure the UI is up-to-date
+          await ipcService.refreshRegions();
+        }
+      } catch (error) {
+        logger.error('Error in nextRegionHandler:', error);
+        // Force a refresh of regions to ensure the UI is up-to-date
+        await ipcService.refreshRegions();
+      }
+    });
+  } else {
+    logger.log('No next region available');
+  }
 }
 
 /**
  * Go to previous region
  */
 export function previousRegionHandler(): void {
-  safeTransportAction(ipcService.previousRegion);
+  // Get the current region value
+  let currentRegionValue: Region | null = null;
+  const unsubscribeCurrentRegion = currentRegion.subscribe(value => {
+    currentRegionValue = value;
+  });
+  unsubscribeCurrentRegion();
+
+  // Get the previous region value
+  let previousRegionValue: Region | null = null;
+  const unsubscribePreviousRegion = previousRegion.subscribe(value => {
+    previousRegionValue = value;
+  });
+  unsubscribePreviousRegion();
+
+  // Only proceed if there is a current region and a previous region
+  if (currentRegionValue && previousRegionValue) {
+    safeTransportAction(async () => {
+      try {
+        const success = await ipcService.previousRegion();
+        if (!success) {
+          logger.warn('Previous region navigation failed');
+          // Force a refresh of regions to ensure the UI is up-to-date
+          await ipcService.refreshRegions();
+        }
+      } catch (error) {
+        logger.error('Error in previousRegionHandler:', error);
+        // Force a refresh of regions to ensure the UI is up-to-date
+        await ipcService.refreshRegions();
+      }
+    });
+  } else {
+    logger.log('No previous region available');
+  }
 }
 
 /**
@@ -283,9 +340,26 @@ export function previousRegionHandler(): void {
  */
 export function toggleAutoplayHandler(): void {
   safeTransportAction(() => {
-    // This will be implemented with IPC in the future
-    // For now, just toggle the store directly
-    autoplayEnabled.update(current => !current);
+    // Get the current value
+    let current: boolean;
+    const unsubscribe = autoplayEnabled.subscribe(value => {
+      current = value;
+    });
+    unsubscribe();
+
+    // Toggle the value
+    const newValue = !current;
+
+    // Update the local store
+    autoplayEnabled.set(newValue);
+
+    // Send to main process via IPC
+    if (window.electronAPI) {
+      window.electronAPI.setAutoplayEnabled(newValue);
+      logger.log(`Sent autoplay enabled (${newValue}) to main process`);
+    } else {
+      logger.warn('Electron API not available, autoplay enabled not sent to main process');
+    }
   });
 }
 
@@ -294,9 +368,26 @@ export function toggleAutoplayHandler(): void {
  */
 export function toggleCountInHandler(): void {
   safeTransportAction(() => {
-    // This will be implemented with IPC in the future
-    // For now, just toggle the store directly
-    countInEnabled.update(current => !current);
+    // Get the current value
+    let current: boolean;
+    const unsubscribe = countInEnabled.subscribe(value => {
+      current = value;
+    });
+    unsubscribe();
+
+    // Toggle the value
+    const newValue = !current;
+
+    // Update the local store
+    countInEnabled.set(newValue);
+
+    // Send to main process via IPC
+    if (window.electronAPI) {
+      window.electronAPI.setCountInEnabled(newValue);
+      logger.log(`Sent count-in enabled (${newValue}) to main process`);
+    } else {
+      logger.warn('Electron API not available, count-in enabled not sent to main process');
+    }
   });
 }
 
@@ -312,6 +403,11 @@ export function handleProgressBarClick(event: MouseEvent): void {
   unsubscribeRegion();
 
   if (!currentRegionValue) return;
+
+  // Get popover state from the component if available
+  const popoverVisible = (window as any).performerPopoverVisible;
+  const popoverPosition = (window as any).performerPopoverPosition;
+  const popoverTime = (window as any).performerPopoverTime;
 
   // Get the click position relative to the progress container
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -367,14 +463,21 @@ export function handleProgressBarClick(event: MouseEvent): void {
   if (!isNearMarker) {
     const regionDuration = getEffectiveRegionLength(currentRegionValue, markersValue);
     finalPosition = currentRegionValue.start + (percentage * regionDuration);
-  } else {
-    // Default to the start of the region if we somehow didn't set finalPosition
-    finalPosition = currentRegionValue.start;
   }
 
   // Seek to the position (either marker position or calculated position)
-  // Use safeTransportAction to prevent multiple rapid clicks
-  safeTransportAction(ipcService.seekToPosition, finalPosition.toString());
+  // If the click was on a marker and count-in is enabled, use count-in
+  let countInEnabledValue: boolean = false;
+  const unsubscribeCountIn = countInEnabled.subscribe(value => { countInEnabledValue = value; });
+  unsubscribeCountIn();
+
+  if (isNearMarker && countInEnabledValue) {
+    logger.log(`Using count-in for marker click at position ${finalPosition}`);
+    safeTransportAction(() => ipcService.seekToPosition(finalPosition, true));
+  } else {
+    // Otherwise, just seek to the position without count-in
+    safeTransportAction(() => ipcService.seekToPosition(finalPosition, false));
+  }
 
   // Check if we should use the local timer based on the position
   const customLength = getCustomLengthForRegion(currentRegionValue, markersValue);
@@ -673,6 +776,62 @@ export const nextRegion: Readable<Region | null> = derived(
       const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
       return currentIndex !== -1 && currentIndex < $regions.length - 1 ?
         $regions[currentIndex + 1] : null;
+    }
+  }
+);
+
+/**
+ * Derived store for the previous region
+ * Takes setlists into account when determining the previous region
+ */
+export const previousRegion: Readable<Region | null> = derived(
+  [currentRegion, playbackState, currentSetlist, regions],
+  ([$currentRegion, $playbackState, $currentSetlist, $regions]) => {
+    if (!$currentRegion) {
+      logger.debug('previousRegion: No current region, returning null');
+      return null;
+    }
+
+    // Log current state for debugging
+    logger.debug('previousRegion calculation:', {
+      currentRegionId: $currentRegion.id,
+      currentRegionName: $currentRegion.name,
+      hasSetlist: Boolean($playbackState.selectedSetlistId && $currentSetlist),
+      selectedSetlistId: $playbackState.selectedSetlistId,
+      regionsCount: $regions.length
+    });
+
+    if ($playbackState.selectedSetlistId && $currentSetlist) {
+      // If a setlist is selected, get the previous item from the setlist
+      const currentItemIndex = $currentSetlist.items.findIndex(item => Number(item.regionId) === $currentRegion.id);
+      logger.debug('previousRegion: In setlist mode, current item index:', currentItemIndex);
+
+      if (currentItemIndex !== -1 && currentItemIndex > 0) {
+        const prevItem = $currentSetlist.items[currentItemIndex - 1];
+        const prevRegion = $regions.find(region => region.id === Number(prevItem.regionId)) || null;
+        logger.debug('previousRegion: Found previous region in setlist:', prevRegion ? prevRegion.name : 'null');
+        return prevRegion;
+      }
+      logger.debug('previousRegion: No previous region in setlist, returning null');
+      return null;
+    } else {
+      // Otherwise, get the previous region from all regions
+      const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
+      logger.debug('previousRegion: In regular mode, current index:', currentIndex);
+
+      // Explicitly check if this is the first region (index 0)
+      if (currentIndex === 0) {
+        logger.debug('previousRegion: This is the first region, returning null');
+        return null;
+      }
+
+      if (currentIndex !== -1 && currentIndex > 0) {
+        const prevRegion = $regions[currentIndex - 1];
+        logger.debug('previousRegion: Found previous region:', prevRegion.name);
+        return prevRegion;
+      }
+      logger.debug('previousRegion: No previous region, returning null');
+      return null;
     }
   }
 );

@@ -22,6 +22,7 @@
     markers,
     sortedMarkers,
     nextRegion,
+    previousRegion,
     getEffectiveRegionLength,
     getCustomLengthForRegion,
     has1008MarkerInRegion,
@@ -93,7 +94,19 @@
   // Use real data or null if not available
   $: displayRegion = $currentRegion;
   $: displayNextRegion = $nextRegion;
+  $: displayPreviousRegion = $previousRegion;
   $: displayMarkers = $sortedMarkers; // Use sortedMarkers to filter out command-only markers
+
+  // Debug reactive statement to log button states
+  $: {
+    logger.debug('TransportControls button states:', {
+      previousButtonDisabled: !displayPreviousRegion,
+      nextButtonDisabled: !displayNextRegion,
+      currentRegion: displayRegion ? displayRegion.name : 'none',
+      previousRegion: displayPreviousRegion ? displayPreviousRegion.name : 'none',
+      nextRegion: displayNextRegion ? displayNextRegion.name : 'none'
+    });
+  }
 
   // Initialize playback position if not available
   $: currentPosition = $useLocalTimer ? $localPosition : ($playbackState ? $playbackState.currentPosition || 0 : 0);
@@ -310,8 +323,8 @@
       logger.log(`Using count-in for marker click at position ${finalPosition}`);
       safeTransportAction(() => ipcService.seekToPosition(finalPosition, true));
     } else {
-      // Otherwise, just seek to the position
-      safeTransportAction(() => ipcService.seekToPosition(finalPosition));
+      // Otherwise, just seek to the position without count-in
+      safeTransportAction(() => ipcService.seekToPosition(finalPosition, false));
     }
 
     // Check if we should use the local timer based on the position
@@ -662,7 +675,7 @@
       class="control-button previous"
       on:click={() => safeTransportAction(() => ipcService.previousRegion())}
       aria-label="Previous region"
-      disabled={$transportButtonsDisabled}
+      disabled={$transportButtonsDisabled || !displayPreviousRegion}
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/>
@@ -705,7 +718,7 @@
       class="control-button next"
       on:click={() => safeTransportAction(() => ipcService.nextRegion())}
       aria-label="Next region"
-      disabled={$transportButtonsDisabled}
+      disabled={$transportButtonsDisabled || !displayNextRegion}
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/>
@@ -1031,6 +1044,15 @@
 
   .control-button:active {
     background-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .control-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .control-button:disabled:hover {
+    background-color: transparent;
   }
 
   .play-pause {

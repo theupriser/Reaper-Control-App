@@ -54,6 +54,7 @@ export {
   getNextRegion,
   getPreviousRegion,
   nextRegion,
+  previousRegion,
   type Region
 } from './regionStore';
 

@@ -72,11 +72,13 @@ interface IpcControl {
   togglePlay: () => Promise<void>;
   playWithCountIn: () => Promise<void>;
   seekToRegion: (regionId: string) => Promise<void>;
-  nextRegion: () => Promise<void>;
-  previousRegion: () => Promise<void>;
+  nextRegion: () => Promise<boolean>;
+  previousRegion: () => Promise<boolean>;
   seekToCurrentRegionStart: () => Promise<void>;
   refreshProjectId: () => Promise<string>;
   refreshMarkers: () => Promise<Marker[]>;
+  setAutoplayEnabled: (enabled: boolean) => Promise<void>;
+  setCountInEnabled: (enabled: boolean) => Promise<void>;
   disconnect: () => void;
 }
 
@@ -315,11 +317,19 @@ function createIpcControl(): IpcControl {
     togglePlay: () => window.electronAPI.togglePlay(),
     playWithCountIn: () => window.electronAPI.playWithCountIn(),
     seekToRegion: (regionId: string) => window.electronAPI.seekToRegion(regionId),
-    nextRegion: () => window.electronAPI.nextRegion(),
-    previousRegion: () => window.electronAPI.previousRegion(),
+    nextRegion: async () => {
+      const result = await window.electronAPI.nextRegion();
+      return result.success;
+    },
+    previousRegion: async () => {
+      const result = await window.electronAPI.previousRegion();
+      return result.success;
+    },
     seekToCurrentRegionStart: () => window.electronAPI.seekToCurrentRegionStart(),
     refreshProjectId: () => window.electronAPI.refreshProjectId(),
     refreshMarkers: () => window.electronAPI.refreshMarkers(),
+    setAutoplayEnabled: (enabled: boolean) => window.electronAPI.setAutoplayEnabled(enabled),
+    setCountInEnabled: (enabled: boolean) => window.electronAPI.setCountInEnabled(enabled),
     disconnect: () => {
       // Clean up resources
       stopPingInterval();
@@ -347,11 +357,13 @@ function createDefaultIpcControl(): IpcControl {
     togglePlay: () => Promise.resolve(),
     playWithCountIn: () => Promise.resolve(),
     seekToRegion: () => Promise.resolve(),
-    nextRegion: () => Promise.resolve(),
-    previousRegion: () => Promise.resolve(),
+    nextRegion: () => Promise.resolve(false),
+    previousRegion: () => Promise.resolve(false),
     seekToCurrentRegionStart: () => Promise.resolve(),
     refreshProjectId: () => Promise.resolve(''),
     refreshMarkers: () => Promise.resolve([]),
+    setAutoplayEnabled: (enabled: boolean) => Promise.resolve(),
+    setCountInEnabled: (enabled: boolean) => Promise.resolve(),
     disconnect: () => {}
   };
 }

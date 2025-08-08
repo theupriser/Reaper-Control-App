@@ -407,27 +407,31 @@ export class IpcHandler {
 
   /**
    * Handle next region
+   * @returns Promise that resolves with a boolean indicating success or failure
    */
-  private async handleNextRegion(): Promise<void> {
+  private async handleNextRegion(): Promise<{ success: boolean }> {
     try {
-      await this.regionService.nextRegion();
+      const success = await this.regionService.nextRegion();
+      return { success };
     } catch (error) {
       logger.error('Error going to next region', { error });
       this.sendStatusMessage(this.createErrorMessage('Failed to go to next region', String(error)));
-      throw error;
+      return { success: false };
     }
   }
 
   /**
    * Handle previous region
+   * @returns Promise that resolves with a boolean indicating success or failure
    */
-  private async handlePreviousRegion(): Promise<void> {
+  private async handlePreviousRegion(): Promise<{ success: boolean }> {
     try {
-      await this.regionService.previousRegion();
+      const success = await this.regionService.previousRegion();
+      return { success };
     } catch (error) {
       logger.error('Error going to previous region', { error });
       this.sendStatusMessage(this.createErrorMessage('Failed to go to previous region', String(error)));
-      throw error;
+      return { success: false };
     }
   }
 

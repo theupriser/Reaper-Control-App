@@ -55,6 +55,11 @@
   // Track loading state
   const isLoading = writable(true);
 
+  // Progress bar click handling
+  const popoverVisible = writable(false);
+  const popoverPosition = writable({ x: 0, y: 0 });
+  const popoverTime = writable(0);
+
   // Initialize the page on mount
   onMount(() => {
     const cleanup = initializePage();
@@ -103,6 +108,51 @@
 
   // Helper function to check if we have data
   $: hasData = $regions && $regions.length > 0;
+
+  // Wrapper for handleProgressBarClick that also handles popover
+  function handleProgressBarClickWithPopover(event: MouseEvent): void {
+    if (!$currentRegion) return;
+
+    // Get the click position relative to the progress container
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const containerWidth = rect.width;
+
+    // Calculate the percentage of the click position
+    const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
+
+    // Calculate position based on percentage
+    const regionDuration = $songDuration || ($currentRegion.end - $currentRegion.start);
+    const clickPosition = $currentRegion.start + (percentage * regionDuration);
+
+    // Calculate popover position, ensuring it stays within viewport
+    let popoverX = clickX;
+
+    // Ensure popover doesn't go off the left or right edge
+    // Assuming popover width is about 60px
+    const popoverWidth = 60;
+    const minX = popoverWidth / 2;
+    const maxX = containerWidth - (popoverWidth / 2);
+
+    if (popoverX < minX) popoverX = minX;
+    if (popoverX > maxX) popoverX = maxX;
+
+    // Set the popover position and time
+    popoverPosition.set({
+      x: popoverX,
+      y: rect.top - 30 // Position above the progress bar
+    });
+    popoverTime.set(clickPosition - $currentRegion.start); // Time relative to region start
+    popoverVisible.set(true);
+
+    // Call the original handler
+    handleProgressBarClick(event);
+
+    // Hide the popover after 2 seconds
+    setTimeout(() => {
+      popoverVisible.set(false);
+    }, 2000);
+  }
 </script>
 
 {#if $isLoading}
@@ -158,7 +208,7 @@
       <!-- Progress bar -->
       <div
         class="progress-container"
-        on:click={$transportButtonsDisabled ? null : handleProgressBarClick}
+        on:click={$transportButtonsDisabled ? null : handleProgressBarClickWithPopover}
         class:disabled={$transportButtonsDisabled}
       >
         <div
@@ -195,6 +245,16 @@
             </div>
           {/if}
         {/if}
+
+        <!-- Time popover -->
+        {#if $popoverVisible}
+          <div
+            class="time-popover"
+            style="left: {$popoverPosition.x}px; top: {$popoverPosition.y}px"
+          >
+            {formatTime($popoverTime)}
+          </div>
+        {/if}
       </div>
     </div>
 
@@ -218,7 +278,7 @@
       class="control-button previous"
       on:click={previousRegionHandler}
       aria-label="Previous song"
-      disabled={$transportButtonsDisabled}
+      disabled={$transportButtonsDisabled || !$currentRegion}
     >
       <svg viewBox="0 0 24 24" width="36" height="36">
         <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/>
@@ -246,7 +306,7 @@
       class="control-button next"
       on:click={nextRegionHandler}
       aria-label="Next song"
-      disabled={$transportButtonsDisabled}
+      disabled={$transportButtonsDisabled || !displayNextRegion}
     >
       <svg viewBox="0 0 24 24" width="36" height="36">
         <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/>
@@ -437,6 +497,37 @@
     border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
   }
 
+  /* Time popover styles */
+  .time-popover {
+    position: absolute;
+    background-color: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    transform: translate(-50%, -100%);
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .time-popover::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translate(-50%, -90%); }
+    to { opacity: 1; transform: translate(-50%, -100%); }
+  }
+
   .next-song {
     margin-bottom: 2rem;
     text-align: center;
@@ -588,6 +679,15 @@
 
   .control-button:hover {
     background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .control-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .control-button:disabled:hover {
+    background-color: transparent;
   }
 
   .play-pause {

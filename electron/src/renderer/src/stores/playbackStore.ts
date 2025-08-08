@@ -201,6 +201,9 @@ export function toggleAutoplay(): void {
   // Update the local store
   autoplayEnabled.set(newValue);
 
+  // Update the autoplayEnabled property in the main playbackState store
+  updatePartialPlaybackState({ autoplayEnabled: newValue });
+
   // Send to main process via IPC
   if (window.electronAPI) {
     window.electronAPI.setAutoplayEnabled(newValue);
@@ -239,6 +242,9 @@ export function toggleCountIn(): void {
 
   // Update the local store
   countInEnabled.set(newValue);
+
+  // Update the countInEnabled property in the main playbackState store
+  updatePartialPlaybackState({ countInEnabled: newValue });
 
   // Send to main process via IPC
   if (window.electronAPI) {

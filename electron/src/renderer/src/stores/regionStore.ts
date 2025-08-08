@@ -67,8 +67,11 @@ export function updateRegions(data: Region[] | null | undefined): boolean {
       logger.warn('No regions received (empty array)');
     }
 
+    // Sort regions by position (start time) before updating the store
+    const sortedRegions = [...convertedRegions].sort((a, b) => a.start - b.start);
+
     // Update the regions store
-    regions.set(convertedRegions);
+    regions.set(sortedRegions);
     return true;
   } catch (error) {
     logger.error('Error processing regions data:', error);

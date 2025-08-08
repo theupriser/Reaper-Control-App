@@ -106,6 +106,7 @@ export interface MidiConfig {
   enabled: boolean;
   deviceId?: string;
   deviceName?: string;
+  channel?: number;  // MIDI channel to listen to (undefined or null means listen to all channels)
   noteMappings: MidiNoteMapping[];
 }
 

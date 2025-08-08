@@ -21,10 +21,17 @@ const defaultConfig = {
   midi: {
     enabled: true,
     deviceName: null, // Use first available device if null
+    channel: null, // Listen to all channels by default
     noteMapping: {
-      // Default MIDI note mappings
+      // TransportControl events for playback, Autoplay and Countin
       // MIDI note number -> action
-      // e.g. 60: 'togglePlay'
+      44: 'seekToCurrentRegionStart',
+      45: 'toggleAutoplay',
+      46: 'toggleCountIn',
+      48: 'previousRegion',
+      49: 'pause',
+      50: 'togglePlay',
+      51: 'nextRegion',
     },
   },
   ui: {

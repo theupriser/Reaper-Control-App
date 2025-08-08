@@ -179,6 +179,7 @@ export class IpcHandler {
    * @param details - Optional details
    * @returns Status message
    */
+  // @ts-ignore: This method is kept for future use
   private createInfoMessage(message: string, details?: string): StatusMessage {
     return {
       type: 'info',
@@ -215,6 +216,32 @@ export class IpcHandler {
       switch (action) {
         case 'togglePlay':
           await this.reaperConnector.togglePlay();
+          break;
+        case 'pause':
+          logger.info('Handling pause MIDI action');
+          await this.reaperConnector.pause();
+          break;
+        case 'toggleAutoplay':
+          logger.info('Handling toggleAutoplay MIDI action');
+          // Get current autoplayEnabled state from reaperConnector
+          const playbackState = this.reaperConnector.getLastPlaybackState();
+          // Toggle the autoplayEnabled value
+          const newAutoplayEnabled = !playbackState.autoplayEnabled;
+          // Update the state
+          playbackState.autoplayEnabled = newAutoplayEnabled;
+          // Emit a playback state update to the renderer
+          this.sendToRenderer(IPC_EVENTS.PLAYBACK_STATE_UPDATE, playbackState);
+          break;
+        case 'toggleCountIn':
+          logger.info('Handling toggleCountIn MIDI action');
+          // Get current countInEnabled state from reaperConnector
+          const playbackStateCountIn = this.reaperConnector.getLastPlaybackState();
+          // Toggle the countInEnabled value
+          const newCountInEnabled = !playbackStateCountIn.countInEnabled;
+          // Update the state
+          playbackStateCountIn.countInEnabled = newCountInEnabled;
+          // Emit a playback state update to the renderer
+          this.sendToRenderer(IPC_EVENTS.PLAYBACK_STATE_UPDATE, playbackStateCountIn);
           break;
         case 'nextRegion':
           await this.regionService.nextRegion();

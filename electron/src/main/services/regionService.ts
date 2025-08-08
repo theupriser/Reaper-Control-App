@@ -370,7 +370,12 @@ export class RegionService extends EventEmitter {
    * @returns Next region or undefined if not found
    */
   public getNextRegion(currentRegionId: string): Region | undefined {
-    const currentIndex = this.regions.findIndex(region => region.id === currentRegionId);
+    // Use String() to ensure type consistency when comparing IDs
+    const currentIndex = this.regions.findIndex(region =>
+      String(region.id) === String(currentRegionId) ||
+      (!isNaN(Number(region.id)) && !isNaN(Number(currentRegionId)) &&
+       Number(region.id) === Number(currentRegionId))
+    );
     if (currentIndex === -1 || currentIndex >= this.regions.length - 1) {
       return undefined;
     }
@@ -383,7 +388,12 @@ export class RegionService extends EventEmitter {
    * @returns Previous region or undefined if not found
    */
   public getPreviousRegion(currentRegionId: string): Region | undefined {
-    const currentIndex = this.regions.findIndex(region => region.id === currentRegionId);
+    // Use String() to ensure type consistency when comparing IDs
+    const currentIndex = this.regions.findIndex(region =>
+      String(region.id) === String(currentRegionId) ||
+      (!isNaN(Number(region.id)) && !isNaN(Number(currentRegionId)) &&
+       Number(region.id) === Number(currentRegionId))
+    );
     if (currentIndex <= 0) {
       return undefined;
     }

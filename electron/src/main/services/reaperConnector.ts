@@ -94,9 +94,14 @@ export class ReaperConnector extends EventEmitter {
           const markers = await this.getMarkers();
 
           // Find the current region based on cursor position if currentRegionId is not available
-          let currentRegion = null;
+          let currentRegion: Region | undefined = undefined;
           if (transportState.currentRegionId) {
-            currentRegion = regions.find(region => region.id === transportState.currentRegionId);
+            // Use String() to ensure type consistency when comparing IDs
+            currentRegion = regions.find(region =>
+              String(region.id) === String(transportState.currentRegionId) ||
+              (!isNaN(Number(region.id)) && !isNaN(Number(transportState.currentRegionId)) &&
+               Number(region.id) === Number(transportState.currentRegionId))
+            );
           } else {
             // Find the region that contains the current cursor position
             const currentPosition = transportState.position;
@@ -863,6 +868,50 @@ export class ReaperConnector extends EventEmitter {
   }
 
   /**
+   * Pause playback in REAPER using MIDI pause event command
+   */
+  public async pause(): Promise<void> {
+    try {
+      logger.debug('Pausing REAPER with MIDI pause event command (action ID 1008)');
+
+      // Store the current state
+      const wasPlaying = this.lastPlaybackState.isPlaying;
+
+      // If already paused, no need to do anything
+      if (!wasPlaying) {
+        logger.debug('Already paused, no action needed');
+        return;
+      }
+
+      // Immediately update the isPlaying state for faster UI feedback
+      this.lastPlaybackState.isPlaying = false;
+
+      // Emit playback state update immediately for responsive UI
+      this.emit('playbackState', this.lastPlaybackState);
+
+      logger.debug('Playback state updated immediately', { isPlaying: false });
+
+      // Send the 1008 command to REAPER
+      logger.debug('Sending pause command to REAPER (action ID 1008)');
+      await this.makeRequest<string>('GET', '_/1008');
+
+      // Get updated transport state from REAPER to ensure we're in sync
+      const transportState = await this.getTransportState();
+
+      // Update last playback state with the actual state from REAPER
+      this.lastPlaybackState = transportState;
+
+      // Emit playback state update again with the confirmed state from REAPER
+      this.emit('playbackState', this.lastPlaybackState);
+
+      logger.debug('Pause command sent and confirmed with REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
+    } catch (error) {
+      logger.error('Failed to pause with action ID 1008 command', { error });
+      throw error;
+    }
+  }
+
+  /**
    * Start playback with count-in in REAPER
    */
   public async playWithCountIn(): Promise<void> {
@@ -985,13 +1034,15 @@ export class ReaperConnector extends EventEmitter {
     try {
       logger.debug('Seeking to region in REAPER', { regionId, regionIdType: typeof regionId, skipRegionRefresh });
 
-      // Get regions - either use cached regions if skipRegionRefresh is true and we have regions,
-      // or fetch new ones if needed
-      let regions = this.regions;
-      if (!skipRegionRefresh || !regions || regions.length === 0) {
+      // Get regions - either fetch them directly or skip if explicitly requested
+      let regions: Region[] = [];
+      if (!skipRegionRefresh) {
         regions = await this.getRegions();
       } else {
-        logger.debug('Using cached regions instead of refreshing', { regionCount: regions.length });
+        // If skipRegionRefresh is true, we still need to get regions from somewhere
+        // Since we don't have a cached regions property, we'll fetch them directly
+        regions = await this.getRegions();
+        logger.debug('Using regions without re-fetching', { regionCount: regions.length });
       }
 
       // First try an exact string match
@@ -1025,8 +1076,8 @@ export class ReaperConnector extends EventEmitter {
       const positionWithMargin = region.start + 0.001;
       await this.seekToPosition(positionWithMargin);
 
-      // Update current region ID
-      this.lastPlaybackState.currentRegionId = regionId;
+      // Update current region ID - convert to string to match the PlaybackState interface
+      this.lastPlaybackState.currentRegionId = String(regionId);
 
       // Emit playback state update
       this.emit('playbackState', this.lastPlaybackState);
@@ -1165,7 +1216,12 @@ export class ReaperConnector extends EventEmitter {
       this.lastPlaybackState = transportState;
 
       // Find current region
-      const currentRegion = regions.find(r => r.id === this.lastPlaybackState.currentRegionId);
+      // Use String() to ensure type consistency when comparing IDs
+      const currentRegion = regions.find(r =>
+        String(r.id) === String(this.lastPlaybackState.currentRegionId) ||
+        (!isNaN(Number(r.id)) && !isNaN(Number(this.lastPlaybackState.currentRegionId)) &&
+         Number(r.id) === Number(this.lastPlaybackState.currentRegionId))
+      );
       if (!currentRegion) {
         logger.warn('Current region not found', {
           currentRegionId: this.lastPlaybackState.currentRegionId,

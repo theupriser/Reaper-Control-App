@@ -21,8 +21,6 @@
     countInEnabled,
     markers,
     sortedMarkers,
-    nextRegion,
-    previousRegion,
     getEffectiveRegionLength,
     getCustomLengthForRegion,
     has1008MarkerInRegion,
@@ -53,7 +51,11 @@
     transportButtonsDisabled,
     localPosition,
     useLocalTimer,
-    atHardStop
+    atHardStop,
+
+    // Setlist-aware stores for region navigation
+    nextRegion,
+    previousRegion
   } from '../services/transportService';
 
   // Track loading state

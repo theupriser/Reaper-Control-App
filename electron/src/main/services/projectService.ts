@@ -282,6 +282,7 @@ export class ProjectService extends EventEmitter {
    * Save a specific setlist to Reaper project file
    * @param setlistId - ID of setlist to save
    */
+  // @ts-ignore: This method is kept for future use
   private async saveSetlistToProject(setlistId: string): Promise<void> {
     try {
       if (!this.projectId) {
@@ -1017,7 +1018,7 @@ export class ProjectService extends EventEmitter {
           await this.reaperConnector.seekToRegion(firstItem.regionId, true);
 
           // Ensure the player is paused
-          if (this.reaperConnector.lastPlaybackState.isPlaying) {
+          if (this.reaperConnector.getLastPlaybackState().isPlaying) {
             await this.reaperConnector.togglePlay();
           }
 

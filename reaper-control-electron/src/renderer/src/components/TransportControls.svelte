@@ -97,6 +97,9 @@
   $: displayPreviousRegion = $previousRegion;
   $: displayMarkers = $sortedMarkers; // Use sortedMarkers to filter out command-only markers
 
+    // Calculate song duration reactively, similar to performerStore.ts
+    $: songDuration = displayRegion ? getEffectiveRegionLength(displayRegion, $markers) : 0;
+
   // Debug reactive statement to log button states
   $: {
     logger.debug('TransportControls button states:', {
@@ -200,7 +203,8 @@
         const customLength = getCustomLengthForRegion($currentRegion, $markers);
         const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
 
-        // For length markers, set the hard stop flag but continue the timer
+        // For length markers, set the hard stop flag and stop the timer at the custom length
+        // Match the performerStore.ts implementation by checking both has1008Marker AND customLength
         if (has1008Marker && (customLength !== null && (currentPos - $currentRegion.start) >= customLength)) {
           // Set the hard stop flag
           atHardStop.set(true);
@@ -210,6 +214,9 @@
           const hardStopPosition = $currentRegion.start + customLength;
           localPosition.set(hardStopPosition);
         }
+
+        // We don't set atHardStop for !1008 markers without custom length
+        // This ensures "Press play to continue" only shows at the fake hard stop marker (custom length)
       }
     }, 100); // Update every 100ms for smooth display
   }
@@ -275,8 +282,7 @@
     // Check if click is near any marker
     for (const marker of markersInRegion) {
       // Calculate marker's pixel position in the progress bar
-      const regionDuration = getEffectiveRegionLength($currentRegion!, $markers);
-      const markerPercentage = (marker.position - $currentRegion!.start) / regionDuration;
+      const markerPercentage = (marker.position - $currentRegion!.start) / songDuration;
       const markerPixelPosition = markerPercentage * containerWidth;
 
       // Check if click is within threshold of marker
@@ -293,8 +299,7 @@
 
     // If not near a marker, calculate position based on click percentage
     if (!isNearMarker) {
-      const regionDuration = getEffectiveRegionLength($currentRegion!, $markers);
-      finalPosition = $currentRegion!.start + (percentage * regionDuration);
+      finalPosition = $currentRegion!.start + (percentage * songDuration);
     }
 
     // Calculate popover position, ensuring it stays within viewport
@@ -350,26 +355,10 @@
       }
     }
 
-    // Check if we're in a region with a !1008 marker
-    const has1008Marker = has1008MarkerInRegion($markers, $currentRegion!);
-    if (has1008Marker) {
-      // Calculate if the seek position is at the end of the region
-      const regionEnd = $currentRegion!.end;
-      const isAtEnd = Math.abs(finalPosition - regionEnd) < 0.5;
+    // We don't set atHardStop for !1008 markers without custom length
+    // This ensures "Press play to continue" only shows at the fake hard stop marker (custom length)
 
-      // Calculate if the seek position is near the end (within 99% of region length)
-      const regionLength = $currentRegion!.end - $currentRegion!.start;
-      const positionInRegion = finalPosition - $currentRegion!.start;
-      const isNearEnd = positionInRegion / regionLength > 0.99;
-
-      // Only set atHardStop to true if we're at or near the end
-      if (isAtEnd || isNearEnd) {
-        atHardStop.set(true);
-      } else {
-        // If we're seeking to a position before the end, reset the hard stop flag
-        atHardStop.set(false);
-      }
-    }
+    // Only the startLocalTimer function should set atHardStop when a custom length is reached
 
     // Hide the popover after 2 seconds
     setTimeout(() => {
@@ -424,31 +413,11 @@
         useLocalTimer.set(false);
         stopLocalTimer();
 
-        // Check if there's a !1008 marker in the region
-        const has1008Marker = has1008MarkerInRegion($markers, $currentRegion);
+        // We don't set atHardStop for !1008 markers without custom length
+        // This ensures "Press play to continue" only shows at the fake hard stop marker (custom length)
 
-        if (has1008Marker) {
-          // If we have a !1008 marker and we're at the end of the region, set hard stop flag
-          const regionEnd = $currentRegion.end;
-          // Increase the tolerance to 0.5 seconds to be more lenient
-          const isAtEnd = Math.abs($playbackState.currentPosition - regionEnd) < 0.5;
-          // Also check if we're very close to the end (within 99% of region length)
-          const regionLength = $currentRegion.end - $currentRegion.start;
-          const positionInRegion = $playbackState.currentPosition - $currentRegion.start;
-          const isNearEnd = positionInRegion / regionLength > 0.99;
-
-          // Set hard stop if we're at the end OR near the end, and not playing
-          if ((isAtEnd || isNearEnd) && !$playbackState.isPlaying) {
-            // We're at the end of the region with a !1008 marker and not playing, set hard stop flag
-            atHardStop.set(true);
-          } else if ($playbackState.isPlaying) {
-            // If we're playing, reset the hard stop flag
-            atHardStop.set(false);
-          }
-        } else {
-          // No !1008 marker, reset hard stop flag
-          atHardStop.set(false);
-        }
+        // Reset hard stop flag since we're not using a custom length marker
+        atHardStop.set(false);
       }
     } else {
       // No current region, use the regular playback state
@@ -500,10 +469,14 @@
           // Playback hasn't reached the length marker yet
           useLocalTimer.set(false);
           stopLocalTimer();
+          // Reset hard stop flag
+          atHardStop.set(false);
         }
       } else {
         useLocalTimer.set(false);
         stopLocalTimer();
+        // Reset hard stop flag
+        atHardStop.set(false);
       }
     }
   }
@@ -573,7 +546,7 @@
           {displayRegion ? formatTime(Math.max(0, currentPosition - displayRegion.start)) : '--:--'}
         </span>
         <span class="separator">/</span>
-        <span class="total-time">{displayRegion ? formatTime(getEffectiveRegionLength(displayRegion, displayMarkers)) : '--:--'}</span>
+        <span class="total-time">{displayRegion ? formatTime(songDuration) : '--:--'}</span>
       </div>
 
       <div class="bpm-display">
@@ -589,11 +562,11 @@
     class:disabled={$transportButtonsDisabled}>
     <div
       class="progress-bar"
-      style="width: {displayRegion ? Math.min(100, Math.max(0, ((currentPosition - displayRegion.start) / getEffectiveRegionLength(displayRegion, displayMarkers)) * 100)) : 0}%"
+      style="width: {displayRegion ? Math.min(100, Math.max(0, ((currentPosition - displayRegion.start) / songDuration) * 100)) : 0}%"
     ></div>
 
     <!-- Hard stop message -->
-    {#if $atHardStop && !$playbackState.isPlaying && displayNextRegion}
+    {#if $atHardStop && !$playbackState.isPlaying && displayNextRegion && $useLocalTimer}
       <div class="hard-stop-marker">
         <div class="hard-stop-message">
           Press play to continue
@@ -607,7 +580,7 @@
         {#if marker.position >= displayRegion.start && marker.position <= displayRegion.end}
           <div
             class="marker"
-            style="left: {((marker.position - displayRegion.start) / getEffectiveRegionLength(displayRegion, displayMarkers)) * 100}%"
+            style="left: {((marker.position - displayRegion.start) / songDuration) * 100}%"
             title={marker.name}
           >
             <div class="marker-tooltip">
@@ -675,7 +648,7 @@
       class="control-button previous"
       on:click={() => safeTransportAction(() => ipcService.previousRegion())}
       aria-label="Previous region"
-      disabled={$transportButtonsDisabled || !displayPreviousRegion}
+      disabled={$transportButtonsDisabled || !displayRegion || !displayPreviousRegion}
     >
       <svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/>

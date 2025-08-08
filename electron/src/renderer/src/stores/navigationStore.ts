@@ -3,8 +3,10 @@
  * Manages the current view/page in the application
  */
 
-import { writable, type Writable } from 'svelte/store';
+import { writable, type Writable, get } from 'svelte/store';
 import logger from '../lib/utils/logger';
+import { currentSetlist } from './setlistStore';
+import { setSelectedSetlist } from './playbackStore';
 
 /**
  * Available views in the application
@@ -26,6 +28,22 @@ export const currentView: Writable<View> = writable(View.MAIN);
  */
 export function navigateTo(view: View): void {
   logger.log(`Navigating to view: ${view}`);
+
+  // Get the current view before changing it
+  const prevView = get(currentView);
+
+  // When navigating from setlist editor to player, sync the selected setlist
+  if (prevView === View.SETLISTS && view === View.MAIN) {
+    const currentEditedSetlist = get(currentSetlist);
+
+    // If there was a setlist being edited, set it as the selected setlist
+    if (currentEditedSetlist) {
+      logger.log(`Setting selected setlist to last edited: ${currentEditedSetlist.name} (${currentEditedSetlist.id})`);
+      setSelectedSetlist(currentEditedSetlist.id);
+    }
+  }
+
+  // Update the current view
   currentView.set(view);
 }
 

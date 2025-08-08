@@ -5,6 +5,7 @@
 import { EventEmitter } from 'events';
 import { Setlist, SetlistItem } from '../types';
 import { ReaperConnector } from './reaperConnector';
+import { SetlistStorage } from './setlistStorage';
 import logger from '../utils/logger';
 
 // Constants for setlist storage in Reaper project extended state
@@ -18,6 +19,7 @@ export class ProjectService extends EventEmitter {
   private setlists: Map<string, Setlist> = new Map();
   private selectedSetlistId: string | null = null;
   private reaperConnector: ReaperConnector;
+  private setlistStorage: SetlistStorage;
 
   /**
    * Constructor
@@ -26,22 +28,57 @@ export class ProjectService extends EventEmitter {
   constructor(reaperConnector: ReaperConnector) {
     super();
     this.reaperConnector = reaperConnector;
+    this.setlistStorage = new SetlistStorage();
 
     // Set up event listeners
     this.setupEventListeners();
 
-    // Initialize setlists from project if available
-    this.refreshProjectId().then(() => {
+    // Initialize setlists from file storage if available
+    this.initializeSetlists().catch(error => {
+      logger.error('Failed to initialize setlists', { error });
+    });
+
+    logger.info('Project service initialized');
+  }
+
+  /**
+   * Initialize setlists - separate method to better handle async initialization
+   */
+  private async initializeSetlists(): Promise<void> {
+    try {
+      // Get project ID
+      await this.refreshProjectId();
+
       if (this.projectId) {
-        this.loadSetlistsFromProject();
+        logger.debug('Initializing setlists for project', { projectId: this.projectId });
+
+        // First try to load from disk
+        await this.loadSetlistsFromDisk();
+
+        // If no setlists were found on disk, try to migrate from Reaper
+        if (this.setlists.size === 0) {
+          logger.debug('No setlists found on disk, attempting to migrate from REAPER');
+          await this.migrateSetlistsFromReaperToFile();
+        }
+
+        // Make sure reaperConnector has the selected setlist ID
+        if (this.selectedSetlistId) {
+          this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
+          logger.debug('Updated reaperConnector with selected setlist during initialization', {
+            selectedSetlistId: this.selectedSetlistId
+          });
+        }
       } else {
         // Initialize empty setlists map
         this.setlists = new Map();
         logger.debug('No project ID available, initialized empty setlists');
       }
-    });
-
-    logger.info('Project service initialized');
+    } catch (error) {
+      logger.error('Error during setlists initialization', { error });
+      // Initialize empty setlists map in case of error
+      this.setlists = new Map();
+      this.selectedSetlistId = null;
+    }
   }
 
   /**
@@ -54,9 +91,10 @@ export class ProjectService extends EventEmitter {
     });
 
     // Listen for project changes
-    this.reaperConnector.on('projectChanged', (projectId: string) => {
-      // Use void to handle the promise without awaiting it
-      void this.handleProjectChanged(projectId);
+    this.reaperConnector.on('projectChanged', async (projectId: string) => {
+      // Properly await project change handling to ensure setlists are fully loaded
+      // before any regions are loaded and filtered
+      await this.handleProjectChanged(projectId);
     });
   }
 
@@ -90,6 +128,108 @@ export class ProjectService extends EventEmitter {
     } catch (error) {
       logger.error('Failed to deserialize setlist', { error, json });
       return null;
+    }
+  }
+
+  /**
+   * Save all setlists to disk
+   */
+  private async saveSetlistsToDisk(): Promise<void> {
+    try {
+      if (!this.projectId) {
+        logger.warn('Cannot save setlists: No project ID');
+        return;
+      }
+
+      // Use the setlistStorage to save the setlists
+      await this.setlistStorage.saveSetlists(
+        this.projectId,
+        this.setlists,
+        this.selectedSetlistId
+      );
+
+      logger.info('Saved setlists to disk', {
+        projectId: this.projectId,
+        count: this.setlists.size
+      });
+    } catch (error) {
+      logger.error('Failed to save setlists to disk', { error });
+    }
+  }
+
+  /**
+   * Migrate setlists from Reaper extended state to disk
+   * This is a one-time operation when upgrading from the old storage method
+   */
+  private async migrateSetlistsFromReaperToFile(): Promise<void> {
+    try {
+      if (!this.projectId) {
+        logger.warn('Cannot migrate setlists: No project ID');
+        return;
+      }
+
+      logger.info('Starting setlist migration from Reaper to file storage', { projectId: this.projectId });
+
+      // Load setlists from Reaper
+      await this.loadSetlistsFromProject();
+
+      // If any setlists were loaded, save them to disk
+      if (this.setlists.size > 0) {
+        await this.saveSetlistsToDisk();
+        logger.info('Migration complete: Setlists migrated to file storage', {
+          projectId: this.projectId,
+          count: this.setlists.size,
+          setlistIds: Array.from(this.setlists.keys())
+        });
+      } else {
+        logger.info('No setlists to migrate from Reaper', { projectId: this.projectId });
+      }
+    } catch (error) {
+      logger.error('Failed to migrate setlists from Reaper to file', { error });
+    }
+  }
+
+  /**
+   * Load setlists from disk
+   */
+  public async loadSetlistsFromDisk(): Promise<void> {
+    try {
+      if (!this.projectId) {
+        logger.warn('Cannot load setlists: No project ID');
+        return;
+      }
+
+      // Use the setlistStorage to load the setlists
+      const { setlists, selectedSetlistId } = await this.setlistStorage.loadSetlists(this.projectId);
+
+      // Update the internal state
+      this.setlists = setlists;
+      this.selectedSetlistId = selectedSetlistId;
+
+      logger.info('Loaded setlists from disk', {
+        projectId: this.projectId,
+        count: this.setlists.size,
+        setlistIds: Array.from(this.setlists.keys()),
+        selectedSetlistId: this.selectedSetlistId
+      });
+
+      // Update the reaperConnector's playback state with the selected setlist ID
+      if (this.selectedSetlistId) {
+        this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
+        logger.debug('Updated reaperConnector with loaded selected setlist', {
+          selectedSetlistId: this.selectedSetlistId
+        });
+      }
+
+      // Emit setlists update event
+      this.emit('setlists', this.getSetlists());
+
+      // Emit selected setlist update event if there is one
+      if (this.selectedSetlistId) {
+        this.emit('selectedSetlist', this.selectedSetlistId);
+      }
+    } catch (error) {
+      logger.error('Failed to load setlists from disk', { error });
     }
   }
 
@@ -187,6 +327,11 @@ export class ProjectService extends EventEmitter {
         return;
       }
 
+      logger.info('Loading setlists from project', { projectId: this.projectId });
+
+      // Keep track of the previous selected setlist ID to detect changes
+      const previousSelectedSetlistId = this.selectedSetlistId;
+
       // Load the setlist index
       const setlistIndexJson = await this.reaperConnector.getProjectExtState(
         SETLIST_SECTION,
@@ -198,22 +343,33 @@ export class ProjectService extends EventEmitter {
 
       // First, try to load setlists from the index
       if (setlistIndexJson) {
-        // Parse the setlist index
-        const setlistIds = JSON.parse(setlistIndexJson) as string[];
+        try {
+          // Parse the setlist index
+          const setlistIds = JSON.parse(setlistIndexJson) as string[];
+          logger.debug('Found setlist index', { count: setlistIds.length, setlistIds });
 
-        // Load each setlist from the index
-        for (const id of setlistIds) {
-          const setlistJson = await this.reaperConnector.getProjectExtState(
-            SETLIST_SECTION,
-            `${SETLIST_PREFIX}${id}`
-          );
+          // Load each setlist from the index
+          for (const id of setlistIds) {
+            try {
+              const setlistJson = await this.reaperConnector.getProjectExtState(
+                SETLIST_SECTION,
+                `${SETLIST_PREFIX}${id}`
+              );
 
-          if (setlistJson) {
-            const setlist = this.deserializeSetlist(setlistJson);
-            if (setlist) {
-              this.setlists.set(id, setlist);
+              if (setlistJson) {
+                const setlist = this.deserializeSetlist(setlistJson);
+                if (setlist) {
+                  this.setlists.set(id, setlist);
+                  logger.debug('Loaded setlist from index', { id, name: setlist.name });
+                }
+              }
+            } catch (setlistError) {
+              logger.warn(`Failed to load setlist ${id} from index`, { error: setlistError });
+              // Continue with the next setlist
             }
           }
+        } catch (indexError) {
+          logger.warn('Failed to parse setlist index', { error: indexError, indexJson: setlistIndexJson });
         }
       } else {
         logger.info('No setlist index found in project, will search for direct setlists', { projectId: this.projectId });
@@ -241,42 +397,54 @@ export class ProjectService extends EventEmitter {
         // Try the specific IDs with our standard prefix
         for (const id of specificIds) {
           const key = `SETLIST_${id}`;
-          const setlistJson = await this.reaperConnector.getProjectExtState(
-            SETLIST_SECTION,
-            key
-          );
+          try {
+            const setlistJson = await this.reaperConnector.getProjectExtState(
+              SETLIST_SECTION,
+              key
+            );
 
-          if (setlistJson) {
-            logger.info(`Found setlist with key ${key}`, { projectId: this.projectId });
-            const setlist = this.deserializeSetlist(setlistJson);
-            if (setlist) {
-              // If the setlist doesn't have an ID, use the key as the ID
-              if (!setlist.id) {
-                setlist.id = id;
+            if (setlistJson) {
+              logger.info(`Found setlist with key ${key}`, { projectId: this.projectId });
+              const setlist = this.deserializeSetlist(setlistJson);
+              if (setlist) {
+                // If the setlist doesn't have an ID, use the key as the ID
+                if (!setlist.id) {
+                  setlist.id = id;
+                }
+                this.setlists.set(setlist.id, setlist);
+                logger.debug('Loaded setlist with specific ID', { id: setlist.id, name: setlist.name });
               }
-              this.setlists.set(setlist.id, setlist);
             }
+          } catch (error) {
+            logger.debug(`No setlist found with key ${key}`, { error });
+            // Continue with next ID
           }
         }
 
         // Try the alternate keys directly in our standard section
         for (const key of alternateKeys) {
-          const setlistJson = await this.reaperConnector.getProjectExtState(
-            SETLIST_SECTION,
-            key
-          );
+          try {
+            const setlistJson = await this.reaperConnector.getProjectExtState(
+              SETLIST_SECTION,
+              key
+            );
 
-          if (setlistJson) {
-            logger.info(`Found setlist with direct key ${key}`, { projectId: this.projectId });
-            const setlist = this.deserializeSetlist(setlistJson);
-            if (setlist) {
-              // Extract an ID from the key
-              const id = key.replace('SETLIST_', '');
-              if (!setlist.id) {
-                setlist.id = id;
+            if (setlistJson) {
+              logger.info(`Found setlist with direct key ${key}`, { projectId: this.projectId });
+              const setlist = this.deserializeSetlist(setlistJson);
+              if (setlist) {
+                // Extract an ID from the key
+                const id = key.replace('SETLIST_', '');
+                if (!setlist.id) {
+                  setlist.id = id;
+                }
+                this.setlists.set(setlist.id, setlist);
+                logger.debug('Loaded setlist with alternate key', { id: setlist.id, name: setlist.name });
               }
-              this.setlists.set(setlist.id, setlist);
             }
+          } catch (error) {
+            logger.debug(`No setlist found with alternate key ${key}`, { error });
+            // Continue with next key
           }
         }
 
@@ -306,9 +474,10 @@ export class ProjectService extends EventEmitter {
                     setlist.id = id;
                   }
                   this.setlists.set(setlist.id, setlist);
+                  logger.debug('Loaded setlist from alternate section', { section, id: setlist.id, name: setlist.name });
                 }
               }
-            } catch (e) {
+            } catch {
               // Ignore errors for individual section/key checks
             }
           }
@@ -345,9 +514,10 @@ export class ProjectService extends EventEmitter {
                     setlist.id = id;
                   }
                   this.setlists.set(setlist.id, setlist);
+                  logger.debug('Loaded setlist with timestamp pattern', { id: setlist.id, name: setlist.name });
                 }
               }
-            } catch (e) {
+            } catch {
               // Ignore errors for individual key checks
             }
           }
@@ -358,11 +528,22 @@ export class ProjectService extends EventEmitter {
       }
 
       // Load the selected setlist ID
-      const selectedSetlistId = await this.reaperConnector.getProjectExtState(
-        SETLIST_SECTION,
-        SELECTED_SETLIST_KEY
-      );
-      this.selectedSetlistId = selectedSetlistId || null;
+      try {
+        const selectedSetlistId = await this.reaperConnector.getProjectExtState(
+          SETLIST_SECTION,
+          SELECTED_SETLIST_KEY
+        );
+        this.selectedSetlistId = selectedSetlistId || null;
+
+        if (this.selectedSetlistId) {
+          logger.debug('Found selected setlist ID in project', { selectedSetlistId: this.selectedSetlistId });
+        } else {
+          logger.debug('No selected setlist ID found in project');
+        }
+      } catch (error) {
+        logger.warn('Failed to load selected setlist ID', { error });
+        // Keep existing selectedSetlistId if any
+      }
 
       // If we found setlists but no selected setlist, select the first one
       if (this.setlists.size > 0 && !this.selectedSetlistId) {
@@ -379,12 +560,27 @@ export class ProjectService extends EventEmitter {
         selectedSetlistId: this.selectedSetlistId
       });
 
-      // Update the reaperConnector's playback state with the selected setlist ID
+      // Check if the selected setlist ID has changed
+      const selectedSetlistChanged = previousSelectedSetlistId !== this.selectedSetlistId;
+      if (selectedSetlistChanged) {
+        logger.debug('Selected setlist ID changed during loading', {
+          previous: previousSelectedSetlistId,
+          current: this.selectedSetlistId
+        });
+      }
+
+      // Always update the reaperConnector's playback state with the selected setlist ID
+      // This is crucial to ensure the correct filtering of regions
       if (this.selectedSetlistId) {
         this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
-        logger.debug('Updated reaperConnector with loaded selected setlist', {
-          selectedSetlistId: this.selectedSetlistId
+        logger.info('Updated reaperConnector with loaded selected setlist', {
+          selectedSetlistId: this.selectedSetlistId,
+          wasChanged: selectedSetlistChanged
         });
+      } else {
+        // Clear the selected setlist ID in reaperConnector if none is set
+        this.reaperConnector.setSelectedSetlistId(null);
+        logger.debug('Cleared selected setlist ID in reaperConnector');
       }
 
       // Emit setlists update event
@@ -396,6 +592,17 @@ export class ProjectService extends EventEmitter {
       }
     } catch (error) {
       logger.error('Failed to load setlists from project', { error });
+
+      // In case of a critical error, ensure we have a clean state
+      this.setlists.clear();
+      this.selectedSetlistId = null;
+
+      // Still emit events to ensure UI is updated
+      this.emit('setlists', []);
+      this.emit('selectedSetlist', null);
+
+      // Clear the selected setlist ID in reaperConnector
+      this.reaperConnector.setSelectedSetlistId(null);
     }
   }
 
@@ -404,11 +611,25 @@ export class ProjectService extends EventEmitter {
    * Handle project ID update
    * @param projectId - Project ID
    */
-  private handleProjectIdUpdate(projectId: string): void {
+  private async handleProjectIdUpdate(projectId: string): Promise<void> {
     logger.debug('Project ID updated', { projectId });
 
     // Update project ID
     this.projectId = projectId;
+
+    // Load setlists from disk to ensure metadata (including selectedSetlistId) is loaded
+    if (this.projectId) {
+      // Await loading setlists to ensure selectedSetlistId is available before continuing
+      await this.loadSetlistsFromDisk();
+
+      // After setlists are loaded, ensure reaperConnector has the selected setlist ID
+      if (this.selectedSetlistId) {
+        this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
+        logger.debug('Updated reaperConnector with loaded selected setlist during project ID update', {
+          selectedSetlistId: this.selectedSetlistId
+        });
+      }
+    }
 
     // Emit project ID update event
     this.emit('projectId', this.projectId);
@@ -517,8 +738,8 @@ export class ProjectService extends EventEmitter {
     // Add to setlists map
     this.setlists.set(id, setlist);
 
-    // Save to project file
-    await this.saveSetlistToProject(setlist.id);
+    // Save to disk
+    await this.saveSetlistsToDisk();
 
     logger.info('Created setlist', { id, name });
 
@@ -551,8 +772,8 @@ export class ProjectService extends EventEmitter {
     // Update in setlists map
     this.setlists.set(setlistId, setlist);
 
-    // Save to project file
-    await this.saveSetlistToProject(setlistId);
+    // Save to disk
+    await this.saveSetlistsToDisk();
 
     logger.info('Updated setlist', { setlistId, name });
 
@@ -569,10 +790,6 @@ export class ProjectService extends EventEmitter {
    * Delete a setlist
    * @param setlistId - Setlist ID
    * @returns True if deleted, false if not found
-   * @description Removes the setlist from the internal map and also removes the key-value pair from Reaper's extended state.
-   * Handles multiple key formats (standard, SETLIST_, SETLIST_SETLIST-, etc.) and checks multiple sections
-   * (ReaperControl_Setlists, SETLIST, REAPER_CONTROL, SETLISTS) to ensure complete removal of all setlist data.
-   * Also updates the setlist index to remove the deleted setlist.
    */
   public async deleteSetlist(setlistId: string): Promise<boolean> {
     const setlist = this.setlists.get(setlistId);
@@ -585,67 +802,13 @@ export class ProjectService extends EventEmitter {
     // Delete from setlists map
     this.setlists.delete(setlistId);
 
-    // Explicitly remove the setlist data from Reaper's extended state
-    if (this.projectId) {
-      try {
-        // Remove the setlist data using our standard format
-        await this.reaperConnector.setProjectExtState(
-          SETLIST_SECTION,
-          `${SETLIST_PREFIX}${setlistId}`,
-          ''
-        );
-        logger.info('Removed setlist data from Reaper extended state', { setlistId });
-
-        // Also try to remove alternate formats of the key
-        // This handles the case where the setlist might have been stored with a different key format
-        const alternateKeys = [
-          `SETLIST_${setlistId}`,
-          `SETLIST_SETLIST-${setlistId}`,
-          setlistId,
-          `SETLIST-${setlistId}`
-        ];
-
-        for (const key of alternateKeys) {
-          try {
-            await this.reaperConnector.setProjectExtState(
-              SETLIST_SECTION,
-              key,
-              ''
-            );
-            logger.debug(`Removed alternate key format: ${key}`, { setlistId });
-          } catch (e) {
-            // Ignore errors for individual key removals
-          }
-        }
-
-        // Also try removing from alternate sections
-        const alternateSections = [
-          'SETLIST',
-          'REAPER_CONTROL',
-          'SETLISTS'
-        ];
-
-        for (const section of alternateSections) {
-          for (const key of alternateKeys) {
-            try {
-              await this.reaperConnector.setProjectExtState(
-                section,
-                key,
-                ''
-              );
-              logger.debug(`Removed from alternate section ${section} with key ${key}`, { setlistId });
-            } catch (e) {
-              // Ignore errors for individual section/key removals
-            }
-          }
-        }
-      } catch (error) {
-        logger.error('Failed to remove setlist data from Reaper extended state', { error, setlistId });
-      }
+    // If the deleted setlist was the selected one, clear the selection
+    if (this.selectedSetlistId === setlistId) {
+      this.selectedSetlistId = null;
     }
 
-    // Save changes to project file (updates the index)
-    await this.saveSetlistsToProject();
+    // Save changes to disk
+    await this.saveSetlistsToDisk();
 
     logger.info('Deleted setlist', { setlistId, name: setlist.name });
 
@@ -705,8 +868,8 @@ export class ProjectService extends EventEmitter {
     // Update in setlists map
     this.setlists.set(setlistId, setlist);
 
-    // Save to project file
-    await this.saveSetlistToProject(setlistId);
+    // Save to disk
+    await this.saveSetlistsToDisk();
 
     logger.info('Added item to setlist', { setlistId, regionId, position: itemPosition, name: regionName });
 
@@ -752,8 +915,8 @@ export class ProjectService extends EventEmitter {
     // Update in setlists map
     this.setlists.set(setlistId, setlist);
 
-    // Save to project file
-    await this.saveSetlistToProject(setlistId);
+    // Save to disk
+    await this.saveSetlistsToDisk();
 
     logger.info('Removed item from setlist', { setlistId, itemId, name: itemName });
 
@@ -805,8 +968,8 @@ export class ProjectService extends EventEmitter {
     // Update in setlists map
     this.setlists.set(setlistId, setlist);
 
-    // Save to project file
-    await this.saveSetlistToProject(setlistId);
+    // Save to disk
+    await this.saveSetlistsToDisk();
 
     logger.info('Moved item in setlist', { setlistId, itemId, newPosition });
 
@@ -827,14 +990,10 @@ export class ProjectService extends EventEmitter {
     // Store the selected setlist ID
     this.selectedSetlistId = setlistId;
 
-    // Save to project file
+    // Save to disk
     if (this.projectId) {
-      await this.reaperConnector.setProjectExtState(
-        SETLIST_SECTION,
-        SELECTED_SETLIST_KEY,
-        setlistId || ''
-      );
-      logger.debug('Saved selected setlist to project', { setlistId });
+      await this.saveSetlistsToDisk();
+      logger.debug('Saved selected setlist to disk', { setlistId });
     }
 
     // Update the reaperConnector's playback state

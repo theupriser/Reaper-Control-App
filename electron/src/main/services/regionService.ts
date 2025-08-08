@@ -153,6 +153,15 @@ export class RegionService extends EventEmitter {
    */
   public setProjectService(projectService: any): void {
     this.projectService = projectService;
+
+    // Set up listener for setlist selection changes
+    if (this.projectService) {
+      this.projectService.on('selectedSetlist', () => {
+        logger.debug('Selected setlist changed, re-emitting regions with updated filtering');
+        // Re-emit regions with the new filtering applied
+        this.emit('regions', this.getRegions());
+      });
+    }
   }
 
   /**
@@ -168,6 +177,15 @@ export class RegionService extends EventEmitter {
     this.reaperConnector.on('projectChanged', () => {
       this.refreshRegions();
     });
+
+    // Listen for setlist selection changes
+    if (this.projectService) {
+      this.projectService.on('selectedSetlist', () => {
+        logger.debug('Selected setlist changed, re-emitting regions with updated filtering');
+        // Re-emit regions with the new filtering applied
+        this.emit('regions', this.getRegions());
+      });
+    }
   }
 
   /**
@@ -180,15 +198,78 @@ export class RegionService extends EventEmitter {
     // Update regions
     this.regions = regions;
 
-    // Emit regions update event
-    this.emit('regions', this.regions);
+    // Emit regions update event - use getRegions() to apply filtering if a setlist is selected
+    this.emit('regions', this.getRegions());
   }
 
   /**
    * Get all regions
-   * @returns All regions
+   * If a setlist is selected, returns only the regions that are part of that setlist
+   * @returns Filtered regions or all regions if no setlist is selected
    */
   public getRegions(): Region[] {
+    // Log the current state for debugging
+    logger.debug('getRegions called', {
+      allRegionsCount: this.regions.length,
+      availableRegionIds: this.regions.map(r => r.id)
+    });
+
+    // Check if we have a project service and a selected setlist
+    if (this.projectService && this.projectService.getSelectedSetlistId()) {
+      const selectedSetlistId = this.projectService.getSelectedSetlistId();
+      const selectedSetlist = this.projectService.getSetlist(selectedSetlistId);
+
+      logger.debug('Selected setlist info', {
+        selectedSetlistId,
+        hasSetlist: !!selectedSetlist,
+        itemsCount: selectedSetlist?.items.length || 0
+      });
+
+      // If we have a valid setlist with items, filter the regions
+      if (selectedSetlist && selectedSetlist.items.length > 0) {
+        // Get all region IDs in the setlist
+        const setlistRegionIds = selectedSetlist.items.map(item => item.regionId);
+
+        logger.debug('Setlist region IDs', {
+          setlistRegionIds,
+          setlistItemsCount: setlistRegionIds.length
+        });
+
+        // First check for direct string matches
+        const filteredRegions = this.regions.filter(region =>
+          setlistRegionIds.includes(region.id)
+        );
+
+        logger.debug('Filtering results', {
+          filteredCount: filteredRegions.length,
+          allRegionsCount: this.regions.length
+        });
+
+        // If we got no matches, try more flexible matching (handling potential string/number type differences)
+        if (filteredRegions.length === 0) {
+          logger.debug('No exact matches found, trying flexible matching');
+
+          const flexibleFilteredRegions = this.regions.filter(region => {
+            return setlistRegionIds.some(setlistId =>
+              String(region.id) === String(setlistId) ||
+              (!isNaN(Number(region.id)) && !isNaN(Number(setlistId)) &&
+               Number(region.id) === Number(setlistId))
+            );
+          });
+
+          logger.debug('Flexible matching results', {
+            flexibleFilteredCount: flexibleFilteredRegions.length
+          });
+
+          return flexibleFilteredRegions;
+        }
+
+        return filteredRegions;
+      }
+    }
+
+    // If no setlist is selected or the setlist is empty, return all regions
+    logger.debug('No setlist selected or empty setlist, returning all regions');
     return this.regions;
   }
 
@@ -198,7 +279,80 @@ export class RegionService extends EventEmitter {
    * @returns Region or undefined if not found
    */
   public getRegionById(id: string): Region | undefined {
-    return this.regions.find(region => region.id === id);
+    // Log information for debugging
+    logger.debug('Getting region by ID', {
+      id,
+      allRegionsCount: this.regions.length,
+      selectedSetlistId: this.projectService?.getSelectedSetlistId()
+    });
+
+    // First try an exact match by string comparison on all regions
+    const region = this.regions.find(region => String(region.id) === String(id));
+
+    // If exact match found, return it
+    if (region) {
+      return region;
+    }
+
+    // If no exact match found, check for region by numeric ID (in case of type mismatch)
+    // This handles cases where one might be string and one numeric
+    const numericRegion = this.regions.find(region =>
+      !isNaN(Number(region.id)) && !isNaN(Number(id)) && Number(region.id) === Number(id)
+    );
+
+    if (numericRegion) {
+      logger.debug('Found region by numeric ID match', { id, foundId: numericRegion.id });
+      return numericRegion;
+    }
+
+    // If still no region found and we have a project service with a selected setlist
+    if (this.projectService && this.projectService.getSelectedSetlistId()) {
+      const selectedSetlistId = this.projectService.getSelectedSetlistId();
+      const selectedSetlist = this.projectService.getSetlist(selectedSetlistId);
+
+      if (selectedSetlist && selectedSetlist.items.length > 0) {
+        // Find the setlist item with this region ID
+        const setlistItem = selectedSetlist.items.find(item =>
+          String(item.regionId) === String(id) ||
+          (!isNaN(Number(item.regionId)) && !isNaN(Number(id)) && Number(item.regionId) === Number(id))
+        );
+
+        if (setlistItem) {
+          logger.debug('Found region ID in setlist', { id, setlistItem });
+
+          // Try to find a region that might match this setlist item
+          // This handles potential mismatches in ID format (string vs numeric)
+          for (const region of this.regions) {
+            // Try various matching strategies
+            if (String(region.id) === String(setlistItem.regionId) ||
+                String(region.name).toLowerCase() === String(setlistItem.name).toLowerCase() ||
+                (!isNaN(Number(region.id)) && !isNaN(Number(setlistItem.regionId)) &&
+                 Number(region.id) === Number(setlistItem.regionId))) {
+
+              logger.debug('Found matching region for setlist item', {
+                setlistItemId: setlistItem.regionId,
+                regionId: region.id,
+                setlistItemName: setlistItem.name,
+                regionName: region.name
+              });
+
+              return region;
+            }
+          }
+
+          // If we got here, the region is in the setlist but couldn't be found in regions
+          logger.warn('Region in setlist but not found in regions collection', {
+            id,
+            setlistItem,
+            availableRegionIds: this.regions.map(r => r.id)
+          });
+        }
+      }
+    }
+
+    // If we got here, we couldn't find the region
+    logger.warn('Region not found', { id });
+    return undefined;
   }
 
   /**
@@ -250,10 +404,11 @@ export class RegionService extends EventEmitter {
       // Update regions
       this.regions = regions;
 
-      // Emit regions update event
-      this.emit('regions', this.regions);
+      // Emit regions update event - use getRegions() to apply filtering if a setlist is selected
+      this.emit('regions', this.getRegions());
 
-      return this.regions;
+      // Return the filtered regions if a setlist is selected, otherwise return all regions
+      return this.getRegions();
     } catch (error) {
       logger.error('Failed to refresh regions', { error });
       throw error;

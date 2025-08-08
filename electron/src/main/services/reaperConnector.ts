@@ -659,6 +659,10 @@ export class ReaperConnector extends EventEmitter {
         // Check if this is a region line
         if (parts[0] === 'REGION' && parts.length >= 5) {
           // Extract region information
+          // Parts[2] = region ID
+          // Parts[1] = region name
+          // Parts[3] = start position
+          // Parts[4] = end position
           const region: Region = {
             id: parts[2],
             name: parts[1],
@@ -976,20 +980,39 @@ export class ReaperConnector extends EventEmitter {
    * Seek to region in REAPER
    * @param regionId - Region ID to seek to
    */
-  public async seekToRegion(regionId: string): Promise<void> {
+  public async seekToRegion(regionId: string | number): Promise<void> {
     try {
-      logger.debug('Seeking to region in REAPER', { regionId });
+      logger.debug('Seeking to region in REAPER', { regionId, regionIdType: typeof regionId });
 
       // Get regions
       const regions = await this.getRegions();
 
-      // Find region
-      const region = regions.find(r => r.id === regionId);
+      // First try an exact string match
+      let region = regions.find(r => String(r.id) === String(regionId));
+
+      // If no match found, try numeric comparison (in case of type mismatch)
+      if (!region && !isNaN(Number(regionId))) {
+        region = regions.find(r => !isNaN(Number(r.id)) && Number(r.id) === Number(regionId));
+
+        if (region) {
+          logger.debug('Found region using numeric ID matching', {
+            requestedId: regionId,
+            foundId: region.id,
+            regionName: region.name
+          });
+        }
+      }
+
       if (!region) {
+        logger.error('Region not found', {
+          regionId,
+          regionIdType: typeof regionId,
+          availableRegionIds: regions.map(r => ({ id: r.id, type: typeof r.id }))
+        });
         throw new Error(`Region not found: ${regionId}`);
       }
 
-      logger.debug('Found region', { region });
+      logger.debug('Found region', { region, regionIdType: typeof region.id });
 
       // Seek to region start with a small margin to ensure cursor is within the region
       const positionWithMargin = region.start + 0.001;
@@ -1026,13 +1049,20 @@ export class ReaperConnector extends EventEmitter {
       const transportState = await this.getTransportState();
       this.lastPlaybackState = transportState;
 
-      // Find current region index
-      const currentIndex = regions.findIndex(r => r.id === this.lastPlaybackState.currentRegionId);
+      // Find current region index using string comparison to handle type differences
+      const currentIndex = regions.findIndex(r =>
+        String(r.id) === String(this.lastPlaybackState.currentRegionId) ||
+        (!isNaN(Number(r.id)) && !isNaN(Number(this.lastPlaybackState.currentRegionId)) &&
+         Number(r.id) === Number(this.lastPlaybackState.currentRegionId))
+      );
+
       if (currentIndex === -1 || currentIndex >= regions.length - 1) {
         logger.warn('No next region available', {
           currentRegionId: this.lastPlaybackState.currentRegionId,
+          currentRegionIdType: typeof this.lastPlaybackState.currentRegionId,
           currentIndex,
-          totalRegions: regions.length
+          totalRegions: regions.length,
+          availableRegionIds: regions.slice(0, 5).map(r => ({ id: r.id, type: typeof r.id }))
         });
         throw new Error('No next region');
       }
@@ -1073,13 +1103,20 @@ export class ReaperConnector extends EventEmitter {
       const transportState = await this.getTransportState();
       this.lastPlaybackState = transportState;
 
-      // Find current region index
-      const currentIndex = regions.findIndex(r => r.id === this.lastPlaybackState.currentRegionId);
+      // Find current region index using string comparison to handle type differences
+      const currentIndex = regions.findIndex(r =>
+        String(r.id) === String(this.lastPlaybackState.currentRegionId) ||
+        (!isNaN(Number(r.id)) && !isNaN(Number(this.lastPlaybackState.currentRegionId)) &&
+         Number(r.id) === Number(this.lastPlaybackState.currentRegionId))
+      );
+
       if (currentIndex <= 0) {
         logger.warn('No previous region available', {
           currentRegionId: this.lastPlaybackState.currentRegionId,
+          currentRegionIdType: typeof this.lastPlaybackState.currentRegionId,
           currentIndex,
-          totalRegions: regions.length
+          totalRegions: regions.length,
+          availableRegionIds: regions.slice(0, 5).map(r => ({ id: r.id, type: typeof r.id }))
         });
         throw new Error('No previous region');
       }

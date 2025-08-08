@@ -37,16 +37,32 @@ export function navigateTo(view: View): void {
   cleanupRegionAndPlaybackListeners();
   logger.debug('Cleaned up region and playback listeners before navigation');
 
-  // When navigating from setlist editor to player, sync the selected setlist
-  if (prevView === View.SETLISTS && view === View.MAIN) {
-    const currentEditedSetlist = get(currentSetlist);
+  // When entering setlist editor, drop the selectedSetlistId
+  if (view === View.SETLISTS) {
+    logger.log('Entering setlist editor, clearing selectedSetlistId');
+    setSelectedSetlist(null);
+  }
+  // When leaving setlist editor to another view
+  else if (prevView === View.SETLISTS) {
+    // When navigating from setlist editor to player, sync the selected setlist
+    if (view === View.MAIN) {
+      const currentEditedSetlist = get(currentSetlist);
 
-    // If there was a setlist being edited, set it as the selected setlist
-    if (currentEditedSetlist) {
-      logger.log(`Setting selected setlist to last edited: ${currentEditedSetlist.name} (${currentEditedSetlist.id})`);
-      setSelectedSetlist(currentEditedSetlist.id);
+      // If there was a setlist being edited, set it as the selected setlist
+      if (currentEditedSetlist) {
+        logger.log(`Setting selected setlist to last edited: ${currentEditedSetlist.name} (${currentEditedSetlist.id})`);
+        setSelectedSetlist(currentEditedSetlist.id);
+      }
+    }
+    // When navigating from setlist editor to any view other than player or performer, clear selectedSetlistId
+    else if (view !== View.PERFORMER) {
+      logger.log('Leaving setlist editor to view other than player or performer, clearing selectedSetlistId');
+      setSelectedSetlist(null);
     }
   }
+
+  // For transitions between player and performer modes, preserve the selectedSetlistId
+  // (no action needed as the selectedSetlistId is not modified)
 
   // Update the current view
   currentView.set(view);

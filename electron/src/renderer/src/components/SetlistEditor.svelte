@@ -18,6 +18,7 @@
     cleanupSetlistStore
   } from '../stores/setlistStore';
   import { regions } from '../stores/regionStore';
+  import { playbackState } from '../stores/playbackStore';
   import ipcService from '../services/ipcService';
 
   // Local state
@@ -36,6 +37,15 @@
     initializeSetlistStore();
     fetchSetlists();
     ipcService.refreshRegions();
+
+    // Check if there's already a selected setlist in the playback state
+    const unsubscribe = playbackState.subscribe(state => {
+      if (state.selectedSetlistId) {
+        // Re-execute selectSetlist with the ID from playback state
+        selectSetlist(state.selectedSetlistId);
+      }
+    });
+    unsubscribe();
   });
 
   // Clean up event listeners when component is destroyed

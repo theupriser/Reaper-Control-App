@@ -37,6 +37,10 @@ if %errorlevel% neq 0 (
 )
 pnpm install
 
+REM Add node_modules/.bin to PATH to ensure TypeScript compiler (tsc) is available
+set PATH=%CD%\node_modules\.bin;%PATH%
+echo Added node_modules\.bin to PATH
+
 echo.
 echo Installation complete!
 echo To start the application in development mode, run: pnpm dev

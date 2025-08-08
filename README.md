@@ -98,8 +98,41 @@ Multiple markers can be used together in the same region name:
 
 The markers can appear anywhere in the region name and in any order.
 
+## GitHub CI/CD Pipeline
+
+This project uses GitHub Actions for continuous integration and delivery across multiple platforms:
+
+- **Automated Builds**: The pipeline automatically builds the application for Windows, macOS, and Linux.
+- **Build Triggers**: Builds are triggered on:
+  - Push to the `main` branch
+  - Pull requests to the `main` branch
+  - Release tags (format: `v*`)
+- **Artifacts**: Build artifacts are uploaded and available for download from GitHub Actions.
+- **Releases**: When pushing a version tag (e.g., `v1.0.0`), a draft GitHub release is automatically created with all build artifacts attached.
+
+### Creating a Release
+
+To create a new release:
+
+1. Update the version in `package.json`
+2. Commit the changes
+3. Create and push a new tag:
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+4. The GitHub workflow will build the application for all platforms and create a draft release
+5. Edit the draft release on GitHub to add release notes, then publish it
+
 ## Future Enhancements
 
 - Enhance the Performer view with more features
 - Add more advanced REAPER control features
 - Implement setlist export/import functionality
+
+## Future Enhancements
+
+- Enhance the Performer view with more features
+- Add more advanced REAPER control features
+- Implement setlist export/import functionality
+

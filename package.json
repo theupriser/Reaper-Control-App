@@ -6,10 +6,10 @@
   "author": "TheUpriser",
   "homepage": "https://electron-vite.org",
   "scripts": {
-    "format": "prettier --plugin prettier-plugin-svelte --write .",
-    "lint": "eslint --cache .",
+    "format": "prettier --plugin prettier-plugin-svelte --write electron",
+    "lint": "eslint --cache electron",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
-    "svelte-check": "svelte-check --tsconfig ./tsconfig.json",
+    "svelte-check": "svelte-check --tsconfig tsconfig.json",
     "typecheck": "npm run typecheck:node && npm run svelte-check",
     "start": "electron-vite preview",
     "dev": "electron-vite dev --watch",

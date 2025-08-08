@@ -617,7 +617,9 @@ export class RegionService extends EventEmitter {
       const isAutoplayEnabled = autoplay !== null ? autoplay : playbackState.autoplayEnabled !== undefined ? playbackState.autoplayEnabled : true;
 
       // If countIn is null, use the current playback state's countInEnabled setting
-      const isCountInEnabled = countIn !== null ? countIn : playbackState.countInEnabled !== undefined ? playbackState.countInEnabled : false;
+      // However, only allow count-in when explicitly set to true (for markers)
+      // This fixes the issue where count-in is triggered when selecting a song in the setlist
+      const isCountInEnabled = countIn === true; // Only use count-in when explicitly set to true
 
       logger.debug(`Current state: playing=${isPlaying}, autoplay=${isAutoplayEnabled}, countIn=${isCountInEnabled}`);
 

@@ -17,13 +17,58 @@ This project is a migration of the web-based Reaper Control application to an El
 
 - Node.js 16+
 - pnpm
+- Python with distutils (required for native module compilation)
+  - For Python 3.8-3.11: distutils is included in the standard library
+  - For Python 3.12+: install setuptools (`pip install setuptools`)
 
 ### Setup
 
+#### Standard Installation
 ```bash
 # Install dependencies
 pnpm install
 ```
+
+#### Automated Installation (Recommended)
+
+We provide automated installation scripts that handle Python environment setup:
+
+```bash
+# On macOS/Linux:
+./install.sh
+
+# On Windows:
+install.bat
+```
+
+These scripts will:
+1. Create a Python virtual environment with setuptools
+2. Install all dependencies with pnpm
+
+#### Troubleshooting Installation Issues
+
+If you encounter errors related to Python or native module compilation during manual installation:
+
+1. **Python distutils missing**:
+   ```bash
+   # Create a Python virtual environment with setuptools
+   python -m venv .venv
+   source .venv/bin/activate   # On Windows, use: .venv\Scripts\activate
+   pip install setuptools
+
+   # Then install dependencies
+   pnpm install
+   ```
+
+2. **Alternative approach (skip native compilation)**:
+   ```bash
+   # Set environment variable to prefer prebuilt binaries
+   # On Windows:
+   set npm_config_build_from_source=false && pnpm install
+
+   # On macOS/Linux:
+   npm_config_build_from_source=false pnpm install
+   ```
 
 ### Development Mode
 
@@ -109,6 +154,8 @@ This project uses GitHub Actions for continuous integration and delivery across 
   - Release tags (format: `v*`)
 - **Artifacts**: Build artifacts are uploaded and available for download from GitHub Actions.
 - **Releases**: When pushing a version tag (e.g., `v1.0.0`), a draft GitHub release is automatically created with all build artifacts attached.
+
+> **Note on GitHub Actions Compatibility**: The GitHub workflow uses `npm ci` for installation and will automatically use our postinstall script with the necessary environment variables to handle native dependencies. No additional configuration is needed as GitHub runners come with Python and setuptools pre-installed.
 
 ### Creating a Release
 

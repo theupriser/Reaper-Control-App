@@ -8,7 +8,7 @@
   "scripts": {
     "format": "prettier --plugin prettier-plugin-svelte --write electron",
     "lint": "eslint --cache electron",
-    "typecheck:node": "npx tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "svelte-check": "svelte-check --tsconfig tsconfig.json",
     "typecheck": "npm run typecheck:node && npm run svelte-check",
     "start": "electron-vite preview",
@@ -43,7 +43,7 @@
     "prettier-plugin-svelte": "^3.4.0",
     "svelte": "^5.36.10",
     "svelte-check": "^4.3.0",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.2",
     "vite": "^7.0.5"
   },
   "pnpm": {

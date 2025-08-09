@@ -205,7 +205,7 @@ export class RegionService extends EventEmitter {
   /**
    * Get all regions
    * If a setlist is selected, returns only the regions that are part of that setlist
-   * @returns Filtered regions or all regions if no setlist is selected
+   * @returns Filtered regions or all regions if no setlist is selected, sorted by start time
    */
   public getRegions(): Region[] {
     // Log the current state for debugging
@@ -237,40 +237,27 @@ export class RegionService extends EventEmitter {
 
         // First check for direct string matches
         const filteredRegions = this.regions.filter(region =>
-          setlistRegionIds.includes(region.id)
-        );
+          setlistRegionIds.includes(parseInt(region.id))
+        ).sort((a, b) => {
+            const setlistItemA = selectedSetlist.items.find((item: { regionId: string }) => item.regionId == a.id)
+            const setlistItemB = selectedSetlist.items.find((item: { regionId: string }) => item.regionId == b.id)
+
+            return setlistItemA.position - setlistItemB.position;
+        });
 
         logger.debug('Filtering results', {
           filteredCount: filteredRegions.length,
           allRegionsCount: this.regions.length
         });
 
-        // If we got no matches, try more flexible matching (handling potential string/number type differences)
-        if (filteredRegions.length === 0) {
-          logger.debug('No exact matches found, trying flexible matching');
-
-          const flexibleFilteredRegions = this.regions.filter(region => {
-            return setlistRegionIds.some(setlistId =>
-              String(region.id) === String(setlistId) ||
-              (!isNaN(Number(region.id)) && !isNaN(Number(setlistId)) &&
-               Number(region.id) === Number(setlistId))
-            );
-          });
-
-          logger.debug('Flexible matching results', {
-            flexibleFilteredCount: flexibleFilteredRegions.length
-          });
-
-          return flexibleFilteredRegions;
-        }
-
-        return filteredRegions;
+        // Sort regions by start time before returning
+        return filteredRegions
       }
     }
 
-    // If no setlist is selected or the setlist is empty, return all regions
-    logger.debug('No setlist selected or empty setlist, returning all regions');
-    return this.regions;
+    // If no setlist is selected or the setlist is empty, return all regions sorted by start time
+    logger.debug('No setlist selected or empty setlist, returning all regions sorted by start time');
+    return [...this.regions].sort((a, b) => a.start - b.start);
   }
 
   /**

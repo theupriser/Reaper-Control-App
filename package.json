@@ -17,11 +17,11 @@
     "postinstall": "cross-env npm_config_build_from_source=false electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:win-ci": "electron-vite build && electron-builder --win --x64",
+    "build:win-ci": "electron-vite build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:mac:x64": "npm run build && electron-builder --mac --x64",
     "build:mac:arm64": "npm run build && electron-builder --mac --arm64",
-    "build:linux:arm64": "npm run build && electron-builder --linux --arm64",
+    "build:linux": "npm run build && electron-builder --linux",
     "build:linux:x64": "npm run build && electron-builder --linux --x64",
     "build:win:x64": "npm run build && electron-builder --win --x64"
   },

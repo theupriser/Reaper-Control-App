@@ -21,9 +21,6 @@ jobs:
           # Windows doesn't support ARM64 builds in GitHub Actions yet
           - os: windows-latest
             architecture: arm64
-          # Linux doesn't need ARM64 builds for this project
-          - os: ubuntu-latest
-            architecture: arm64
 
     steps:
       - name: Check out Git repository

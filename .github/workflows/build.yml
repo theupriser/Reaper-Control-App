@@ -49,6 +49,9 @@ jobs:
           elif [ "${{ matrix.os }}" = "macos-latest" ]; then
             npm run build:mac:${{ matrix.architecture }}
           else
+            if [ "${{ matrix.architecture }}" = "arm64" ]; then
+              sudo snap install snapcraft --classic
+            fi
             npm run build:linux:${{ matrix.architecture }}
           fi
         shell: bash

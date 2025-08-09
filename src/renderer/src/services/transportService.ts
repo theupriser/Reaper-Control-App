@@ -3,6 +3,12 @@
  *
  * This service provides common functionality for transport controls used by
  * both TransportControls.svelte and PerformerMode.svelte components.
+ *
+ * It includes:
+ * - Transport control functions (play, pause, next, previous)
+ * - Time tracking and calculation with local timer support
+ * - Progress bar interaction handling
+ * - Time-related derived stores for different view modes
  */
 
 import { writable, derived, type Writable, type Readable } from 'svelte/store';
@@ -32,7 +38,10 @@ import {
 import { currentSetlist } from '../stores/setlistStore';
 import ipcService from './ipcService';
 import logger from '../lib/utils/logger';
-import { formatTime, formatLongTime, calculateDuration } from '../lib/utils/timeUtils';
+import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
+
+// Re-export formatTime and formatLongTime for use by other modules
+export { formatTime, formatLongTime };
 
 // Store to track disabled state of transport buttons
 export const transportButtonsDisabled: Writable<boolean> = writable(false);
@@ -44,8 +53,8 @@ let lastPlaybackStateUpdate = Date.now();
 export const localTimer: Writable<NodeJS.Timeout | null> = writable(null);
 export const localPosition: Writable<number> = writable(0);
 export const useLocalTimer: Writable<boolean> = writable(false);
-export const timerStartTime: Writable<number> = writable(0);
-export const timerStartPosition: Writable<number> = writable(0);
+const timerStartTime: Writable<number> = writable(0);
+const timerStartPosition: Writable<number> = writable(0);
 export const atHardStop: Writable<boolean> = writable(false);
 
 // Store previous playback state to detect significant changes
@@ -396,7 +405,7 @@ export function toggleCountInHandler(): void {
 }
 
 /**
- * Handle progress bar click
+ * Handle progress bar click without popover
  * @param event - The mouse event
  */
 export function handleProgressBarClick(event: MouseEvent): void {
@@ -520,6 +529,59 @@ export function handleProgressBarClick(event: MouseEvent): void {
       atHardStop.set(false);
     }
   }
+}
+
+/**
+ * Handle progress bar click with popover displaying time information
+ * This function enhances handleProgressBarClick by showing a popover with time information
+ *
+ * @param event - The mouse event
+ * @param showPopoverFn - Function to show the popover UI
+ * @param calculatePositionFn - Function to calculate the popover position
+ */
+export function handleProgressBarClickWithPopover(
+  event: MouseEvent,
+  showPopoverFn: (position: {x: number, y: number}, time: number) => void,
+  calculatePositionFn: (clickX: number, containerWidth: number, containerTop: number) => {x: number, y: number}
+): void {
+  let currentRegionValue: Region | null = null;
+  const unsubscribeRegion = currentRegion.subscribe(value => {
+    currentRegionValue = value;
+  });
+  unsubscribeRegion();
+
+  if (!currentRegionValue) return;
+
+  // Get the click position relative to the progress container
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const containerWidth = rect.width;
+
+  // Calculate the percentage of the click position
+  const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
+
+  // Get current song duration
+  let songDurationValue: number = 0;
+  const unsubscribeSongDuration = songDuration.subscribe(value => {
+    songDurationValue = value;
+  });
+  unsubscribeSongDuration();
+
+  // Calculate position based on percentage
+  const effectiveRegionDuration = songDurationValue || (currentRegionValue.end - currentRegionValue.start);
+  const clickPosition = currentRegionValue.start + (percentage * effectiveRegionDuration);
+
+  // Calculate popover position
+  const popoverPosition = calculatePositionFn(clickX, containerWidth, rect.top);
+
+  // Show the popover with the calculated time
+  showPopoverFn(
+    popoverPosition,
+    clickPosition - currentRegionValue.start // Time relative to region start
+  );
+
+  // Call the original handler for the actual seek functionality
+  handleProgressBarClick(event);
 }
 
 /**
@@ -757,3 +819,141 @@ export const previousRegion: Readable<Region | null> = derived(
     }
   }
 );
+
+// ----- Additional Time-Related Derived Stores -----
+
+/**
+ * Calculate the total time of all regions or setlist items
+ */
+export const totalRegionsTime: Readable<number> = derived(
+  [playbackState, currentSetlist, regions, markers],
+  ([$playbackState, $currentSetlist, $regions, $markers]) => {
+    if ($playbackState.selectedSetlistId && $currentSetlist) {
+      // If a setlist is selected, calculate total time from setlist items
+      return $currentSetlist.items.reduce((total, item) => {
+        const region = $regions.find(r => r.id === Number(item.regionId));
+        return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
+      }, 0);
+    } else {
+      // Otherwise, calculate from all regions
+      return $regions.reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
+    }
+  }
+);
+
+/**
+ * Calculate elapsed time before the current region
+ */
+export const elapsedTimeBeforeCurrentRegion: Readable<number> = derived(
+  [currentRegion, playbackState, currentSetlist, regions, markers],
+  ([$currentRegion, $playbackState, $currentSetlist, $regions, $markers]) => {
+    if (!$currentRegion) return 0;
+
+    if ($playbackState.selectedSetlistId && $currentSetlist) {
+      // If a setlist is selected, calculate elapsed time from setlist items
+      return $currentSetlist.items
+        .filter((_item, index) => {
+          const currentItemIndex = $currentSetlist.items.findIndex(i => Number(i.regionId) === $currentRegion.id);
+          return currentItemIndex !== -1 && index < currentItemIndex;
+        })
+        .reduce((total, item) => {
+          const region = $regions.find(r => r.id === Number(item.regionId));
+          return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
+        }, 0);
+    } else {
+      // Otherwise, calculate from all regions
+      return $regions
+        .filter(region => $regions.findIndex(r => r.id === region.id) < $regions.findIndex(r => r.id === $currentRegion.id))
+        .reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
+    }
+  }
+);
+
+/**
+ * Calculate total elapsed time (elapsed time before current region + current position within region)
+ */
+export const totalElapsedTime: Readable<number> = derived(
+  [currentRegion, elapsedTimeBeforeCurrentRegion, useLocalTimer, localPosition, playbackState],
+  ([$currentRegion, $elapsedTimeBeforeCurrentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
+    if (!$currentRegion) return 0;
+    return $elapsedTimeBeforeCurrentRegion + Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
+  }
+);
+
+/**
+ * Calculate total remaining time
+ */
+export const totalRemainingTime: Readable<number> = derived(
+  [totalRegionsTime, totalElapsedTime],
+  ([$totalRegionsTime, $totalElapsedTime]) => {
+    return Math.max(0, $totalRegionsTime - $totalElapsedTime);
+  }
+);
+
+/**
+ * Calculate current song time (time position within current region)
+ */
+export const currentSongTime: Readable<number> = derived(
+  [currentRegion, useLocalTimer, localPosition, playbackState],
+  ([$currentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
+    if (!$currentRegion) return 0;
+    return Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
+  }
+);
+
+/**
+ * Calculate song duration (effective length of current region)
+ */
+export const songDuration: Readable<number> = derived(
+  [currentRegion, markers],
+  ([$currentRegion, $markers]) => {
+    if (!$currentRegion) return 0;
+    return getEffectiveRegionLength($currentRegion, $markers);
+  }
+);
+
+/**
+ * Calculate song remaining time
+ */
+export const songRemainingTime: Readable<number> = derived(
+  [songDuration, currentSongTime],
+  ([$songDuration, $currentSongTime]) => {
+    return Math.max(0, $songDuration - $currentSongTime);
+  }
+);
+
+// ----- Keyboard Event Handling -----
+
+/**
+ * Set up keyboard controls for transport functions
+ * @returns A cleanup function to remove event listeners
+ */
+export function setupKeyboardControls(): () => void {
+  const handleKeydown = (event: KeyboardEvent): void => {
+    if (event.key === ' ') {
+      // Space bar - toggle play/pause
+      togglePlay();
+      event.preventDefault();
+    } else if (event.key === 'ArrowRight') {
+      // Right arrow - next region
+      nextRegionHandler();
+      event.preventDefault();
+    } else if (event.key === 'ArrowLeft') {
+      // Left arrow - previous region
+      previousRegionHandler();
+      event.preventDefault();
+    } else if (event.key === 'a') {
+      // 'a' key - toggle autoplay
+      toggleAutoplayHandler();
+      event.preventDefault();
+    }
+  };
+
+  // Add the event listener
+  window.addEventListener('keydown', handleKeydown);
+
+  // Return a cleanup function
+  return () => {
+    window.removeEventListener('keydown', handleKeydown);
+  };
+}

@@ -1,6 +1,6 @@
 {
   "name": "reaper-control",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "All out controller for Cockos Reaper DAW",
   "main": "./out/main/index.js",
   "author": "TheUpriser",

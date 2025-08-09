@@ -24,13 +24,10 @@
     getEffectiveRegionLength,
     getCustomLengthForRegion,
     has1008MarkerInRegion,
-    type Region,
-    type Marker
   } from '../stores';
   import ipcService from '../services/ipcService';
   import logger from '../lib/utils/logger';
-  import { writable, type Writable } from 'svelte/store';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import {
     // Functions
     safeTransportAction,
@@ -39,54 +36,34 @@
     previousRegionHandler,
     toggleAutoplayHandler,
     toggleCountInHandler,
-    handleProgressBarClick,
+    handleProgressBarClickWithPopover,
     updateTimer,
     updateTimerOnRegionChange,
-    startLocalTimer,
     stopLocalTimer,
-    findLengthMarkerInRegion,
 
     // Stores
     transportButtonsDisabled,
     localPosition,
     useLocalTimer,
     atHardStop,
+    songDuration,
 
     // Setlist-aware stores for region navigation
     nextRegion,
     previousRegion
   } from '../services/transportService';
-  import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
+  import { formatTime } from '../lib/utils/timeUtils';
 
-  // Track loading state
-  const isLoading: Writable<boolean> = writable(true);
-
-  // Progress bar click handling
-  const popoverVisible: Writable<boolean> = writable(false);
-  const popoverPosition: Writable<{x: number, y: number}> = writable({ x: 0, y: 0 });
-  const popoverTime: Writable<number> = writable(0);
-
-  // Set up loading state handling
-  onMount(() => {
-    // Set loading state to false once we have data
-    const unsubscribeRegions = sortedMarkers.subscribe(value => {
-      if (value && value.length > 0) {
-        isLoading.set(false);
-      }
-    });
-
-    // Add a timeout to clear the loading state after 5 seconds
-    // This ensures the UI doesn't stay in loading state indefinitely
-    const loadingTimeout = setTimeout(() => {
-      isLoading.set(false);
-      logger.log('Loading timeout reached, clearing loading state');
-    }, 5000);
-
-    return () => {
-      unsubscribeRegions();
-      clearTimeout(loadingTimeout);
-    };
-  });
+  // UI state management
+  import {
+    isLoading,
+    popoverVisible,
+    popoverPosition,
+    popoverTime,
+    initializeLoadingState,
+    showPopover,
+    calculatePopoverPosition
+  } from '../services/uiStateService';
 
   // Use real data or null if not available
   $: displayRegion = $currentRegion;
@@ -94,19 +71,9 @@
   $: displayPreviousRegion = $previousRegion;
   $: displayMarkers = $sortedMarkers; // Use sortedMarkers to filter out command-only markers
 
-  // Calculate song duration reactively
-  $: songDuration = displayRegion ? getEffectiveRegionLength(displayRegion, $markers) : 0;
+  // Calculate region duration for display (locally, not from the store)
+  $: displaySongDuration = displayRegion ? getEffectiveRegionLength(displayRegion, $markers) : 0;
 
-  // Debug reactive statement to log button states
-  $: {
-    logger.debug('TransportControls button states:', {
-      previousButtonDisabled: !displayPreviousRegion,
-      nextButtonDisabled: !displayNextRegion,
-      currentRegion: displayRegion ? displayRegion.name : 'none',
-      previousRegion: displayPreviousRegion ? displayPreviousRegion.name : 'none',
-      nextRegion: displayNextRegion ? displayNextRegion.name : 'none'
-    });
-  }
 
   // Initialize playback position if not available
   $: currentPosition = $useLocalTimer ? $localPosition : ($playbackState ? $playbackState.currentPosition || 0 : 0);
@@ -128,48 +95,15 @@
     logger.log(`Count-in ${$countInEnabled ? 'enabled' : 'disabled'}`);
   }
 
-  // Enhanced progress bar click handling with popover
-  function handleProgressBarClickWithPopover(event: MouseEvent): void {
-    if (!$currentRegion) return;
-
-    // Get the click position relative to the progress container
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const containerWidth = rect.width;
-
-    // Calculate the percentage of the click position
-    const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
-
-    // Calculate position based on percentage
-    const finalPosition = $currentRegion.start + (percentage * songDuration);
-
-    // Calculate popover position, ensuring it stays within viewport
-    let popoverX = clickX;
-
-    // Ensure popover doesn't go off the left or right edge
-    // Assuming popover width is about 60px
-    const popoverWidth = 60;
-    const minX = popoverWidth / 2;
-    const maxX = containerWidth - (popoverWidth / 2);
-
-    if (popoverX < minX) popoverX = minX;
-    if (popoverX > maxX) popoverX = maxX;
-
-    // Set the popover position and time
-    popoverPosition.set({
-      x: popoverX,
-      y: rect.top - 30 // Position above the progress bar
-    });
-    popoverTime.set(finalPosition - $currentRegion.start); // Time relative to region start
-    popoverVisible.set(true);
-
-    // Call the original handler
-    handleProgressBarClick(event);
-
-    // Hide the popover after 2 seconds
-    setTimeout(() => {
-      popoverVisible.set(false);
-    }, 2000);
+  // Enhanced progress bar click handling with popover, using the service
+  function handleProgressBarClickWithPopoverUI(event: MouseEvent): void {
+    // Use the transportService's handleProgressBarClickWithPopover function
+    // Pass the showPopover and calculatePopoverPosition functions from uiStateService
+    handleProgressBarClickWithPopover(
+      event,
+      showPopover,
+      calculatePopoverPosition
+    );
   }
 
   // Watch for changes in playback state and current region
@@ -188,6 +122,9 @@
   onMount(() => {
     logger.log('TransportControls component mounted');
 
+    // Initialize loading state and get cleanup function
+    const { unsubscribe: unsubscribeLoading } = initializeLoadingState();
+
     // Add a delay to ensure IPC handlers are registered before we try to use them
     setTimeout(() => {
       logger.log('Attempting to refresh markers and regions after delay');
@@ -201,11 +138,12 @@
         isLoading.set(false);
       }
     }, 2000); // 2 second delay to ensure IPC handlers are registered
-  });
 
-  // Clean up the timer when the component is destroyed
-  onDestroy(() => {
-    stopLocalTimer();
+    // Return a cleanup function for all resources
+    return () => {
+      unsubscribeLoading();
+      stopLocalTimer();
+    };
   });
 </script>
 
@@ -249,7 +187,7 @@
           {displayRegion ? formatTime(Math.max(0, currentPosition - displayRegion.start)) : '--:--'}
         </span>
         <span class="separator">/</span>
-        <span class="total-time">{displayRegion ? formatTime(songDuration) : '--:--'}</span>
+        <span class="total-time">{displayRegion ? formatTime($songDuration) : '--:--'}</span>
       </div>
 
       <div class="bpm-display">
@@ -261,11 +199,11 @@
 
   <!-- Progress bar -->
   <div class="progress-container"
-    on:click={$transportButtonsDisabled ? null : handleProgressBarClick}
+    on:click={$transportButtonsDisabled ? null : handleProgressBarClickWithPopoverUI}
     class:disabled={$transportButtonsDisabled}>
     <div
       class="progress-bar"
-      style="width: {displayRegion ? Math.min(100, Math.max(0, ((currentPosition - displayRegion.start) / songDuration) * 100)) : 0}%"
+      style="width: {displayRegion ? Math.min(100, Math.max(0, ((currentPosition - displayRegion.start) / displaySongDuration) * 100)) : 0}%"
     ></div>
 
     <!-- Hard stop message -->
@@ -283,7 +221,7 @@
         {#if marker.position >= displayRegion.start && marker.position <= displayRegion.end}
           <div
             class="marker"
-            style="left: {((marker.position - displayRegion.start) / songDuration) * 100}%"
+            style="left: {((marker.position - displayRegion.start) / $songDuration) * 100}%"
             title={marker.name}
           >
             <div class="marker-tooltip">

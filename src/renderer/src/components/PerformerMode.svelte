@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import {
     regions,
-    currentRegion,
-    previousRegion
+    currentRegion
   } from '../stores/regionStore';
   import {
     playbackState,
@@ -24,15 +23,15 @@
   import SystemStats from './SystemStats.svelte';
   import {
     // Functions
-    safeTransportAction,
     togglePlay,
     nextRegionHandler,
     previousRegionHandler,
     toggleAutoplayHandler,
     toggleCountInHandler,
-    handleProgressBarClick,
+    handleProgressBarClickWithPopover,
     updateTimer,
     updateTimerOnRegionChange,
+    setupKeyboardControls,
 
     // Stores
     transportButtonsDisabled,
@@ -40,158 +39,58 @@
     useLocalTimer,
     atHardStop,
 
-    // Derived store
-    nextRegion
+    // Derived stores for time calculations
+    totalRegionsTime,
+    totalElapsedTime,
+    totalRemainingTime,
+    currentSongTime,
+    songDuration,
+    songRemainingTime,
+
+    // Derived store for navigation
+    nextRegion,
+    previousRegion
   } from '../services/transportService';
   import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
 
   import { writable } from 'svelte/store';
 
-  // Track loading state
-  const isLoading = writable(true);
-
-  // Progress bar click handling
-  const popoverVisible = writable(false);
-  const popoverPosition = writable({ x: 0, y: 0 });
-  const popoverTime = writable(0);
+  // UI state management
+  import {
+    isLoading,
+    popoverVisible,
+    popoverPosition,
+    popoverTime,
+    initializeLoadingState,
+    showPopover,
+    calculatePopoverPosition
+  } from '../services/uiStateService';
 
   // Store for the current time
   const currentTime = writable(new Date());
 
-  // Derived stores for performer mode
-  import { derived, type Readable } from 'svelte/store';
-
-  // Total time of all regions or setlist items
-  const totalRegionsTime: Readable<number> = derived(
-    [playbackState, currentSetlist, regions, markers, useLocalTimer],
-    ([$playbackState, $currentSetlist, $regions, $markers, $useLocalTimer]) => {
-      if ($playbackState.selectedSetlistId && $currentSetlist) {
-        // If a setlist is selected, calculate total time from setlist items
-        return $currentSetlist.items.reduce((total, item) => {
-          const region = $regions.find(r => r.id === Number(item.regionId));
-          return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
-        }, 0);
-      } else {
-        // Otherwise, calculate from all regions
-        return $regions.reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
-      }
-    }
-  );
-
-  // Elapsed time before the current region
-  const elapsedTimeBeforeCurrentRegion: Readable<number> = derived(
-    [currentRegion, playbackState, currentSetlist, regions, markers, useLocalTimer],
-    ([$currentRegion, $playbackState, $currentSetlist, $regions, $markers, $useLocalTimer]) => {
-      if (!$currentRegion) return 0;
-
-      if ($playbackState.selectedSetlistId && $currentSetlist) {
-        // If a setlist is selected, calculate elapsed time from setlist items
-        return $currentSetlist.items
-          .filter((_item, index) => {
-            const currentItemIndex = $currentSetlist.items.findIndex(i => Number(i.regionId) === $currentRegion.id);
-            return currentItemIndex !== -1 && index < currentItemIndex;
-          })
-          .reduce((total, item) => {
-            const region = $regions.find(r => r.id === Number(item.regionId));
-            return total + (region ? getEffectiveRegionLength(region, $markers) : 0);
-          }, 0);
-      } else {
-        // Otherwise, calculate from all regions
-        return $regions
-          .filter(region => $regions.findIndex(r => r.id === region.id) < $regions.findIndex(r => r.id === $currentRegion.id))
-          .reduce((total, region) => total + getEffectiveRegionLength(region, $markers), 0);
-      }
-    }
-  );
-
-  // Total elapsed time
-  const totalElapsedTime: Readable<number> = derived(
-    [currentRegion, elapsedTimeBeforeCurrentRegion, useLocalTimer, localPosition, playbackState],
-    ([$currentRegion, $elapsedTimeBeforeCurrentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
-      if (!$currentRegion) return 0;
-      return $elapsedTimeBeforeCurrentRegion + Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
-    }
-  );
-
-  // Total remaining time
-  const totalRemainingTime: Readable<number> = derived(
-    [totalRegionsTime, totalElapsedTime],
-    ([$totalRegionsTime, $totalElapsedTime]) => {
-      return Math.max(0, $totalRegionsTime - $totalElapsedTime);
-    }
-  );
-
-  // Current song time
-  const currentSongTime: Readable<number> = derived(
-    [currentRegion, useLocalTimer, localPosition, playbackState],
-    ([$currentRegion, $useLocalTimer, $localPosition, $playbackState]) => {
-      if (!$currentRegion) return 0;
-      return Math.max(0, ($useLocalTimer ? $localPosition : $playbackState.currentPosition) - $currentRegion.start);
-    }
-  );
-
-  // Song duration
-  const songDuration: Readable<number> = derived(
-    [currentRegion, sortedMarkers, markers, useLocalTimer],
-    ([$currentRegion, $sortedMarkers, $markers, $useLocalTimer]) => {
-      if (!$currentRegion) return 0;
-      return getEffectiveRegionLength($currentRegion, $markers);
-    }
-  );
-
-  // Song remaining time
-  const songRemainingTime: Readable<number> = derived(
-    [songDuration, currentSongTime],
-    ([$songDuration, $currentSongTime]) => {
-      return Math.max(0, $songDuration - $currentSongTime);
-    }
-  );
-
   // Initialize the page on mount
   onMount(() => {
-    // Set up keyboard event listeners
-    window.addEventListener('keydown', handleKeydown);
+    // Initialize loading state
+    const { unsubscribe: unsubscribeLoading } = initializeLoadingState();
+
+    // Set up keyboard event listeners using the service
+    const keyboardCleanup = setupKeyboardControls();
 
     // Set up an interval to update the current time
     const timeInterval = setInterval(() => {
       currentTime.set(new Date());
     }, 1000);
 
-    // Set loading state to false once we have data
-    const unsubscribeRegions = regions.subscribe(value => {
-      if (value && value.length > 0) {
-        isLoading.set(false);
-      }
-    });
-
     // Return a cleanup function
     return () => {
-      window.removeEventListener('keydown', handleKeydown);
+      keyboardCleanup();
+      unsubscribeLoading();
       clearInterval(timeInterval);
-      unsubscribeRegions();
     };
   });
 
-  // Handle keyboard shortcuts
-  function handleKeydown(event: KeyboardEvent): void {
-    if (event.key === ' ') {
-      // Space bar - toggle play/pause
-      togglePlay();
-      event.preventDefault();
-    } else if (event.key === 'ArrowRight') {
-      // Right arrow - next region
-      nextRegionHandler();
-      event.preventDefault();
-    } else if (event.key === 'ArrowLeft') {
-      // Left arrow - previous region
-      previousRegionHandler();
-      event.preventDefault();
-    } else if (event.key === 'a') {
-      // 'a' key - toggle autoplay
-      toggleAutoplayHandler();
-      event.preventDefault();
-    }
-  }
+  // Keyboard shortcuts are now handled by transportService.setupKeyboardControls()
 
   // Use real data or null if not available
   $: displayRegion = $currentRegion;
@@ -219,48 +118,14 @@
   $: hasData = $regions && $regions.length > 0;
 
   // Wrapper for handleProgressBarClick that also handles popover
-  function handleProgressBarClickWithPopover(event: MouseEvent): void {
-    if (!$currentRegion) return;
-
-    // Get the click position relative to the progress container
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const containerWidth = rect.width;
-
-    // Calculate the percentage of the click position
-    const percentage = Math.max(0, Math.min(1, clickX / containerWidth));
-
-    // Calculate position based on percentage
-    const regionDuration = $songDuration || ($currentRegion.end - $currentRegion.start);
-    const clickPosition = $currentRegion.start + (percentage * regionDuration);
-
-    // Calculate popover position, ensuring it stays within viewport
-    let popoverX = clickX;
-
-    // Ensure popover doesn't go off the left or right edge
-    // Assuming popover width is about 60px
-    const popoverWidth = 60;
-    const minX = popoverWidth / 2;
-    const maxX = containerWidth - (popoverWidth / 2);
-
-    if (popoverX < minX) popoverX = minX;
-    if (popoverX > maxX) popoverX = maxX;
-
-    // Set the popover position and time
-    popoverPosition.set({
-      x: popoverX,
-      y: rect.top - 30 // Position above the progress bar
-    });
-    popoverTime.set(clickPosition - $currentRegion.start); // Time relative to region start
-    popoverVisible.set(true);
-
-    // Call the original handler
-    handleProgressBarClick(event);
-
-    // Hide the popover after 2 seconds
-    setTimeout(() => {
-      popoverVisible.set(false);
-    }, 2000);
+  function handleProgressBarClickWithPopoverUI(event: MouseEvent): void {
+    // Use the transportService's handleProgressBarClickWithPopover function
+    // Pass the showPopover and calculatePopoverPosition functions from uiStateService
+    handleProgressBarClickWithPopover(
+      event,
+      showPopover,
+      calculatePopoverPosition
+    );
   }
 </script>
 
@@ -317,7 +182,7 @@
       <!-- Progress bar -->
       <div
         class="progress-container"
-        on:click={$transportButtonsDisabled ? null : handleProgressBarClickWithPopover}
+        on:click={$transportButtonsDisabled ? null : handleProgressBarClickWithPopoverUI}
         class:disabled={$transportButtonsDisabled}
       >
         <div

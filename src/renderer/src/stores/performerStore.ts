@@ -18,11 +18,16 @@ import {
   markers,
   sortedMarkers,
   displayMarkers,
+  type Marker
+} from './markerStore';
+import {
   getCustomLengthForRegion,
   has1008MarkerInRegion,
   getEffectiveRegionLength,
-  type Marker
-} from './markerStore';
+  extractLengthFromMarker,
+  getMarkersInRegion
+} from '../lib/utils/markerUtils';
+import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
 import {
   currentSetlist,
   type Setlist
@@ -188,11 +193,8 @@ export function stopLocalTimer(): void {
 export function findLengthMarkerInRegion(markerList: Marker[], region: Region): Marker | null {
   if (!region || !markerList || markerList.length === 0) return null;
 
-  // Find markers that are within the region and have a !length tag
-  const lengthMarkers = markerList.filter(marker =>
-    marker.position >= region.start &&
-    marker.position <= region.end
-  );
+  // Find markers that are within the region
+  const lengthMarkers = getMarkersInRegion(markerList, region);
 
   // Check each marker for !length tag
   for (const marker of lengthMarkers) {
@@ -205,48 +207,7 @@ export function findLengthMarkerInRegion(markerList: Marker[], region: Region): 
   return null;
 }
 
-/**
- * Helper function to extract length from marker name
- * @param name - The marker name
- * @returns The extracted length or null if not found
- */
-export function extractLengthFromMarker(name: string): number | null {
-  const lengthMatch = name.match(/!length:(\d+(\.\d+)?)/);
-  return lengthMatch ? parseFloat(lengthMatch[1]) : null;
-}
-
-/**
- * Format time in seconds to MM:SS format
- * @param seconds - The time in seconds
- * @returns The formatted time
- */
-export function formatTime(seconds: number | undefined): string {
-  if (seconds === undefined || seconds === null) return '--:--';
-
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-/**
- * Format time in seconds to HH:MM:SS format for longer durations (omits hours if zero)
- * @param seconds - The time in seconds
- * @returns The formatted time
- */
-export function formatLongTime(seconds: number | undefined): string {
-  if (seconds === undefined || seconds === null) return '--:--';
-
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  // Only include hours in the output if they are non-zero
-  if (hours > 0) {
-    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  } else {
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-}
+// Time formatting functions are now imported from timeUtils
 
 /**
  * Toggle play/pause

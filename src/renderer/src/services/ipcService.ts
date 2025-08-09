@@ -328,46 +328,107 @@ export function cleanupRegionAndPlaybackListeners(): void {
 }
 
 /**
- * Creates the IPC control interface
+ * Safely execute an IPC call with error handling
+ * @param operation - Description of the operation for logging
+ * @param ipcCall - The IPC function to call
+ * @param fallbackValue - Value to return if the call fails
+ * @returns Promise resolving to the result of the IPC call or fallback value
+ */
+async function safeIpcCall<T>(
+  operation: string,
+  ipcCall: () => Promise<T>,
+  fallbackValue: T
+): Promise<T> {
+  try {
+    return await ipcCall();
+  } catch (error) {
+    logger.error(`Error during ${operation}:`, error);
+    createErrorMessage(`Failed to ${operation.toLowerCase()}`);
+    return fallbackValue;
+  }
+}
+
+/**
+ * Creates the IPC control interface with improved error handling
  */
 function createIpcControl(): IpcControl {
   return {
-    refreshRegions: () => window.electronAPI.refreshRegions(),
-    seekToPosition: (position: number, useCountIn: boolean = false) => {
-      // Pass both position and useCountIn to the IPC method
-      // The backend will handle positioning the cursor 2 bars before the target if useCountIn is true
-      return window.electronAPI.seekToPosition(position.toString(), useCountIn);
-    },
-    togglePlay: () => window.electronAPI.togglePlay(),
-    playWithCountIn: () => window.electronAPI.playWithCountIn(),
-    seekToRegion: (regionId: string) => window.electronAPI.seekToRegion(regionId),
-    nextRegion: async () => {
-      const result = await window.electronAPI.nextRegion();
-      return result.success;
-    },
-    previousRegion: async () => {
-      const result = await window.electronAPI.previousRegion();
-      return result.success;
-    },
-    seekToCurrentRegionStart: () => window.electronAPI.seekToCurrentRegionStart(),
-    refreshProjectId: () => window.electronAPI.refreshProjectId(),
-    refreshMarkers: () => window.electronAPI.refreshMarkers(),
-    setAutoplayEnabled: (enabled: boolean) => window.electronAPI.setAutoplayEnabled(enabled),
-    setCountInEnabled: (enabled: boolean) => window.electronAPI.setCountInEnabled(enabled),
-    setSelectedSetlist: (setlistId: string | null) => window.electronAPI.setSelectedSetlist(setlistId),
-    disconnect: () => {
-      // Clean up resources
-      stopPingInterval();
+    refreshRegions: () =>
+      safeIpcCall('refresh regions', () => window.electronAPI.refreshRegions(), []),
 
-      // Remove all event listeners
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.REGIONS_UPDATE);
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.MARKERS_UPDATE);
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.PLAYBACK_STATE_UPDATE);
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.STATUS_MESSAGE);
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_ID_UPDATE);
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_CHANGED);
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.MIDI_ACTIVITY);
-      window.electronAPI.removeAllListeners(IPC_CHANNELS.CONNECTION_CHANGE);
+    seekToPosition: (position: number, useCountIn: boolean = false) =>
+      safeIpcCall('seek to position',
+        () => window.electronAPI.seekToPosition(position.toString(), useCountIn),
+        void 0),
+
+    togglePlay: () =>
+      safeIpcCall('toggle playback', () => window.electronAPI.togglePlay(), void 0),
+
+    playWithCountIn: () =>
+      safeIpcCall('play with count-in', () => window.electronAPI.playWithCountIn(), void 0),
+
+    seekToRegion: (regionId: string) =>
+      safeIpcCall('seek to region', () => window.electronAPI.seekToRegion(regionId), void 0),
+
+    nextRegion: async () => {
+      const result = await safeIpcCall('go to next region',
+        () => window.electronAPI.nextRegion(),
+        { success: false });
+      return result.success;
+    },
+
+    previousRegion: async () => {
+      const result = await safeIpcCall('go to previous region',
+        () => window.electronAPI.previousRegion(),
+        { success: false });
+      return result.success;
+    },
+
+    seekToCurrentRegionStart: () =>
+      safeIpcCall('seek to current region start',
+        () => window.electronAPI.seekToCurrentRegionStart(),
+        void 0),
+
+    refreshProjectId: () =>
+      safeIpcCall('refresh project ID', () => window.electronAPI.refreshProjectId(), ''),
+
+    refreshMarkers: () =>
+      safeIpcCall('refresh markers', () => window.electronAPI.refreshMarkers(), []),
+
+    setAutoplayEnabled: (enabled: boolean) =>
+      safeIpcCall('set autoplay mode',
+        () => window.electronAPI.setAutoplayEnabled(enabled),
+        void 0),
+
+    setCountInEnabled: (enabled: boolean) =>
+      safeIpcCall('set count-in mode',
+        () => window.electronAPI.setCountInEnabled(enabled),
+        void 0),
+
+    setSelectedSetlist: (setlistId: string | null) =>
+      safeIpcCall('set selected setlist',
+        () => window.electronAPI.setSelectedSetlist(setlistId),
+        void 0),
+
+    disconnect: () => {
+      try {
+        // Clean up resources
+        stopPingInterval();
+
+        // Remove all event listeners
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.REGIONS_UPDATE);
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.MARKERS_UPDATE);
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.PLAYBACK_STATE_UPDATE);
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.STATUS_MESSAGE);
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_ID_UPDATE);
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_CHANGED);
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.MIDI_ACTIVITY);
+        window.electronAPI.removeAllListeners(IPC_CHANNELS.CONNECTION_CHANGE);
+
+        logger.log('Successfully disconnected and cleaned up event listeners');
+      } catch (error) {
+        logger.error('Error during disconnect:', error);
+      }
     }
   };
 }

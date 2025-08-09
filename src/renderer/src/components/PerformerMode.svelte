@@ -12,19 +12,19 @@
   } from '../stores/playbackStore';
   import {
     markers,
-    sortedMarkers,
+    sortedMarkers
+  } from '../stores/markerStore';
+  import {
     getCustomLengthForRegion,
     has1008MarkerInRegion,
     getEffectiveRegionLength
-  } from '../stores/markerStore';
+  } from '../lib/utils/markerUtils';
   import { currentSetlist } from '../stores/setlistStore';
   import { View, navigateTo } from '../stores/navigationStore';
   import SystemStats from './SystemStats.svelte';
   import {
     // Functions
     safeTransportAction,
-    formatTime,
-    formatLongTime,
     togglePlay,
     nextRegionHandler,
     previousRegionHandler,
@@ -43,6 +43,7 @@
     // Derived store
     nextRegion
   } from '../services/transportService';
+  import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
 
   import { writable } from 'svelte/store';
 

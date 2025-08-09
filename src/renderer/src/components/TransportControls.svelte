@@ -34,7 +34,6 @@
   import {
     // Functions
     safeTransportAction,
-    formatTime,
     togglePlay,
     nextRegionHandler,
     previousRegionHandler,
@@ -57,6 +56,7 @@
     nextRegion,
     previousRegion
   } from '../services/transportService';
+  import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
 
   // Track loading state
   const isLoading: Writable<boolean> = writable(true);

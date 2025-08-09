@@ -5,9 +5,10 @@
     statusMessage,
     type Region,
     markers,
-    getEffectiveRegionLength,
     autoplayEnabled
   } from '../stores';
+  import { getEffectiveRegionLength } from '../lib/utils/markerUtils';
+  import { formatTime, calculateDuration as calcDuration } from '../lib/utils/timeUtils';
   import { setSelectedSetlist } from '../stores/playbackStore';
   import {
     setlists,
@@ -95,19 +96,6 @@
       }));
 
   /**
-   * Format time in seconds to MM:SS format
-   * @param seconds - Time in seconds
-   * @returns Formatted time string (MM:SS)
-   */
-  function formatTime(seconds: number | undefined): string {
-    if (seconds === undefined || seconds === null) return '--:--';
-
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-
-  /**
    * Calculate duration from start and end times, considering custom length markers
    * @param start - Start time in seconds
    * @param end - End time in seconds
@@ -123,7 +111,7 @@
       return formatTime(getEffectiveRegionLength(region, $markers));
     } else {
       // Fallback to simple calculation if region not found
-      return formatTime(end - start);
+      return formatTime(calcDuration(start, end, 0));
     }
   }
 

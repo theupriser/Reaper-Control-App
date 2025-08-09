@@ -3,7 +3,7 @@
  * Helper functions for working with Svelte stores
  */
 
-import type { Readable } from 'svelte/store';
+import type { Readable, Writable } from 'svelte/store';
 import logger from './logger';
 
 /**
@@ -21,6 +21,35 @@ export function getStoreValue<T>(store: Readable<T>): T {
 }
 
 /**
+ * Normalize an ID that could be either string or number
+ * @param id - ID to normalize
+ * @returns Normalized ID (converted to number if it's a numeric string)
+ */
+export function normalizeId(id: string | number): string | number {
+  return typeof id === 'string' && !isNaN(Number(id)) ? Number(id) : id;
+}
+
+/**
+ * Find an item by ID with proper type normalization
+ * @param items - Array of items to search in
+ * @param id - ID to find
+ * @param idField - Name of the ID field (default: 'id')
+ * @returns Found item or null
+ */
+export function findItemByIdInArray<T extends Record<string, any>>(
+  items: T[],
+  id: number | string,
+  idField: string = 'id'
+): T | null {
+  const idToFind = normalizeId(id);
+
+  return items.find(item => {
+    const itemId = normalizeId(item[idField]);
+    return itemId === idToFind;
+  }) || null;
+}
+
+/**
  * Find an item in a store by its ID
  * @param store - Svelte readable store containing an array of items
  * @param id - ID to find
@@ -33,14 +62,47 @@ export function findItemById<T extends Record<string, any>>(
   idField: string = 'id'
 ): T | null {
   const items = getStoreValue(store);
-  const idToFind = typeof id === 'string' && !isNaN(Number(id)) ? Number(id) : id;
-  return items.find(item => {
-    const itemId = item[idField];
-    const normalizedItemId = typeof itemId === 'string' && !isNaN(Number(itemId))
-      ? Number(itemId)
-      : itemId;
-    return normalizedItemId === idToFind;
-  }) || null;
+  return findItemByIdInArray(items, id, idField);
+}
+
+/**
+ * Sort items by a specified field if provided
+ * @param items - Array of items to sort
+ * @param sortField - Field to sort by (optional)
+ * @returns Sorted array (new array if sorted, original array if not)
+ */
+export function sortItemsByField<T extends Record<string, any>>(
+  items: T[],
+  sortField?: string
+): T[] {
+  if (!sortField) return items;
+  return [...items].sort((a, b) => {
+    const aValue = a[sortField];
+    const bValue = b[sortField];
+    return typeof aValue === 'number' && typeof bValue === 'number'
+      ? aValue - bValue
+      : String(aValue).localeCompare(String(bValue));
+  });
+}
+
+/**
+ * Find the index of an item by ID in an array
+ * @param items - Array of items
+ * @param id - ID to find
+ * @param idField - Name of the ID field (default: 'id')
+ * @returns Index of the item or -1 if not found
+ */
+export function findItemIndexById<T extends Record<string, any>>(
+  items: T[],
+  id: number | string,
+  idField: string = 'id'
+): number {
+  const idToFind = normalizeId(id);
+
+  return items.findIndex(item => {
+    const itemId = normalizeId(item[idField]);
+    return itemId === idToFind;
+  });
 }
 
 /**
@@ -60,22 +122,10 @@ export function getNextItem<T extends Record<string, any>>(
   if (!items.length) return null;
 
   // Sort the items if a sort field is provided
-  const sortedItems = sortField
-    ? [...items].sort((a, b) => a[sortField] - b[sortField])
-    : items;
+  const sortedItems = sortItemsByField(items, sortField);
 
   // Find the current item's index
-  const currentIdToFind = typeof currentId === 'string' && !isNaN(Number(currentId))
-    ? Number(currentId)
-    : currentId;
-
-  const currentIndex = sortedItems.findIndex(item => {
-    const itemId = item[idField];
-    const normalizedItemId = typeof itemId === 'string' && !isNaN(Number(itemId))
-      ? Number(itemId)
-      : itemId;
-    return normalizedItemId === currentIdToFind;
-  });
+  const currentIndex = findItemIndexById(sortedItems, currentId, idField);
 
   // Return the next item if it exists
   if (currentIndex !== -1 && currentIndex < sortedItems.length - 1) {
@@ -102,22 +152,10 @@ export function getPreviousItem<T extends Record<string, any>>(
   if (!items.length) return null;
 
   // Sort the items if a sort field is provided
-  const sortedItems = sortField
-    ? [...items].sort((a, b) => a[sortField] - b[sortField])
-    : items;
+  const sortedItems = sortItemsByField(items, sortField);
 
   // Find the current item's index
-  const currentIdToFind = typeof currentId === 'string' && !isNaN(Number(currentId))
-    ? Number(currentId)
-    : currentId;
-
-  const currentIndex = sortedItems.findIndex(item => {
-    const itemId = item[idField];
-    const normalizedItemId = typeof itemId === 'string' && !isNaN(Number(itemId))
-      ? Number(itemId)
-      : itemId;
-    return normalizedItemId === currentIdToFind;
-  });
+  const currentIndex = findItemIndexById(sortedItems, currentId, idField);
 
   // Return the previous item if it exists
   if (currentIndex > 0) {
@@ -132,17 +170,19 @@ export function getPreviousItem<T extends Record<string, any>>(
  * @param setter - Function to set store value
  * @param data - Data to update the store with
  * @param converter - Optional function to convert data items
+ * @param fallbackValue - Optional fallback value if data is invalid (default: empty array)
  * @returns True if update was successful, false otherwise
  */
 export function safeStoreUpdate<T>(
   setter: (value: T[]) => void,
   data: T[] | null | undefined,
-  converter?: (item: any) => T
+  converter?: (item: any) => T,
+  fallbackValue: T[] = []
 ): boolean {
   try {
     // Validate data
     if (!data || !Array.isArray(data)) {
-      setter([]);
+      setter(fallbackValue);
       return false;
     }
 
@@ -156,7 +196,35 @@ export function safeStoreUpdate<T>(
     return true;
   } catch (error) {
     logger.error('Error updating store:', error);
-    setter([]);
+    setter(fallbackValue);
+    return false;
+  }
+}
+
+/**
+ * Safely update a single value store, handling errors
+ * @param store - Writable store to update
+ * @param value - New value
+ * @param fallbackValue - Optional fallback value if an error occurs
+ * @returns True if update was successful, false otherwise
+ */
+export function safeStoreSet<T>(
+  store: Writable<T>,
+  value: T,
+  fallbackValue?: T
+): boolean {
+  try {
+    store.set(value);
+    return true;
+  } catch (error) {
+    logger.error('Error setting store value:', error);
+    if (fallbackValue !== undefined) {
+      try {
+        store.set(fallbackValue);
+      } catch (fallbackError) {
+        logger.error('Error setting fallback value:', fallbackError);
+      }
+    }
     return false;
   }
 }

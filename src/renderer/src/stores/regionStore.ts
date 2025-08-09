@@ -1,17 +1,17 @@
 /**
  * Region Store
  * Manages the state of regions and the current region
+ * Uses storeFactory for common store operations
  */
 
-import { writable, derived, type Writable, type Readable } from 'svelte/store';
+import { derived, type Readable } from 'svelte/store';
 import { playbackState } from './playbackStore';
-import logger from '../lib/utils/logger';
-import { getStoreValue, findItemById, getNextItem, getPreviousItem, safeStoreUpdate } from '../lib/utils/storeUtils';
+import { createStoreFactory, type IdentifiableItem } from '../lib/utils/storeFactory';
 
 /**
  * Interface for region
  */
-export interface Region {
+export interface Region extends IdentifiableItem {
   id: number;
   name: string;
   start: number;
@@ -20,101 +20,33 @@ export interface Region {
 }
 
 /**
- * Store for the list of regions
+ * Create a derived store for the current region ID from playbackState
  */
-export const regions: Writable<Region[]> = writable([]);
-
-/**
- * Derived store for the current region
- * Combines regions and playbackState to determine the current region
- */
-export const currentRegion: Readable<Region | null> = derived(
-  [regions, playbackState],
-  ([$regions, $playbackState]) => {
-    if (!$playbackState.currentRegionId) return null;
-    return $regions.find(region => region.id === $playbackState.currentRegionId) || null;
-  }
+const currentRegionId: Readable<number | null> = derived(
+  playbackState,
+  $playbackState => $playbackState.currentRegionId
 );
 
 /**
- * Updates the regions store with new data
- * @param data - Array of region objects
- * @returns True if update was successful
+ * Create region store factory with all common operations
  */
-export function updateRegions(data: Region[] | null | undefined): boolean {
-  return safeStoreUpdate<Region>(
-    regions.set,
-    data,
-    region => ({
-      ...region,
-      id: typeof region.id === 'string' ? parseInt(region.id, 10) : region.id
-    })
-  );
-}
+const regionStoreFactory = createStoreFactory<Region>({
+  name: 'Region',
+  currentIdStore: currentRegionId,
+  converter: region => ({
+    ...region,
+    id: typeof region.id === 'string' ? parseInt(region.id, 10) : region.id
+  })
+});
 
-/**
- * Finds a region by its ID
- * @param regionId - The ID of the region to find
- * @returns The region object or null if not found
- */
-export function findRegionById(regionId: number): Region | null {
-  return findItemById<Region>(regions, regionId);
-}
+// Export the main store and derived stores
+export const regions = regionStoreFactory.store;
+export const currentRegion = regionStoreFactory.currentItem;
+export const nextRegion = regionStoreFactory.nextItem;
+export const previousRegion = regionStoreFactory.previousItem;
 
-/**
- * Gets the next region based on the current region
- * @returns The next region or null if there is no next region
- */
-export function getNextRegion(): Region | null {
-  const currentRegionValue = getStoreValue(currentRegion);
-  const regionsValue = getStoreValue(regions);
-
-  if (!currentRegionValue) return null;
-
-  return getNextItem<Region>(regionsValue, currentRegionValue.id);
-}
-
-/**
- * Gets the previous region based on the current region
- * @returns The previous region or null if there is no previous region
- */
-export function getPreviousRegion(): Region | null {
-  const currentRegionValue = getStoreValue(currentRegion);
-  const regionsValue = getStoreValue(regions);
-
-  if (!currentRegionValue) return null;
-
-  return getPreviousItem<Region>(regionsValue, currentRegionValue.id);
-}
-
-/**
- * Derived store for the next region
- * For now, this is a simplified version without setlist support
- */
-export const nextRegion: Readable<Region | null> = derived(
-  [currentRegion, regions],
-  ([$currentRegion, $regions]) => {
-    if (!$currentRegion) return null;
-
-    // Get the next region from all regions
-    const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
-    return currentIndex !== -1 && currentIndex < $regions.length - 1 ?
-      $regions[currentIndex + 1] : null;
-  }
-);
-
-/**
- * Derived store for the previous region
- * For now, this is a simplified version without setlist support
- */
-export const previousRegion: Readable<Region | null> = derived(
-  [currentRegion, regions],
-  ([$currentRegion, $regions]) => {
-    if (!$currentRegion) return null;
-
-    // Get the next region from all regions
-    const currentIndex = $regions.findIndex(r => r.id === $currentRegion.id);
-    return currentIndex !== -1 && currentIndex > 0 ?
-      $regions[currentIndex - 1] : null;
-  }
-);
+// Export helper functions
+export const updateRegions = regionStoreFactory.updateItems;
+export const findRegionById = regionStoreFactory.findItemById;
+export const getNextRegion = regionStoreFactory.getNextItem;
+export const getPreviousRegion = regionStoreFactory.getPreviousItem;

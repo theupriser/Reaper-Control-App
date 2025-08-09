@@ -2,56 +2,30 @@
  * Marker Service
  * Manages markers in REAPER
  */
-import { EventEmitter } from 'events';
 import { Marker } from '../types';
 import { ReaperConnector } from './reaperConnector';
 import logger from '../utils/logger';
+import { BaseService } from './baseService';
 
-export class MarkerService extends EventEmitter {
-  private markers: Marker[] = [];
-  private reaperConnector: ReaperConnector;
-
+export class MarkerService extends BaseService<Marker> {
   /**
    * Constructor
    * @param reaperConnector - REAPER connector instance
    */
   constructor(reaperConnector: ReaperConnector) {
-    super();
-    this.reaperConnector = reaperConnector;
-
-    // Set up event listeners
-    this.setupEventListeners();
-
-    logger.info('Marker service initialized');
+    super(reaperConnector, 'markers');
   }
 
   /**
    * Set up event listeners
    */
-  private setupEventListeners(): void {
+  protected override setupEventListeners(): void {
+    super.setupEventListeners();
+
     // Listen for markers updates from REAPER connector
     this.reaperConnector.on('markers', (markers: Marker[]) => {
-      this.handleMarkersUpdate(markers);
+      this.handleItemsUpdate(markers);
     });
-
-    // Listen for project changes
-    this.reaperConnector.on('projectChanged', () => {
-      this.refreshMarkers();
-    });
-  }
-
-  /**
-   * Handle markers update
-   * @param markers - Updated markers
-   */
-  private handleMarkersUpdate(markers: Marker[]): void {
-    logger.debug('Markers updated', { count: markers.length });
-
-    // Update markers
-    this.markers = markers;
-
-    // Emit markers update event
-    this.emit('markers', this.markers);
   }
 
   /**
@@ -59,7 +33,7 @@ export class MarkerService extends EventEmitter {
    * @returns All markers
    */
   public getMarkers(): Marker[] {
-    return this.markers;
+    return this.getItems();
   }
 
   /**
@@ -68,7 +42,16 @@ export class MarkerService extends EventEmitter {
    * @returns Marker or undefined if not found
    */
   public getMarkerById(id: string): Marker | undefined {
-    return this.markers.find(marker => marker.id === id);
+    return this.items.find(marker => marker.id === id);
+  }
+
+  /**
+   * Implementation of abstract method from BaseService
+   * @param id - Item ID
+   * @returns Item or undefined if not found
+   */
+  public getItemById(id: string | number): Marker | undefined {
+    return this.getMarkerById(String(id));
   }
 
   /**
@@ -101,7 +84,7 @@ export class MarkerService extends EventEmitter {
    * @returns Next marker or undefined if not found
    */
   public getNextMarker(position: number): Marker | undefined {
-    const nextMarkers = this.markers
+    const nextMarkers = this.items
       .filter(marker => marker.position > position)
       .sort((a, b) => a.position - b.position);
 
@@ -114,7 +97,7 @@ export class MarkerService extends EventEmitter {
    * @returns Previous marker or undefined if not found
    */
   public getPreviousMarker(position: number): Marker | undefined {
-    const prevMarkers = this.markers
+    const prevMarkers = this.items
       .filter(marker => marker.position < position)
       .sort((a, b) => b.position - a.position);
 
@@ -122,27 +105,74 @@ export class MarkerService extends EventEmitter {
   }
 
   /**
+   * Implementation of abstract method from BaseService
+   * Get next item based on current item ID
+   * Note: For markers, this is position-based rather than ID-based
+   * @param currentId - Current marker ID or position
+   * @returns Next marker or undefined if not found
+   */
+  public getNextItem(currentId: string | number): Marker | undefined {
+    // If currentId is a position number, use it directly
+    if (typeof currentId === 'number') {
+      return this.getNextMarker(currentId);
+    }
+
+    // If currentId is a string ID, find the marker first
+    const marker = this.getItemById(currentId);
+    if (marker) {
+      return this.getNextMarker(marker.position);
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Implementation of abstract method from BaseService
+   * Get previous item based on current item ID
+   * Note: For markers, this is position-based rather than ID-based
+   * @param currentId - Current marker ID or position
+   * @returns Previous marker or undefined if not found
+   */
+  public getPreviousItem(currentId: string | number): Marker | undefined {
+    // If currentId is a position number, use it directly
+    if (typeof currentId === 'number') {
+      return this.getPreviousMarker(currentId);
+    }
+
+    // If currentId is a string ID, find the marker first
+    const marker = this.getItemById(currentId);
+    if (marker) {
+      return this.getPreviousMarker(marker.position);
+    }
+
+    return undefined;
+  }
+
+  /**
    * Refresh markers from REAPER
    * @returns Promise that resolves with the markers
    */
   public async refreshMarkers(): Promise<Marker[]> {
-    try {
+    return this.refreshItems();
+  }
+
+  /**
+   * Implementation of abstract method from BaseService
+   * Refresh items from REAPER
+   * @returns Promise that resolves with the items
+   */
+  public async refreshItems(): Promise<Marker[]> {
+    return this.withErrorHandling(async () => {
       logger.debug('Refreshing markers');
 
       // Get markers from REAPER connector
       const markers = await this.reaperConnector.refreshMarkers();
 
-      // Update markers
-      this.markers = markers;
+      // Update markers through the base class method
+      this.handleItemsUpdate(markers);
 
-      // Emit markers update event
-      this.emit('markers', this.markers);
-
-      return this.markers;
-    } catch (error) {
-      logger.error('Failed to refresh markers', { error });
-      throw error;
-    }
+      return this.items;
+    }, 'refresh markers');
   }
 
   /**
@@ -151,7 +181,7 @@ export class MarkerService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async seekToMarker(markerId: string): Promise<void> {
-    try {
+    return this.withErrorHandling(async () => {
       logger.debug('Seeking to marker', { markerId });
 
       // Get marker
@@ -162,10 +192,7 @@ export class MarkerService extends EventEmitter {
 
       // Seek to marker position using REAPER connector
       await this.reaperConnector.seekToPosition(marker.position);
-    } catch (error) {
-      logger.error('Failed to seek to marker', { error, markerId });
-      throw error;
-    }
+    }, 'seek to marker', { markerId });
   }
 
   /**
@@ -174,7 +201,7 @@ export class MarkerService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async nextMarker(currentPosition: number): Promise<void> {
-    try {
+    return this.withErrorHandling(async () => {
       logger.debug('Going to next marker', { currentPosition });
 
       // Get next marker
@@ -185,10 +212,7 @@ export class MarkerService extends EventEmitter {
 
       // Seek to marker position using REAPER connector
       await this.reaperConnector.seekToPosition(nextMarker.position);
-    } catch (error) {
-      logger.error('Failed to go to next marker', { error, currentPosition });
-      throw error;
-    }
+    }, 'go to next marker', { currentPosition });
   }
 
   /**
@@ -197,7 +221,7 @@ export class MarkerService extends EventEmitter {
    * @returns Promise that resolves when the operation is complete
    */
   public async previousMarker(currentPosition: number): Promise<void> {
-    try {
+    return this.withErrorHandling(async () => {
       logger.debug('Going to previous marker', { currentPosition });
 
       // Get previous marker
@@ -208,9 +232,6 @@ export class MarkerService extends EventEmitter {
 
       // Seek to marker position using REAPER connector
       await this.reaperConnector.seekToPosition(prevMarker.position);
-    } catch (error) {
-      logger.error('Failed to go to previous marker', { error, currentPosition });
-      throw error;
-    }
+    }, 'go to previous marker', { currentPosition });
   }
 }

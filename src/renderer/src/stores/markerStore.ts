@@ -6,6 +6,7 @@
 import { writable, derived, type Writable, type Readable } from 'svelte/store';
 import logger from '../lib/utils/logger';
 import { type Region } from './regionStore';
+import { getStoreValue, findItemById, getNextItem, getPreviousItem, safeStoreUpdate } from '../lib/utils/storeUtils';
 
 /**
  * Interface for marker
@@ -35,22 +36,17 @@ markers.set([]);
 /**
  * Update markers with new data
  * @param markerData - Array of marker objects
+ * @returns True if update was successful
  */
-export function updateMarkers(markerData: any): void {
-  // Ensure markerData is an array
-  if (!Array.isArray(markerData)) {
-    logger.error('Received markerData is not an array:', markerData);
-    markers.set([]);
-    return;
-  }
-
-  // Convert marker IDs from strings to numbers if needed
-  const convertedMarkers = markerData.map(marker => ({
-    ...marker,
-    id: typeof marker.id === 'string' ? parseInt(marker.id, 10) : marker.id
-  }));
-
-  markers.set(convertedMarkers);
+export function updateMarkers(markerData: Marker[] | null | undefined): boolean {
+  return safeStoreUpdate<Marker>(
+    markers.set,
+    markerData,
+    marker => ({
+      ...marker,
+      id: typeof marker.id === 'string' ? parseInt(marker.id, 10) : marker.id
+    })
+  );
 }
 
 /**
@@ -73,12 +69,7 @@ export function refreshMarkers(): Promise<void> {
  * @returns Marker object or null if not found
  */
 export function findMarkerById(id: number): Marker | null {
-  let result: Marker | null = null;
-  const unsubscribe = markers.subscribe(markerList => {
-    result = markerList.find(marker => marker.id === id) || null;
-  });
-  unsubscribe();
-  return result;
+  return findItemById<Marker>(markers, id);
 }
 
 /**

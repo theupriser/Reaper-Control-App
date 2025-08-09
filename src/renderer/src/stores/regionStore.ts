@@ -6,6 +6,7 @@
 import { writable, derived, type Writable, type Readable } from 'svelte/store';
 import { playbackState } from './playbackStore';
 import logger from '../lib/utils/logger';
+import { getStoreValue, findItemById, getNextItem, getPreviousItem, safeStoreUpdate } from '../lib/utils/storeUtils';
 
 /**
  * Interface for region
@@ -41,27 +42,14 @@ export const currentRegion: Readable<Region | null> = derived(
  * @returns True if update was successful
  */
 export function updateRegions(data: Region[] | null | undefined): boolean {
-  try {
-    // Validate the data and ensure data is an array
-    if (!data || !Array.isArray(data)) {
-      regions.set([]);
-      return false;
-    }
-
-    // Convert region IDs from strings to numbers if needed
-    const convertedRegions = data.map(region => ({
+  return safeStoreUpdate<Region>(
+    regions.set,
+    data,
+    region => ({
       ...region,
       id: typeof region.id === 'string' ? parseInt(region.id, 10) : region.id
-    }));
-
-    // Update the regions store
-    regions.set(convertedRegions);
-    return true;
-  } catch (error) {
-    logger.error('Error processing regions data:', error);
-    regions.set([]);
-    return false;
-  }
+    })
+  );
 }
 
 /**
@@ -70,17 +58,7 @@ export function updateRegions(data: Region[] | null | undefined): boolean {
  * @returns The region object or null if not found
  */
 export function findRegionById(regionId: number): Region | null {
-  let result: Region | null = null;
-
-  // Get the current regions
-  const unsubscribe = regions.subscribe(currentRegions => {
-    result = currentRegions.find(region => region.id === regionId) || null;
-  });
-
-  // Clean up subscription
-  unsubscribe();
-
-  return result;
+  return findItemById<Region>(regions, regionId);
 }
 
 /**
@@ -88,31 +66,12 @@ export function findRegionById(regionId: number): Region | null {
  * @returns The next region or null if there is no next region
  */
 export function getNextRegion(): Region | null {
-  let result: Region | null = null;
-  let currentRegionValue: Region | null = null;
-  let regionsValue: Region[] = [];
+  const currentRegionValue = getStoreValue(currentRegion);
+  const regionsValue = getStoreValue(regions);
 
-  // Get current region and regions
-  const unsubscribeCurrentRegion = currentRegion.subscribe(value => {
-    currentRegionValue = value;
-  });
+  if (!currentRegionValue) return null;
 
-  const unsubscribeRegions = regions.subscribe(value => {
-    regionsValue = value;
-  });
-
-  // Clean up subscriptions
-  unsubscribeCurrentRegion();
-  unsubscribeRegions();
-
-  if (currentRegionValue && regionsValue.length > 0) {
-    const currentIndex = regionsValue.findIndex(region => region.id === currentRegionValue.id);
-    if (currentIndex !== -1 && currentIndex < regionsValue.length - 1) {
-      result = regionsValue[currentIndex + 1];
-    }
-  }
-
-  return result;
+  return getNextItem<Region>(regionsValue, currentRegionValue.id);
 }
 
 /**
@@ -120,31 +79,12 @@ export function getNextRegion(): Region | null {
  * @returns The previous region or null if there is no previous region
  */
 export function getPreviousRegion(): Region | null {
-  let result: Region | null = null;
-  let currentRegionValue: Region | null = null;
-  let regionsValue: Region[] = [];
+  const currentRegionValue = getStoreValue(currentRegion);
+  const regionsValue = getStoreValue(regions);
 
-  // Get current region and regions
-  const unsubscribeCurrentRegion = currentRegion.subscribe(value => {
-    currentRegionValue = value;
-  });
+  if (!currentRegionValue) return null;
 
-  const unsubscribeRegions = regions.subscribe(value => {
-    regionsValue = value;
-  });
-
-  // Clean up subscriptions
-  unsubscribeCurrentRegion();
-  unsubscribeRegions();
-
-  if (currentRegionValue && regionsValue.length > 0) {
-    const currentIndex = regionsValue.findIndex(region => region.id === currentRegionValue.id);
-    if (currentIndex > 0) {
-      result = regionsValue[currentIndex - 1];
-    }
-  }
-
-  return result;
+  return getPreviousItem<Region>(regionsValue, currentRegionValue.id);
 }
 
 /**

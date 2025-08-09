@@ -4,7 +4,7 @@
  */
 
 import { writable, derived, type Writable, type Readable } from 'svelte/store';
-import { playbackState, type PlaybackState } from './playbackStore';
+import { playbackState } from './playbackStore';
 import logger from '../lib/utils/logger';
 
 /**

@@ -173,13 +173,6 @@ To create a new release:
 
 ## Future Enhancements
 
-- Enhance the Performer view with more features
-- Add more advanced REAPER control features
-- Implement setlist export/import functionality
-
-## Future Enhancements
-
-- Enhance the Performer view with more features
 - Add more advanced REAPER control features
 - Implement setlist export/import functionality
 

@@ -100,8 +100,8 @@ jobs:
         with:
           draft: true
           files: |
-            reaper-control-windows/**
-            reaper-control-macos/**
-            reaper-control-linux/**
+            reaper-control-windows-*/**
+            reaper-control-macos-*/**
+            reaper-control-linux-*/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

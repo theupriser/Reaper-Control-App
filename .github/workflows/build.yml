@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies with environment fix
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ./install.bat
+            npm ci
           else
             chmod +x ./install.sh
             ./install.sh
@@ -55,7 +55,6 @@ jobs:
           name: reaper-control-windows
           path: |
             dist/*.exe
-            dist/win-unpacked/
 
       - name: Upload macOS artifacts
         if: matrix.os == 'macos-latest'
@@ -64,7 +63,6 @@ jobs:
           name: reaper-control-macos
           path: |
             dist/*.dmg
-            dist/mac-universal/
 
       - name: Upload Linux artifacts
         if: matrix.os == 'ubuntu-latest'

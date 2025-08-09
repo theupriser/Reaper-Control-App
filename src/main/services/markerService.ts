@@ -54,29 +54,6 @@ export class MarkerService extends BaseService<Marker> {
     return this.getMarkerById(String(id));
   }
 
-  /**
-   * Get marker at position
-   * @param position - Position in seconds
-   * @param tolerance - Tolerance in seconds (default: 0.1)
-   * @returns Marker or undefined if not found
-   */
-  public getMarkerAtPosition(position: number, tolerance: number = 0.1): Marker | undefined {
-    return this.markers.find(marker =>
-      Math.abs(marker.position - position) <= tolerance
-    );
-  }
-
-  /**
-   * Get markers in range
-   * @param start - Start position in seconds
-   * @param end - End position in seconds
-   * @returns Markers in range
-   */
-  public getMarkersInRange(start: number, end: number): Marker[] {
-    return this.markers.filter(marker =>
-      marker.position >= start && marker.position <= end
-    );
-  }
 
   /**
    * Get next marker

@@ -104,7 +104,7 @@ export const nextRegion: Readable<Region | null> = derived(
 );
 
 /**
- * Derived store for the next region
+ * Derived store for the previous region
  * For now, this is a simplified version without setlist support
  */
 export const previousRegion: Readable<Region | null> = derived(

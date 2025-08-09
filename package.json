@@ -16,14 +16,14 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "cross-env npm_config_build_from_source=false electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
-    "build:win-ci": "electron-vite build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:mac:x64": "npm run build && electron-builder --mac --x64",
-    "build:mac:arm64": "npm run build && electron-builder --mac --arm64",
-    "build:linux": "npm run build && electron-builder --linux",
-    "build:linux:x64": "npm run build && electron-builder --linux --x64",
-    "build:win:x64": "npm run build && electron-builder --win --x64"
+    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:win-ci": "electron-vite build && electron-builder --win --publish never",
+    "build:mac": "npm run build && electron-builder --mac --publish never",
+    "build:mac:x64": "npm run build && electron-builder --mac --x64 --publish never",
+    "build:mac:arm64": "npm run build && electron-builder --mac --arm64 --publish never",
+    "build:linux": "npm run build && electron-builder --linux --publish never",
+    "build:linux:x64": "npm run build && electron-builder --linux --x64 --publish never",
+    "build:win:x64": "npm run build && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

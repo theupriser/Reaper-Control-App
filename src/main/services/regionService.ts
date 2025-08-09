@@ -157,8 +157,6 @@ export class RegionService extends EventEmitter {
     // Set up listener for setlist selection changes
     if (this.projectService) {
       this.projectService.on('selectedSetlist', () => {
-        logger.debug('Selected setlist changed, re-emitting regions with updated filtering');
-        // Re-emit regions with the new filtering applied
         this.emit('regions', this.getRegions());
       });
     }

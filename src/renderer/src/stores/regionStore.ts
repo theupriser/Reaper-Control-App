@@ -42,16 +42,8 @@ export const currentRegion: Readable<Region | null> = derived(
  */
 export function updateRegions(data: Region[] | null | undefined): boolean {
   try {
-    // Validate the data
-    if (!data) {
-      logger.warn('No regions data received');
-      regions.set([]);
-      return false;
-    }
-
-    // Ensure data is an array
-    if (!Array.isArray(data)) {
-      logger.error('Received regions data is not an array:', data);
+    // Validate the data and ensure data is an array
+    if (!data || !Array.isArray(data)) {
       regions.set([]);
       return false;
     }
@@ -62,16 +54,8 @@ export function updateRegions(data: Region[] | null | undefined): boolean {
       id: typeof region.id === 'string' ? parseInt(region.id, 10) : region.id
     }));
 
-    // Log the first region for debugging
-    if (!convertedRegions.length) {
-      logger.warn('No regions received (empty array)');
-    }
-
-    // Sort regions by position (start time) before updating the store
-    const sortedRegions = [...convertedRegions].sort((a, b) => a.start - b.start);
-
     // Update the regions store
-    regions.set(sortedRegions);
+    regions.set(convertedRegions);
     return true;
   } catch (error) {
     logger.error('Error processing regions data:', error);

@@ -72,14 +72,28 @@ jobs:
           path: |
             dist/*.dmg
 
-      - name: Upload Linux artifacts
+      - name: Upload Linux artifacts AppImage
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: reaper-control-linux-${{ matrix.architecture }}
+          name: reaper-control-linux-${{ matrix.architecture }}-AppImage
           path: |
             dist/*.AppImage
+
+      - name: Upload Linux artifacts Snap
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reaper-control-linux-${{ matrix.architecture }}-snap
+          path: |
             dist/*.snap
+
+      - name: Upload Linux artifacts Deb
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reaper-control-linux-${{ matrix.architecture }}-deb
+          path: |
             dist/*.deb
 
   release:

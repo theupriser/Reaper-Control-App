@@ -33,7 +33,7 @@ export class ReaperConnector extends EventEmitter {
     super();
 
     // Initialize axios instance in the connect method
-    this.axiosInstance = null;
+    this.axiosInstance = axios.create();
 
     logger.info('REAPER connector initialized');
   }

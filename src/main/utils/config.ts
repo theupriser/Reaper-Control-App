@@ -98,7 +98,7 @@ function loadConfig(): typeof defaultConfig {
       return { ...defaultConfig };
     }
   } catch (error) {
-    logger.error('Error loading configuration', { error, stack: error.stack });
+    logger.error('Error loading configuration', { error, stack: error instanceof Error ? error.stack : 'Unknown error' });
     return { ...defaultConfig };
   }
 }
@@ -126,8 +126,8 @@ function saveConfig(config: typeof defaultConfig): boolean {
       logger.error('Directory permission error - cannot write to config directory', {
         dirPath,
         error: permError,
-        errorCode: permError.code,
-        errorMessage: permError.message
+        errorCode: permError instanceof Error && 'code' in permError ? permError.code : 'unknown',
+        errorMessage: permError instanceof Error ? permError.message : String(permError)
       });
       return false;
     }
@@ -145,7 +145,7 @@ function saveConfig(config: typeof defaultConfig): boolean {
 
     // Use a temporary file approach to avoid locking issues
     const tempFilePath = `${configFilePath}.tmp`;
-    let fd = null;
+    let fd: number | null = null;
 
     try {
       // Write to temporary file first
@@ -155,7 +155,9 @@ function saveConfig(config: typeof defaultConfig): boolean {
       // Force sync the temporary file
       try {
         fd = fs.openSync(tempFilePath, 'r');
-        fs.fsyncSync(fd);
+        if (fd !== null) {
+          fs.fsyncSync(fd);
+        }
       } finally {
         // Always close the file descriptor if it was opened
         if (fd !== null) {
@@ -179,7 +181,9 @@ function saveConfig(config: typeof defaultConfig): boolean {
       const dirPath = path.dirname(configFilePath);
       try {
         fd = fs.openSync(dirPath, 'r');
-        fs.fsyncSync(fd);
+        if (fd !== null) {
+          fs.fsyncSync(fd);
+        }
       } finally {
         // Always close the directory descriptor if it was opened
         if (fd !== null) {
@@ -200,7 +204,7 @@ function saveConfig(config: typeof defaultConfig): boolean {
         }
       }
 
-      logger.error('Error during file write operations', { error: writeError, stack: writeError.stack });
+      logger.error('Error during file write operations', { error: writeError, stack: writeError instanceof Error ? writeError.stack : 'Unknown error' });
       throw writeError;
     } finally {
       // Extra safety check to ensure file descriptor is closed
@@ -243,7 +247,7 @@ function saveConfig(config: typeof defaultConfig): boolean {
     });
     return true;
   } catch (error) {
-    logger.error('Error saving configuration', { error, stack: error.stack });
+    logger.error('Error saving configuration', { error, stack: error instanceof Error ? error.stack : 'Unknown error' });
     return false;
   }
 }

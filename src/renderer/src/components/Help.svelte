@@ -45,10 +45,10 @@
         <li class="component-list-item">In Reaper, go to <span class="component-strong">Options → Preferences</span></li>
         <li class="component-list-item">Navigate to <span class="component-strong">Control/OSC/web</span></li>
         <li class="component-list-item">In the <span class="component-strong">Web browser interface</span> section:</li>
-        <li class="component-list-item">Make sure <span class="component-strong">"Enable web browser interface"</span> is checked</li>
+        <li class="component-list-item">Press add if you don't have a <span class="component-strong">"web browser interface"</span> added to the list</li>
+        <li class="component-list-item">Check <span class="component-strong">"Run web server on port"</span> checkmark</li>
         <li class="component-list-item">Set <span class="component-strong">Port:</span> to <span class="component-strong">{reaperPort}</span></li>
-        <li class="component-list-item">Ensure <span class="component-strong">"Allow all IPs to connect"</span> is enabled for local network access</li>
-        <li class="component-list-item">For security, you may set a password if needed</li>
+        <li class="component-list-item">Do not set a password</li>
         <li class="component-list-item">Click <span class="component-strong">Apply</span> and <span class="component-strong">OK</span></li>
       </ol>
       <p class="component-note">

@@ -102,11 +102,8 @@ interface IpcControl {
 function initialize(): IpcControl {
   // Check if we're in an Electron environment
   if (!isElectron()) {
-    logger.log('Not running in Electron environment, skipping IPC initialization');
     return createDefaultIpcControl();
   }
-
-  logger.log('Initializing IPC communication with Electron main process');
 
   // Report initial connection attempt to Electron main process
   window.electronAPI.reportConnectionStatus({
@@ -140,7 +137,6 @@ function setupEventListeners(): void {
 
   // Refresh regions immediately
   setTimeout(() => {
-    logger.log('Initial regions refresh...');
     window.electronAPI.refreshRegions();
   }, 500);
 }
@@ -150,13 +146,10 @@ function setupEventListeners(): void {
  * This function can be called after cleanup to reinitialize these listeners
  */
 export function setupRegionAndPlaybackListeners(): void {
-  logger.log('Setting up region and playback event listeners');
-
   if (window.electronAPI) {
     window.electronAPI.onRegionsUpdate(handleRegionsUpdate);
     window.electronAPI.onMarkersUpdate(handleMarkersUpdate);
     window.electronAPI.onPlaybackStateUpdate(handlePlaybackStateUpdate);
-    logger.debug('Registered region and playback update listeners');
   }
 }
 
@@ -182,8 +175,6 @@ function startPingInterval(): void {
     window.electronAPI.ping().then(() => {
       if (pingTimeout) clearTimeout(pingTimeout);
       const latency = Date.now() - startTime;
-      logger.log(`Received pong from main process (latency: ${latency}ms)`);
-
       updatePingInfo(latency);
     });
   }, PING_CONFIG.interval);
@@ -217,7 +208,6 @@ function handleConnectionChange(status: { connected: boolean; reason?: string; s
  * Handles the regions update event
  */
 function handleRegionsUpdate(data: Region[]): void {
-  logger.log('Received regions update:', data);
   updateRegions(data);
 }
 
@@ -225,7 +215,6 @@ function handleRegionsUpdate(data: Region[]): void {
  * Handles the markers update event
  */
 function handleMarkersUpdate(data: Marker[]): void {
-  logger.log('Received markers update:', data);
   updateMarkers(data);
 }
 
@@ -290,7 +279,6 @@ function handlePlaybackStateUpdate(data: PlaybackState): void {
  * Handles the status message event
  */
 function handleStatusMessage(data: StatusMessage): void {
-  logger.log('Received status message:', data);
   setStatusMessage(data);
 }
 
@@ -298,7 +286,6 @@ function handleStatusMessage(data: StatusMessage): void {
  * Handles the project ID update event
  */
 function handleProjectIdUpdate(data: string): void {
-  logger.log('Received project ID update:', data);
   updateProjectId(data);
 }
 
@@ -306,12 +293,10 @@ function handleProjectIdUpdate(data: string): void {
  * Handles the project changed event
  */
 function handleProjectChanged(projectId: string): void {
-  logger.log('Project changed detected, new project ID:', projectId);
   updateProjectId(projectId);
 
   // Refresh regions for the new project
   setTimeout(() => {
-    logger.log('Refreshing regions after project change...');
     window.electronAPI.refreshRegions();
   }, 500);
 }
@@ -320,7 +305,6 @@ function handleProjectChanged(projectId: string): void {
  * Handles the MIDI activity event
  */
 function handleMidiActivity(): void {
-  logger.log('MIDI activity detected');
   setMidiActive();
 }
 
@@ -329,13 +313,10 @@ function handleMidiActivity(): void {
  * Removes listeners for regions, markers, and playback state updates
  */
 export function cleanupRegionAndPlaybackListeners(): void {
-  logger.log('Cleaning up region and playback event listeners');
-
   if (window.electronAPI) {
     window.electronAPI.removeAllListeners(IPC_CHANNELS.REGIONS_UPDATE);
     window.electronAPI.removeAllListeners(IPC_CHANNELS.MARKERS_UPDATE);
     window.electronAPI.removeAllListeners(IPC_CHANNELS.PLAYBACK_STATE_UPDATE);
-    logger.debug('Removed region and playback update listeners');
   }
 }
 
@@ -445,17 +426,17 @@ function createIpcControl(): IpcControl {
         // Clean up resources
         stopPingInterval();
 
-        // Remove all event listeners
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.REGIONS_UPDATE);
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.MARKERS_UPDATE);
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.PLAYBACK_STATE_UPDATE);
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.STATUS_MESSAGE);
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_ID_UPDATE);
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_CHANGED);
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.MIDI_ACTIVITY);
-        window.electronAPI.removeAllListeners(IPC_CHANNELS.CONNECTION_CHANGE);
+        // First clean up region and playback listeners using the existing function
+        cleanupRegionAndPlaybackListeners();
 
-        logger.log('Successfully disconnected and cleaned up event listeners');
+        // Remove additional event listeners not covered by the cleanup function
+        if (window.electronAPI) {
+          window.electronAPI.removeAllListeners(IPC_CHANNELS.STATUS_MESSAGE);
+          window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_ID_UPDATE);
+          window.electronAPI.removeAllListeners(IPC_CHANNELS.PROJECT_CHANGED);
+          window.electronAPI.removeAllListeners(IPC_CHANNELS.MIDI_ACTIVITY);
+          window.electronAPI.removeAllListeners(IPC_CHANNELS.CONNECTION_CHANGE);
+        }
       } catch (error) {
         logger.error('Error during disconnect:', error);
       }

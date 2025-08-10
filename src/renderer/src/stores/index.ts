@@ -3,13 +3,17 @@
  * Re-exports all stores for easier importing
  */
 
+// Import time formatting functions from timeUtils
+import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
+
+// Re-export time formatting functions
+export { formatTime, formatLongTime };
+
 // Re-export from transport service
 export {
   nextRegionHandler,
   previousRegionHandler,
   togglePlay,
-  formatTime,
-  formatLongTime,
   safeTransportAction,
   toggleAutoplayHandler,
   toggleCountInHandler,

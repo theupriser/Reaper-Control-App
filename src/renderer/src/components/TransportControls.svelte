@@ -83,16 +83,12 @@
 
   // Toggle autoplay function
   function handleToggleAutoplay(): void {
-    logger.log('Toggling autoplay');
     toggleAutoplayHandler();
   }
 
   // Toggle count-in function
   function handleToggleCountIn(): void {
-    logger.log('Toggling count-in');
     toggleCountInHandler();
-    // Log the new state
-    logger.log(`Count-in ${$countInEnabled ? 'enabled' : 'disabled'}`);
   }
 
   // Enhanced progress bar click handling with popover, using the service
@@ -118,26 +114,13 @@
     updateTimerOnRegionChange();
   }
 
-  // Initialize markers when component is mounted
+  // Initialize component when mounted
   onMount(() => {
-    logger.log('TransportControls component mounted');
-
     // Initialize loading state and get cleanup function
     const { unsubscribe: unsubscribeLoading } = initializeLoadingState();
 
-    // Add a delay to ensure IPC handlers are registered before we try to use them
-    setTimeout(() => {
-      logger.log('Attempting to refresh markers and regions after delay');
-      // Refresh markers and regions and handle potential errors
-      try {
-        ipcService.refreshMarkers();
-        ipcService.refreshRegions();
-      } catch (error) {
-        logger.error('Error refreshing data:', error);
-        // Ensure loading state is cleared even if there's an error
-        isLoading.set(false);
-      }
-    }, 2000); // 2 second delay to ensure IPC handlers are registered
+    // No need to refresh markers and regions here as App.svelte already does this
+    // This avoids duplicate API calls
 
     // Return a cleanup function for all resources
     return () => {
@@ -160,7 +143,6 @@
       isLoading.set(true);
       // Use the same delay pattern for the retry button
       setTimeout(() => {
-        logger.log('Attempting to refresh data after retry');
         try {
           ipcService.refreshMarkers();
           ipcService.refreshRegions();
@@ -287,7 +269,7 @@
   <div class="controls">
     <button
       class="control-button previous"
-      on:click={() => safeTransportAction(() => previousRegionHandler())}
+      on:click={previousRegionHandler}
       aria-label="Previous region"
       disabled={$transportButtonsDisabled || !displayRegion || !displayPreviousRegion}
     >
@@ -309,7 +291,7 @@
 
     <button
       class="control-button play-pause"
-      on:click={() => safeTransportAction(() => togglePlay())}
+      on:click={togglePlay}
       aria-label={$playbackState.isPlaying ? "Pause" : "Play"}
       disabled={$transportButtonsDisabled || (!displayNextRegion && !$playbackState.isPlaying && $atHardStop)}
     >
@@ -326,7 +308,7 @@
 
     <button
       class="control-button next"
-      on:click={() => safeTransportAction(() => nextRegionHandler())}
+      on:click={nextRegionHandler}
       aria-label="Next region"
       disabled={$transportButtonsDisabled || !displayNextRegion}
     >

@@ -90,8 +90,6 @@
     };
   });
 
-  // Keyboard shortcuts are now handled by transportService.setupKeyboardControls()
-
   // Use real data or null if not available
   $: displayRegion = $currentRegion;
   $: displayNextRegion = $nextRegion;
@@ -106,12 +104,9 @@
   $: {
     if ($playbackState || $currentRegion) {
       updateTimer();
+      // Only call updateTimerOnRegionChange when the region actually changes
+      // This is handled in the updateTimer function which checks for region changes
     }
-  }
-
-  // Watch for changes in the current region to update the timer
-  $: if ($currentRegion) {
-    updateTimerOnRegionChange();
   }
 
   // Helper function to check if we have data

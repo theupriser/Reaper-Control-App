@@ -13,8 +13,6 @@
 
   // Initialize the application
   onMount(() => {
-    logger.log('App component mounted');
-
     // Initial data refresh
     setTimeout(() => {
       ipcService.refreshRegions();
@@ -24,7 +22,7 @@
 
     // Set up cleanup on component destroy
     return () => {
-      logger.log('App component destroyed');
+      // Cleanup logic if needed in the future
     };
   });
 
@@ -254,16 +252,6 @@
     background-color: #3d9c47;
   }
 
-  /* Help link styling */
-  .help-link {
-    background-color: #2196F3;
-    color: #000;
-    font-weight: bold;
-  }
-
-  .help-link:hover {
-    background-color: #1976D2;
-  }
 
   /* Active link styling */
   .active-nav-link {
@@ -277,11 +265,6 @@
     color: #4CAF50;
   }
 
-  /* Override help link when active */
-  .help-link.active-nav-link {
-    background-color: #333;
-    color: #2196F3;
-  }
 
   main {
     flex: 1;
@@ -297,22 +280,6 @@
     gap: 1rem;
   }
 
-  /* Settings link styling */
-  .settings-link {
-    background-color: #FF9800;
-    color: #000;
-    font-weight: bold;
-  }
-
-  .settings-link:hover {
-    background-color: #F57C00;
-  }
-
-  /* Override settings link when active */
-  .settings-link.active-nav-link {
-    background-color: #333;
-    color: #FF9800;
-  }
 
   /* Responsive adjustments */
   @media (max-width: 768px) {

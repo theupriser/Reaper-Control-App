@@ -38,10 +38,6 @@ import {
 import { currentSetlist } from '../stores/setlistStore';
 import ipcService from './ipcService';
 import logger from '../lib/utils/logger';
-import { formatTime, formatLongTime } from '../lib/utils/timeUtils';
-
-// Re-export formatTime and formatLongTime for use by other modules
-export { formatTime, formatLongTime };
 
 // Store to track disabled state of transport buttons
 export const transportButtonsDisabled: Writable<boolean> = writable(false);
@@ -212,8 +208,6 @@ export function findLengthMarkerInRegion(markerList: Marker[], region: Region): 
   return null;
 }
 
-// Time formatting functions are now imported from timeUtils
-
 /**
  * Toggle play/pause
  * If a setlist is selected but no region is active, starts from the first setlist item
@@ -232,13 +226,8 @@ export function togglePlay(): void {
 
     // If not in a region and a setlist is selected, start from the first item
     if (!playbackStateValue.currentRegionId && playbackStateValue.selectedSetlistId && currentSetlistValue) {
-      logger.log('Not in a region and setlist is selected, checking for first item');
-
       if (currentSetlistValue.items.length > 0) {
-        logger.log(`Found setlist with ${currentSetlistValue.items.length} items`);
-
         const firstItem = currentSetlistValue.items[0];
-        logger.log(`First item: ${firstItem.name || firstItem.regionId}`);
 
         // Find the region for the first setlist item
         let regionsValue: Region[] = [];
@@ -248,8 +237,6 @@ export function togglePlay(): void {
         const region = regionsValue.find(r => r.id === Number(firstItem.regionId));
 
         if (region) {
-          logger.log(`Found region: ${region.name}`);
-
           // Seek to the first region and play
           try {
             await ipcService.seekToRegion(region.id.toString());
@@ -258,11 +245,7 @@ export function togglePlay(): void {
           } catch (error) {
             logger.error('Error seeking to first setlist item:', error);
           }
-        } else {
-          logger.log('Region not found for first setlist item');
         }
-      } else {
-        logger.log('Setlist is empty');
       }
     }
 
@@ -294,7 +277,6 @@ export function nextRegionHandler(): void {
       try {
         const success = await ipcService.nextRegion();
         if (!success) {
-          logger.warn('Next region navigation failed');
           // Force a refresh of regions to ensure the UI is up-to-date
           await ipcService.refreshRegions();
         }
@@ -304,8 +286,6 @@ export function nextRegionHandler(): void {
         await ipcService.refreshRegions();
       }
     });
-  } else {
-    logger.log('No next region available');
   }
 }
 
@@ -333,7 +313,6 @@ export function previousRegionHandler(): void {
       try {
         const success = await ipcService.previousRegion();
         if (!success) {
-          logger.warn('Previous region navigation failed');
           // Force a refresh of regions to ensure the UI is up-to-date
           await ipcService.refreshRegions();
         }
@@ -343,8 +322,6 @@ export function previousRegionHandler(): void {
         await ipcService.refreshRegions();
       }
     });
-  } else {
-    logger.log('No previous region available');
   }
 }
 
@@ -369,7 +346,6 @@ export function toggleAutoplayHandler(): void {
     // Send to main process via IPC
     if (window.electronAPI) {
       window.electronAPI.setAutoplayEnabled(newValue);
-      logger.log(`Sent autoplay enabled (${newValue}) to main process`);
     } else {
       logger.warn('Electron API not available, autoplay enabled not sent to main process');
     }
@@ -397,7 +373,6 @@ export function toggleCountInHandler(): void {
     // Send to main process via IPC
     if (window.electronAPI) {
       window.electronAPI.setCountInEnabled(newValue);
-      logger.log(`Sent count-in enabled (${newValue}) to main process`);
     } else {
       logger.warn('Electron API not available, count-in enabled not sent to main process');
     }
@@ -460,9 +435,6 @@ export function handleProgressBarClick(event: MouseEvent): void {
       // Click is near a marker, use exact marker position
       finalPosition = marker.position;
       isNearMarker = true;
-
-      // Log that we're using exact marker position
-      logger.log(`Click near marker "${marker.name}" at position ${marker.position}s, using exact marker position`);
       break;
     }
   }
@@ -480,7 +452,6 @@ export function handleProgressBarClick(event: MouseEvent): void {
   unsubscribeCountIn();
 
   if (isNearMarker && countInEnabledValue) {
-    logger.log(`Using count-in for marker click at position ${finalPosition}`);
     safeTransportAction(() => ipcService.seekToPosition(finalPosition, true));
   } else {
     // Otherwise, just seek to the position without count-in
@@ -601,6 +572,11 @@ export function updateTimer(): void {
   unsubscribePlayback();
   unsubscribeDisplayMarkers();
 
+  // Check if region has changed and call updateTimerOnRegionChange if it has
+  if (currentRegionValue && currentRegionValue.id !== previousRegionId) {
+    updateTimerOnRegionChange();
+  }
+
   if (currentRegionValue) {
     const customLength = getCustomLengthForRegion(currentRegionValue, markersValue);
 
@@ -710,12 +686,7 @@ export function updateTimer(): void {
   previousPlaybackPosition = playbackStateValue.currentPosition;
   previousPlaybackIsPlaying = playbackStateValue.isPlaying;
 
-  // Step 5 of safeTransportAction: Re-enable transport buttons when playback state updates
-  // This is the key part of preventing freezes - we only re-enable controls after
-  // receiving confirmation from the backend that our previous action was processed
-
   // Only re-enable if at least 100ms have passed since the last action
-  // This small delay prevents re-enabling too early if multiple updates arrive in quick succession
   if (Date.now() - lastPlaybackStateUpdate > 100) {
     transportButtonsDisabled.set(false);
   }
@@ -742,14 +713,18 @@ export function updateTimerOnRegionChange(): void {
     // Only reset timer if the region ID actually changed
     if (previousRegionId !== currentRegionValue.id) {
       previousRegionId = currentRegionValue.id;
+      logger.log(`updateTimerOnRegionChange: Region ID updated to ${currentRegionValue.id}`);
 
       // Check if the new region has a length marker
       const customLength = getCustomLengthForRegion(currentRegionValue, markersValue);
       if (customLength !== null) {
+        logger.log(`updateTimerOnRegionChange: Found custom length marker with value ${customLength}s`);
+
         // Find the actual length marker to get its position
         const lengthMarker = findLengthMarkerInRegion(markersValue, currentRegionValue);
 
         if (lengthMarker && playbackStateValue.currentPosition >= lengthMarker.position) {
+          logger.log(`updateTimerOnRegionChange: Position ${playbackStateValue.currentPosition} is past length marker at ${lengthMarker.position}, using local timer`);
           // Set the flag to use local timer
           useLocalTimer.set(true);
 
@@ -757,6 +732,7 @@ export function updateTimerOnRegionChange(): void {
           localPosition.set(playbackStateValue.currentPosition);
           startLocalTimer(playbackStateValue.currentPosition);
         } else {
+          logger.log(`updateTimerOnRegionChange: Position ${playbackStateValue.currentPosition} is not past length marker ${lengthMarker ? 'at ' + lengthMarker.position : '(not found)'}`);
           // Playback hasn't reached the length marker yet
           useLocalTimer.set(false);
           stopLocalTimer();
@@ -764,6 +740,7 @@ export function updateTimerOnRegionChange(): void {
           atHardStop.set(false);
         }
       } else {
+        logger.log(`updateTimerOnRegionChange: No custom length marker found for region ${currentRegionValue.id}`);
         useLocalTimer.set(false);
         stopLocalTimer();
         // Reset hard stop flag
@@ -773,14 +750,29 @@ export function updateTimerOnRegionChange(): void {
   }
 }
 
+/**
+ * Helper function to determine if we should use setlist navigation
+ * @param playbackStateValue - The current playback state
+ * @param currentSetlistValue - The current setlist
+ * @returns True if setlist navigation should be used
+ */
+function shouldUseSetlistNavigation(
+  playbackStateValue: any,
+  currentSetlistValue: any
+): boolean {
+  return playbackStateValue.selectedSetlistId &&
+         currentSetlistValue &&
+         currentSetlistValue.id === playbackStateValue.selectedSetlistId;
+}
+
 // Derived store for the next region
 export const nextRegion: Readable<Region | null> = derived(
   [currentRegion, playbackState, currentSetlist, regions],
   ([$currentRegion, $playbackState, $currentSetlist, $regions]) => {
     if (!$currentRegion) return null;
 
-    // Check if a setlist is selected and ensure currentSetlist matches the selected setlist ID
-    if ($playbackState.selectedSetlistId && $currentSetlist && $currentSetlist.id === $playbackState.selectedSetlistId) {
+    // Use the helper function to determine if we should use setlist navigation
+    if (shouldUseSetlistNavigation($playbackState, $currentSetlist)) {
       // If a setlist is selected, get the next item from the setlist
       const currentItemIndex = $currentSetlist.items.findIndex(item => Number(item.regionId) === $currentRegion.id);
       if (currentItemIndex !== -1 && currentItemIndex < $currentSetlist.items.length - 1) {
@@ -803,8 +795,8 @@ export const previousRegion: Readable<Region | null> = derived(
   ([$currentRegion, $playbackState, $currentSetlist, $regions]) => {
     if (!$currentRegion) return null;
 
-    // Check if a setlist is selected and ensure currentSetlist matches the selected setlist ID
-    if ($playbackState.selectedSetlistId && $currentSetlist && $currentSetlist.id === $playbackState.selectedSetlistId) {
+    // Use the helper function to determine if we should use setlist navigation
+    if (shouldUseSetlistNavigation($playbackState, $currentSetlist)) {
       // If a setlist is selected, get the previous item from the setlist
       const currentItemIndex = $currentSetlist.items.findIndex(item => Number(item.regionId) === $currentRegion.id);
       if (currentItemIndex > 0) {

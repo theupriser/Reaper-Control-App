@@ -547,7 +547,7 @@ export class MidiService extends EventEmitter {
 
       // If deviceName is empty, it means "All Available Devices"
       if (!newConfig.deviceName) {
-        this.midiConfig.deviceName = null;
+        this.midiConfig.deviceName = undefined;
       }
 
       // We should clear deviceId as it's no longer used
@@ -575,10 +575,10 @@ export class MidiService extends EventEmitter {
     config.updateConfig({
       midi: {
         enabled: this.midiConfig.enabled,
-        // Use type assertion to handle the type conflict between string|undefined and null
+        // Convert undefined to null for the config object which expects null
         deviceName: this.midiConfig.deviceName as unknown as null,
         // We don't save deviceId directly to config.ts as it's not part of its schema
-        // But we set deviceName to null when deviceId is empty (All Available Devices)
+        // But we set deviceName to undefined when deviceId is empty (All Available Devices)
         // Use type assertion to force null for channel property
         channel: (this.midiConfig.channel !== undefined ? this.midiConfig.channel : null) as null,
         // Cast the noteMapping to the expected type using type assertion

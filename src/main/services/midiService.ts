@@ -11,7 +11,6 @@ import logger from '../utils/logger';
 export class MidiService extends EventEmitter {
   private midiDevices: Map<string, MidiDevice> = new Map();
   private midiInputs: Map<string, easymidi.Input> = new Map();
-  // @ts-ignore: This property is kept for future use
   private activeDevice: easymidi.Input | null = null;
   private activeDeviceId: string | null = null;
   private midiConfig: MidiConfig;
@@ -97,8 +96,15 @@ export class MidiService extends EventEmitter {
       // Discover actual MIDI devices
       this.discoverDevices();
 
-      // Connect to all available devices
-      this.connectToAllDevices();
+      // If a specific device is selected, connect only to that device
+      if (this.midiConfig.deviceName) {
+        logger.info('Connecting to configured MIDI device:', { deviceName: this.midiConfig.deviceName });
+        this.connectToDevice(this.midiConfig.deviceName);
+      } else {
+        // Otherwise connect to all available devices
+        logger.info('No specific MIDI device configured, connecting to all available devices');
+        this.connectToAllDevices();
+      }
 
       // Start polling for new MIDI devices
       this.startDevicePolling();
@@ -116,17 +122,64 @@ export class MidiService extends EventEmitter {
       return;
     }
 
-    logger.info('Connecting to all MIDI devices');
+    logger.info('Connecting to all MIDI devices in all-devices mode');
+
+    // First, disconnect from any currently connected devices
+    // to ensure we don't have any lingering connections
+    this.disconnectAllDevices();
+
+    // Set the mode to "all devices"
+    this.midiConfig.deviceName = undefined;
+    this.activeDevice = null;
+    this.activeDeviceId = null;
 
     // Connect to each device
     for (const device of this.midiDevices.values()) {
       try {
-        this.connectToDevice(device.name);
-        logger.info(`Connected to MIDI device: ${device.name}`);
+        // In "all devices" mode, we need to directly set up the connection
+        // without going through connectToDevice (which would disconnect others)
+        const deviceId = device.id;
+
+        // Create new MIDI input
+        const input = new easymidi.Input(device.name);
+
+        // Add to inputs map
+        this.midiInputs.set(deviceId, input);
+
+        // Set up event listeners for MIDI note events
+        input.on('noteon', msg => {
+          this.handleNoteOn({...msg, deviceId});
+          this.emit('midiActivity', {type: 'noteon', ...msg, deviceId, deviceName: device.name});
+        });
+
+        input.on('noteoff', msg => {
+          this.emit('midiActivity', {type: 'noteoff', ...msg, deviceId, deviceName: device.name});
+        });
+
+        // For other message types
+        try {
+          const otherMessageTypes = ['cc', 'program', 'channel aftertouch', 'pitch', 'position', 'mtc', 'select', 'clock', 'start', 'continue', 'stop', 'reset'];
+          for (const type of otherMessageTypes) {
+            // @ts-ignore - Intentionally bypass type checking for these event types
+            input.on(type, msg => {
+              this.emit('midiActivity', {type, ...msg, deviceId, deviceName: device.name});
+            });
+          }
+        } catch (error) {
+          logger.warn('Some MIDI message types may not be monitored due to type constraints', { error });
+        }
+
+        // Update device state
+        device.isConnected = true;
+
+        logger.info(`Connected to MIDI device in all-devices mode: ${device.name}`);
       } catch (error) {
         logger.error(`Failed to connect to MIDI device: ${device.name}`, { error });
       }
     }
+
+    // Emit event for updated devices
+    this.emit('devicesUpdated', this.getDevices());
   }
 
   /**
@@ -138,16 +191,78 @@ export class MidiService extends EventEmitter {
       const inputs = easymidi.getInputs();
       logger.info('Available MIDI inputs:', { inputs });
 
-      // Create a device for each input
-      inputs.forEach((inputName, index) => {
-        const deviceId = `device-${index}`;
+      // Keep track of existing device IDs to detect removed devices
+      const existingDeviceIds = new Set<string>();
 
-        // Create or update device
-        this.midiDevices.set(deviceId, {
-          id: deviceId,
-          name: inputName,
-          isConnected: false
-        });
+      // Mapping of device names to their IDs for quick lookup
+      const deviceNameToId = new Map<string, string>();
+
+      // First, build lookup maps of existing devices
+      this.midiDevices.forEach((device, id) => {
+        existingDeviceIds.add(id);
+        deviceNameToId.set(device.name, id);
+      });
+
+      // Create or update devices for each input
+      inputs.forEach((inputName) => {
+        // Check if we already have this device by name
+        if (deviceNameToId.has(inputName)) {
+          // Device already exists, update the existing entry
+          const deviceId = deviceNameToId.get(inputName)!;
+          const existingDevice = this.midiDevices.get(deviceId);
+
+          if (existingDevice) {
+            // Mark that we've seen this device
+            existingDeviceIds.delete(deviceId);
+            logger.debug(`Existing MIDI device found: ${inputName} (${deviceId})`);
+          }
+        } else {
+          // This is a new device
+          const deviceId = `device-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+          // Create new device
+          this.midiDevices.set(deviceId, {
+            id: deviceId,
+            name: inputName,
+            isConnected: false
+          });
+
+          logger.info(`New MIDI device discovered: ${inputName} (${deviceId})`);
+        }
+      });
+
+      // Check for devices that are no longer available
+      existingDeviceIds.forEach(deviceId => {
+        const device = this.midiDevices.get(deviceId);
+        if (device) {
+          logger.info(`MIDI device no longer available: ${device.name} (${deviceId})`);
+
+          // If device is connected, disconnect it
+          if (device.isConnected) {
+            // Close the input if it exists
+            const input = this.midiInputs.get(deviceId);
+            if (input) {
+              try {
+                input.removeAllListeners();
+                input.close();
+                logger.info(`Closed MIDI input for removed device: ${device.name}`);
+              } catch (closeError) {
+                logger.error(`Error closing MIDI input for removed device:`, closeError);
+              }
+
+              this.midiInputs.delete(deviceId);
+            }
+
+            // If this was the active device, clear the reference
+            if (deviceId === this.activeDeviceId) {
+              this.activeDevice = null;
+              this.activeDeviceId = null;
+            }
+          }
+
+          // Remove the device from our map
+          this.midiDevices.delete(deviceId);
+        }
       });
 
       logger.info('Discovered MIDI devices', { count: inputs.length });
@@ -189,81 +304,58 @@ export class MidiService extends EventEmitter {
    */
   private checkForNewDevices(): void {
     try {
-      // Get current available MIDI inputs
-      const currentInputs = easymidi.getInputs();
+      // Discover current devices to ensure our device list is up to date
+      this.discoverDevices();
 
-      // Get current device IDs and names
-      const currentDeviceNames = Array.from(this.midiDevices.values()).map(device => device.name);
+      // If we have a specific device selected, check if it's available
+      if (this.midiConfig.enabled && this.midiConfig.deviceName) {
+        // Find the device ID for the selected device name
+        let selectedDeviceId = null;
+        let selectedDeviceConnected = false;
 
-      // Find new inputs that weren't available before
-      const newInputs = currentInputs.filter(input => !currentDeviceNames.includes(input));
-
-      // Add new devices
-      if (newInputs.length > 0) {
-        logger.info('New MIDI devices detected:', { newInputs });
-
-        newInputs.forEach(inputName => {
-          const deviceId = `device-${this.midiDevices.size}`;
-
-          // Create device
-          this.midiDevices.set(deviceId, {
-            id: deviceId,
-            name: inputName,
-            isConnected: false
-          });
-
-          // Automatically connect to the new device
-          if (this.midiConfig.enabled) {
-            this.connectToDevice(inputName);
+        for (const [id, device] of this.midiDevices.entries()) {
+          if (device.name === this.midiConfig.deviceName) {
+            selectedDeviceId = id;
+            selectedDeviceConnected = device.isConnected;
+            break;
           }
-        });
-
-        // Emit event for new devices
-        this.emit('devicesUpdated', this.getDevices());
-      }
-
-      // Find disconnected inputs
-      const disconnectedDeviceIds: string[] = [];
-
-      this.midiDevices.forEach((device, deviceId) => {
-        if (device.isConnected && !currentInputs.includes(device.name)) {
-          disconnectedDeviceIds.push(deviceId);
         }
-      });
 
-      // Disconnect devices that are no longer available
-      if (disconnectedDeviceIds.length > 0) {
-        logger.info('MIDI devices disconnected:', { disconnectedDeviceIds });
+        // If the device exists but isn't connected, connect to it
+        if (selectedDeviceId && !selectedDeviceConnected) {
+          logger.info('Reconnecting to selected MIDI device:', { deviceName: this.midiConfig.deviceName });
+          this.connectToDevice(this.midiConfig.deviceName);
+        }
+        // If the selected device doesn't exist anymore
+        else if (!selectedDeviceId) {
+          logger.warn('Selected MIDI device no longer available:', { deviceName: this.midiConfig.deviceName });
 
-        disconnectedDeviceIds.forEach(deviceId => {
-          // Close the input if it exists
-          const input = this.midiInputs.get(deviceId);
-          if (input) {
-            try {
-              input.close();
-            } catch (closeError) {
-              logger.error(`Error closing MIDI input:`, closeError);
+          // If the active device is set, clear it
+          if (this.activeDeviceId) {
+            this.disconnectFromCurrentDevice();
+          }
+        }
+      }
+      // If we're in "all devices" mode, make sure all available devices are connected
+      else if (this.midiConfig.enabled && !this.midiConfig.deviceName) {
+        // Connect to any newly discovered devices
+        let newConnectionsMade = false;
+
+        this.midiDevices.forEach((device, deviceId) => {
+          if (!device.isConnected) {
+            logger.info('Connecting to newly available MIDI device:', { deviceName: device.name });
+            if (this.connectToDevice(device.name)) {
+              newConnectionsMade = true;
             }
-
-            this.midiInputs.delete(deviceId);
-          }
-
-          // Update device state
-          const device = this.midiDevices.get(deviceId);
-          if (device) {
-            device.isConnected = false;
-          }
-
-          // Clear active device reference if this was the active device
-          if (deviceId === this.activeDeviceId) {
-            this.activeDevice = null;
-            this.activeDeviceId = null;
           }
         });
 
-        // Emit event for updated devices
-        this.emit('devicesUpdated', this.getDevices());
+        // If we made new connections, update the UI
+        if (newConnectionsMade) {
+          this.emit('devicesUpdated', this.getDevices());
+        }
       }
+
     } catch (error) {
       logger.error('Error checking for new MIDI devices:', error);
     }
@@ -318,6 +410,23 @@ export class MidiService extends EventEmitter {
     let device;
     let deviceId;
 
+    // If deviceName is falsy or "null" (string from dropdown),
+    // it means "All Available Devices" mode
+    if (!deviceName || deviceName === "null") {
+      logger.info('Setting "All Available Devices" mode');
+
+      // Disconnect from all devices first to prevent double connections
+      this.disconnectAllDevices();
+
+      // Set config to use all devices
+      this.midiConfig.deviceName = undefined;
+
+      // Connect to all available devices
+      this.connectToAllDevices();
+
+      return true;
+    }
+
     // Find the device with the matching name
     for (const [id, dev] of this.midiDevices.entries()) {
       if (dev.name === deviceName) {
@@ -333,6 +442,10 @@ export class MidiService extends EventEmitter {
     }
 
     try {
+      // When connecting to a specific device, disconnect from all other devices first
+      // This ensures we only have one active MIDI device connection
+      this.disconnectAllDevices();
+
       // If device is already connected, close it first to ensure clean reconnection
       // This helps prevent multiple listeners for the same physical device
       if (this.midiInputs.has(deviceId)) {
@@ -354,6 +467,10 @@ export class MidiService extends EventEmitter {
 
       // Add to inputs map
       this.midiInputs.set(deviceId, input);
+
+      // Set this as the active device
+      this.activeDevice = input;
+      this.activeDeviceId = deviceId;
 
       // Set up event listeners for MIDI note events
       // These are the most important for triggering actions
@@ -386,6 +503,9 @@ export class MidiService extends EventEmitter {
 
       // Update device state
       device.isConnected = true;
+
+      // Update the config to remember this device selection
+      this.midiConfig.deviceName = deviceName;
 
       logger.info('Connected to MIDI device', { deviceId, name: device.name });
       return true;
@@ -536,26 +656,40 @@ export class MidiService extends EventEmitter {
    * @param newConfig - New configuration
    */
   public updateConfig(newConfig: Partial<MidiConfig>): void {
+    let deviceChanged = false;
+    let enabledChanged = false;
+
     // Update local config
     if (newConfig.enabled !== undefined) {
+      enabledChanged = this.midiConfig.enabled !== newConfig.enabled;
       this.midiConfig.enabled = newConfig.enabled;
     }
 
     // Only use deviceName, not deviceId
     if (newConfig.deviceName !== undefined) {
+      // Check if the device selection has changed
+      deviceChanged = this.midiConfig.deviceName !== newConfig.deviceName;
+
       this.midiConfig.deviceName = newConfig.deviceName;
 
-      // If deviceName is empty, it means "All Available Devices"
-      if (!newConfig.deviceName) {
+      // If deviceName is empty or "null" (from dropdown), it means "All Available Devices"
+      if (!newConfig.deviceName || newConfig.deviceName === "null") {
         this.midiConfig.deviceName = undefined;
       }
 
       // We should clear deviceId as it's no longer used
       this.midiConfig.deviceId = undefined;
+
+      logger.info('Device selection changed', {
+        deviceName: this.midiConfig.deviceName,
+        allDevicesMode: this.midiConfig.deviceName === undefined
+      });
     }
+
     if (newConfig.channel !== undefined) {
       this.midiConfig.channel = newConfig.channel;
     }
+
     if (newConfig.noteMappings !== undefined) {
       this.midiConfig.noteMappings = newConfig.noteMappings;
     }
@@ -569,7 +703,6 @@ export class MidiService extends EventEmitter {
         noteMapping[mapping.noteNumber] = mapping.action;
       }
     }
-
 
     // Update global config
     config.updateConfig({
@@ -588,17 +721,35 @@ export class MidiService extends EventEmitter {
 
     logger.info('MIDI configuration updated', {
       enabled: this.midiConfig.enabled,
-      channel: this.midiConfig.channel
+      deviceName: this.midiConfig.deviceName,
+      channel: this.midiConfig.channel,
+      deviceChanged: deviceChanged,
+      enabledChanged: enabledChanged
     });
 
-    // Reinitialize if enabled state changed
-    if (newConfig.enabled !== undefined) {
-      if (this.midiConfig.enabled) {
+    // Handle device and enabled state changes
+    if (this.midiConfig.enabled) {
+      if (enabledChanged) {
+        // If MIDI was just enabled, initialize everything
         this.initialize();
-      } else {
-        // Disconnect from all devices
+      } else if (deviceChanged) {
+        // If device selection changed but MIDI was already enabled,
+        // we need to update the connections
+
+        // First disconnect from all current devices
         this.disconnectAllDevices();
+
+        // If a specific device is selected, connect to it
+        if (this.midiConfig.deviceName) {
+          this.connectToDevice(this.midiConfig.deviceName);
+        } else {
+          // Otherwise connect to all available devices
+          this.connectToAllDevices();
+        }
       }
+    } else if (enabledChanged) {
+      // If MIDI was just disabled, disconnect from all devices
+      this.disconnectAllDevices();
     }
   }
 

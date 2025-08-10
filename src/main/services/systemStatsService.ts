@@ -61,9 +61,6 @@ export class SystemStatsService {
           lastUpdated: Date.now()
         };
 
-        // Log memory usage for debugging
-        logger.info(`Memory usage: ${stats.memory.usedPercent}% (${Math.round(stats.memory.used / 1024 / 1024)}MB / ${Math.round(stats.memory.total / 1024 / 1024)}MB)`);
-
         // Send stats to the renderer process
         this.mainWindow.webContents.send('system-stats', stats);
       } catch (error) {

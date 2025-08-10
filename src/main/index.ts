@@ -2,7 +2,6 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import os from 'os'
 
 // Import services
 import { ReaperConnector } from './services/reaperConnector'
@@ -10,13 +9,13 @@ import { RegionService } from './services/regionService'
 import { MarkerService } from './services/markerService'
 import { MidiService } from './services/midiService'
 import { ProjectService } from './services/projectService'
+import { SystemStatsService } from './services/systemStatsService'
 import { IpcHandler } from './ipc/ipcHandler'
 import logger from './utils/logger'
 
 
 // Global references
 let mainWindow: BrowserWindow | null = null
-let systemStatsInterval: NodeJS.Timeout | null = null
 
 // Service instances
 let reaperConnector: ReaperConnector | null = null
@@ -24,6 +23,7 @@ let regionService: RegionService | null = null
 let markerService: MarkerService | null = null
 let midiService: MidiService | null = null
 let projectService: ProjectService | null = null
+let systemStatsService: SystemStatsService | null = null
 let ipcHandler: IpcHandler | null = null
 
 function createWindow(): void {
@@ -122,39 +122,15 @@ function initializeServices(): void {
  * Start monitoring system stats and send updates to the renderer process
  */
 function startSystemStatsMonitoring(): void {
-  // Clear any existing interval
-  if (systemStatsInterval) {
-    clearInterval(systemStatsInterval)
-    systemStatsInterval = null
+  if (!mainWindow) return
+
+  // Create and start the system stats service if it doesn't exist
+  if (!systemStatsService) {
+    systemStatsService = new SystemStatsService(mainWindow)
   }
 
-  // Send system stats every 2 seconds
-  systemStatsInterval = setInterval(() => {
-    if (!mainWindow) return
-
-    const cpuInfo = os.cpus()
-    const totalMem = os.totalmem()
-    const freeMem = os.freemem()
-
-    const stats = {
-      cpu: {
-        usage: Math.round(Math.random() * 50), // Mock CPU usage
-        cores: cpuInfo.length,
-        speed: Math.round(cpuInfo[0].speed / 100) / 10 // GHz
-      },
-      memory: {
-        total: totalMem,
-        used: totalMem - freeMem,
-        free: freeMem,
-        usedPercent: Math.round(((totalMem - freeMem) / totalMem) * 100)
-      },
-      lastUpdated: Date.now()
-    }
-
-    if (mainWindow) {
-      mainWindow.webContents.send('system-stats', stats)
-    }
-  }, 2000)
+  // Start the monitoring service
+  systemStatsService.start()
 }
 
 // This method will be called when Electron has finished
@@ -201,15 +177,14 @@ app.on('window-all-closed', () => {
   }
 
   // Clean up other services
+  if (systemStatsService) {
+    systemStatsService.cleanup()
+    systemStatsService = null
+  }
+
   regionService = null
   markerService = null
   projectService = null
-
-  // Clean up system stats monitoring interval
-  if (systemStatsInterval) {
-    clearInterval(systemStatsInterval)
-    systemStatsInterval = null
-  }
 
   // Set mainWindow to null to prevent further access
   mainWindow = null

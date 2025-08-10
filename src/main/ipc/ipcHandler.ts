@@ -828,7 +828,18 @@ export class IpcHandler {
    * @returns MIDI config
    */
   private async handleGetMidiConfig(): Promise<any> {
-    return this.midiService.getConfig();
+    const midiConfig = this.midiService.getConfig();
+
+    // Log what we're returning to the frontend
+    logger.info('handleGetMidiConfig - Returning to frontend:', {
+      enabled: midiConfig.enabled,
+      deviceName: midiConfig.deviceName,
+      channel: midiConfig.channel,
+      noteMappingsCount: midiConfig.noteMappings ? midiConfig.noteMappings.length : 0,
+      noteMappings: midiConfig.noteMappings
+    });
+
+    return midiConfig;
   }
 
   /**
@@ -849,14 +860,14 @@ export class IpcHandler {
   /**
    * Handle connect to MIDI device
    * @param _ - IPC event
-   * @param deviceId - Device ID
+   * @param deviceName - Device name
    * @returns Success flag
    */
-  private async handleConnectToMidiDevice(_: any, deviceId: string): Promise<boolean> {
+  private async handleConnectToMidiDevice(_: any, deviceName: string): Promise<boolean> {
     try {
-      return this.midiService.connectToDevice(deviceId);
+      return this.midiService.connectToDevice(deviceName);
     } catch (error) {
-      logger.error('Error connecting to MIDI device', { error, deviceId });
+      logger.error('Error connecting to MIDI device', { error, deviceName });
       this.sendStatusMessage(this.createErrorMessage('Failed to connect to MIDI device', String(error)));
       throw error;
     }

@@ -89,6 +89,14 @@ const api = {
   getReaperConfig: () => ipcRenderer.invoke('get-reaper-config'),
   updateReaperConfig: (config: any) => ipcRenderer.invoke('update-reaper-config', config),
 
+  // MIDI management
+  getMidiConfig: () => ipcRenderer.invoke('get-midi-config'),
+  updateMidiConfig: (config: any) => ipcRenderer.invoke('update-midi-config', config),
+  getMidiDevices: () => ipcRenderer.invoke('get-midi-devices'),
+  connectToMidiDevice: (deviceId: string) => ipcRenderer.invoke('connect-to-midi-device', deviceId),
+  simulateMidiNote: (params: { note: number, velocity?: number, channel?: number }) =>
+    ipcRenderer.invoke('simulate-midi-note', params),
+
   // Ping for latency measurement
   ping: () => ipcRenderer.invoke('ping'),
 

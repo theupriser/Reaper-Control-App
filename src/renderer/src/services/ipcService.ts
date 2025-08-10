@@ -92,6 +92,11 @@ interface IpcControl {
   setSelectedSetlist: (setlistId: string | null) => Promise<void>;
   getReaperConfig: () => Promise<ReaperConfig>;
   updateReaperConfig: (config: Partial<ReaperConfig>) => Promise<boolean>;
+  getMidiConfig: () => Promise<any>;
+  updateMidiConfig: (config: any) => Promise<void>;
+  getMidiDevices: () => Promise<any[]>;
+  connectToMidiDevice: (deviceName: string) => Promise<boolean>;
+  simulateMidiNote: (note: number, velocity?: number, channel?: number) => Promise<void>;
   disconnect: () => void;
 }
 
@@ -421,6 +426,54 @@ function createIpcControl(): IpcControl {
         () => window.electronAPI.updateReaperConfig(config),
         false),
 
+    getMidiConfig: async () => {
+      const config = await safeIpcCall('get MIDI configuration',
+        () => window.electronAPI.getMidiConfig(),
+        {
+          enabled: true,
+          channel: null,
+          noteMappings: []
+        });
+
+      // Ensure noteMappings is always an array
+      if (!config.noteMappings) {
+        config.noteMappings = [];
+      }
+
+      // If we have a noteMapping object but empty noteMappings array, convert it
+      if (config.noteMapping && typeof config.noteMapping === 'object' && config.noteMappings.length === 0) {
+        config.noteMappings = Object.entries(config.noteMapping).map(([noteStr, action]) => {
+          const noteNumber = parseInt(noteStr, 10);
+          return {
+            noteNumber,
+            action: action as string
+          };
+        });
+      }
+
+      return config;
+    },
+
+    updateMidiConfig: (config: any) =>
+      safeIpcCall('update MIDI configuration',
+        () => window.electronAPI.updateMidiConfig(config),
+        void 0),
+
+    getMidiDevices: () =>
+      safeIpcCall('get MIDI devices',
+        () => window.electronAPI.getMidiDevices(),
+        []),
+
+    connectToMidiDevice: (deviceName: string) =>
+      safeIpcCall('connect to MIDI device',
+        () => window.electronAPI.connectToMidiDevice(deviceName),
+        false),
+
+    simulateMidiNote: (note: number, velocity: number = 127, channel: number = 0) =>
+      safeIpcCall('simulate MIDI note',
+        () => window.electronAPI.simulateMidiNote({ note, velocity, channel }),
+        void 0),
+
     disconnect: () => {
       try {
         // Clean up resources
@@ -472,6 +525,15 @@ function createDefaultIpcControl(): IpcControl {
       pollingInterval: 1000
     }),
     updateReaperConfig: (config: Partial<ReaperConfig>) => Promise.resolve(true),
+    getMidiConfig: () => Promise.resolve({
+      enabled: true,
+      channel: null,
+      noteMappings: []
+    }),
+    updateMidiConfig: (config: any) => Promise.resolve(),
+    getMidiDevices: () => Promise.resolve([]),
+    connectToMidiDevice: (deviceName: string) => Promise.resolve(false),
+    simulateMidiNote: (note: number, velocity?: number, channel?: number) => Promise.resolve(),
     disconnect: () => {}
   };
 }

@@ -119,6 +119,7 @@ To test the application in development mode:
 - Auto-resume feature (only continues playback when navigating between songs if playback was already playing)
 - Performer view for live performances
 - Setlist storage in Reaper's extended state for project portability
+- MIDI control with customizable note mapping
 
 ## Custom Markers
 
@@ -142,6 +143,44 @@ Multiple markers can be used together in the same region name:
 - **Example**: `Chorus !length:45 !bpm:140` (uses both a custom length and a BPM value)
 
 The markers can appear anywhere in the region name and in any order.
+
+## MIDI Configuration
+
+The application supports MIDI control, allowing you to trigger various actions using MIDI notes from connected MIDI devices.
+
+### Setting Up MIDI Control
+
+1. Navigate to the Settings screen in the application
+2. In the MIDI Settings section, ensure that MIDI is enabled
+3. Optionally select a specific MIDI device (if none is selected, all devices will be monitored)
+4. Choose a specific MIDI channel or set to "All Channels" to accept notes from any channel
+
+### Configuring MIDI Note Mappings
+
+You can assign specific MIDI notes to trigger different actions:
+
+1. In the MIDI Note Mappings section, you'll see existing mappings (if any)
+2. To add a new mapping:
+   - Enter a MIDI note number (0-127)
+   - Select an action from the dropdown
+   - Click "Add Mapping"
+3. To remove a mapping, click the "Remove" button next to it
+
+### Available Actions
+
+The following actions can be mapped to MIDI notes:
+
+- **Toggle Play/Pause**: Start or stop playback
+- **Pause**: Pause playback
+- **Toggle Autoplay**: Enable/disable automatic progression to the next region
+- **Toggle Count-In**: Enable/disable count-in before playback
+- **Next Region**: Jump to the next region
+- **Previous Region**: Jump to the previous region
+- **Seek to Current Region Start**: Return to the beginning of the current region
+
+### Using MIDI Control
+
+Once configured, the application will listen for MIDI note-on messages from your connected devices. When a mapped note is received, the corresponding action will be triggered.
 
 ## GitHub CI/CD Pipeline
 

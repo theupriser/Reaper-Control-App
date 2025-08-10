@@ -18,8 +18,31 @@ export interface ReaperConfig {
   pollingInterval: number;
 }
 
+export interface MidiNoteMapping {
+  noteNumber: number;
+  action: string;
+  params?: any;
+}
+
+export interface MidiConfig {
+  enabled: boolean;
+  deviceId?: string;
+  deviceName?: string;
+  channel?: number | null;
+  noteMappings: MidiNoteMapping[];
+}
+
+export interface MidiDevice {
+  id: string;
+  name: string;
+  manufacturer?: string;
+  isConnected: boolean;
+}
+
 export interface SettingsState {
   reaperConfig: ReaperConfig;
+  midiConfig: MidiConfig;
+  midiDevices: MidiDevice[];
   loading: boolean;
   saving: boolean;
   error: string;
@@ -38,6 +61,22 @@ const defaultState: SettingsState = {
     connectionTimeout: 3000,
     pollingInterval: 1000
   },
+  midiConfig: {
+    enabled: true,
+    deviceName: undefined,
+    channel: null,
+    noteMappings: [
+      // Default mappings to match the ones in config.ts
+      { noteNumber: 44, action: 'seekToCurrentRegionStart' },
+      { noteNumber: 45, action: 'toggleAutoplay' },
+      { noteNumber: 46, action: 'toggleCountIn' },
+      { noteNumber: 48, action: 'previousRegion' },
+      { noteNumber: 49, action: 'pause' },
+      { noteNumber: 50, action: 'togglePlay' },
+      { noteNumber: 51, action: 'nextRegion' }
+    ]
+  },
+  midiDevices: [],
   loading: true,
   saving: false,
   error: '',
@@ -192,11 +231,219 @@ export const settingsService = {
   },
 
   /**
+   * Load MIDI configuration from the backend
+   * @param {boolean} silent - If true, don't show loading state or errors in UI
+   * @returns {Promise<MidiConfig|null>} The loaded config or null if error
+   */
+  async loadMidiConfig(silent = false): Promise<MidiConfig | null> {
+    if (!silent) {
+      settingsStore.update(state => ({ ...state, loading: true, error: '' }));
+    }
+
+    try {
+      const config = await ipcService.getMidiConfig();
+
+      settingsStore.update(state => ({
+        ...state,
+        midiConfig: config,
+        loading: false
+      }));
+
+      return config;
+    } catch (e) {
+      if (!silent) {
+        settingsStore.update(state => ({
+          ...state,
+          loading: false,
+          error: 'Failed to load MIDI configuration.'
+        }));
+        logger.error('Error loading MIDI config:', e);
+      }
+      return null;
+    }
+  },
+
+  /**
+   * Load MIDI devices from the backend
+   * @param {boolean} silent - If true, don't show loading state or errors in UI
+   * @returns {Promise<MidiDevice[]|null>} The loaded devices or null if error
+   */
+  async loadMidiDevices(silent = false): Promise<MidiDevice[] | null> {
+    if (!silent) {
+      settingsStore.update(state => ({ ...state, loading: true, error: '' }));
+    }
+
+    try {
+      const devices = await ipcService.getMidiDevices();
+
+      settingsStore.update(state => ({
+        ...state,
+        midiDevices: devices,
+        loading: false
+      }));
+
+      return devices;
+    } catch (e) {
+      if (!silent) {
+        settingsStore.update(state => ({
+          ...state,
+          loading: false,
+          error: 'Failed to load MIDI devices.'
+        }));
+        logger.error('Error loading MIDI devices:', e);
+      }
+      return null;
+    }
+  },
+
+  /**
+   * Save MIDI configuration to the backend
+   * @param {Partial<MidiConfig>} config - Configuration to save
+   * @returns {Promise<boolean>} Success status
+   */
+  async saveMidiConfig(config: Partial<MidiConfig>): Promise<boolean> {
+    // Update UI to saving state
+    settingsStore.update(state => ({
+      ...state,
+      saving: true,
+      error: '',
+      successMessage: ''
+    }));
+
+    try {
+      // Get current config
+      let currentState: SettingsState;
+      settingsStore.subscribe(state => { currentState = state; })();
+
+      // Merge with new config
+      const updatedConfig = {
+        ...currentState.midiConfig,
+        ...config
+      };
+
+      // Save to backend
+      await ipcService.updateMidiConfig(updatedConfig);
+
+      // Update store with new config
+      settingsStore.update(state => ({
+        ...state,
+        midiConfig: updatedConfig,
+        saving: false,
+        successMessage: 'MIDI configuration saved successfully.'
+      }));
+
+      // Auto-clear success message
+      setTimeout(() => {
+        settingsStore.update(state => ({
+          ...state,
+          successMessage: ''
+        }));
+      }, SUCCESS_MESSAGE_TIMEOUT);
+
+      return true;
+    } catch (e) {
+      settingsStore.update(state => ({
+        ...state,
+        saving: false,
+        error: 'Error saving MIDI configuration.'
+      }));
+      logger.error('Error saving MIDI config:', e);
+      return false;
+    }
+  },
+
+  /**
+   * Update a specific MIDI note mapping
+   * @param {number} noteNumber - MIDI note number
+   * @param {string} action - Action to map to this note
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateNoteMapping(noteNumber: number, action: string): Promise<boolean> {
+    try {
+      // Get current config
+      let currentState: SettingsState;
+      settingsStore.subscribe(state => { currentState = state; })();
+
+      // Find existing mapping or create new one
+      const mappings = [...currentState.midiConfig.noteMappings];
+      const existingIndex = mappings.findIndex(m => m.noteNumber === noteNumber);
+
+      if (existingIndex >= 0) {
+        // Update existing mapping
+        mappings[existingIndex] = { ...mappings[existingIndex], action };
+      } else {
+        // Add new mapping
+        mappings.push({ noteNumber, action });
+      }
+
+      // Save updated mappings
+      return await this.saveMidiConfig({ noteMappings: mappings });
+    } catch (e) {
+      logger.error('Error updating note mapping:', e);
+      return false;
+    }
+  },
+
+  /**
+   * Remove a MIDI note mapping
+   * @param {number} noteNumber - MIDI note number to remove mapping for
+   * @returns {Promise<boolean>} Success status
+   */
+  async removeNoteMapping(noteNumber: number): Promise<boolean> {
+    try {
+      // Get current config
+      let currentState: SettingsState;
+      settingsStore.subscribe(state => { currentState = state; })();
+
+      // Filter out the mapping to remove
+      const mappings = currentState.midiConfig.noteMappings.filter(m => m.noteNumber !== noteNumber);
+
+      // Save updated mappings
+      return await this.saveMidiConfig({ noteMappings: mappings });
+    } catch (e) {
+      logger.error('Error removing note mapping:', e);
+      return false;
+    }
+  },
+
+  /**
+   * Connect to a MIDI device
+   * @param {string} deviceName - Device name to connect to
+   * @returns {Promise<boolean>} Success status
+   */
+  async connectToDevice(deviceName: string): Promise<boolean> {
+    try {
+      const success = await ipcService.connectToMidiDevice(deviceName);
+
+      if (success) {
+        // Update device in the list
+        settingsStore.update(state => {
+          const devices = state.midiDevices.map(d => {
+            if (d.name === deviceName) {
+              return { ...d, isConnected: true };
+            }
+            return d;
+          });
+
+          return { ...state, midiDevices: devices };
+        });
+      }
+
+      return success;
+    } catch (e) {
+      logger.error('Error connecting to MIDI device:', e);
+      return false;
+    }
+  },
+
+  /**
    * Initialize the settings service
    * @returns {Promise<void>}
    */
   async init(): Promise<void> {
     await this.loadReaperConfig();
+    await this.loadMidiDevices();
+    await this.loadMidiConfig();
   }
 };
 

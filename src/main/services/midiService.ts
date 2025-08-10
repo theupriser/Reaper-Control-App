@@ -15,7 +15,18 @@ export class MidiService extends EventEmitter {
   private activeDevice: easymidi.Input | null = null;
   private activeDeviceId: string | null = null;
   private midiConfig: MidiConfig;
+  // Map to store debounce timeouts for clearing event history
   private noteDebounce: Map<number, NodeJS.Timeout> = new Map();
+
+  // Track last note event timestamps for global debounce across all devices
+  // This is critical for preventing multiple triggering when multiple listeners
+  // pick up the same physical MIDI note event
+  private lastNoteEvents: Map<number, number> = new Map();
+
+  // Time window in ms within which duplicate notes will be ignored
+  // This prevents the same note from triggering multiple actions in quick succession
+  // which addresses the issue of a single MIDI action triggering multiple times
+  private readonly debounceWindow: number = 200;
   private deviceCheckInterval: NodeJS.Timeout | null = null;
 
   /**
@@ -27,11 +38,18 @@ export class MidiService extends EventEmitter {
     // Get MIDI configuration
     const configData = config.getConfig();
 
+    // Log the config data to see what we're getting
+    logger.info('MidiService constructor - Config data:', {
+      midiEnabled: configData.midi.enabled,
+      noteMapping: configData.midi.noteMapping
+    });
+
     // Convert noteMapping object from config to noteMappings array
     const noteMappings: MidiNoteMapping[] = [];
 
     // Load note mappings from config if available
     if (configData.midi.noteMapping && typeof configData.midi.noteMapping === 'object') {
+      logger.info('MidiService constructor - Converting noteMapping object to array');
       Object.entries(configData.midi.noteMapping).forEach(([noteStr, action]) => {
         const noteNumber = parseInt(noteStr, 10);
         if (!isNaN(noteNumber) && typeof action === 'string') {
@@ -41,6 +59,8 @@ export class MidiService extends EventEmitter {
           });
         }
       });
+    } else {
+      logger.warn('MidiService constructor - No valid noteMapping object found in config');
     }
 
     // Initialize midiConfig with values from config
@@ -48,14 +68,12 @@ export class MidiService extends EventEmitter {
       enabled: configData.midi.enabled,
       // Use type assertion to handle the type conflict between null and string|undefined
       deviceName: configData.midi.deviceName as unknown as string | undefined,
+      // Initialize deviceId as undefined, it will be set later if needed
+      deviceId: undefined,
       channel: configData.midi.channel !== null ? configData.midi.channel : undefined,
       noteMappings: noteMappings
     };
 
-    logger.debug('Loaded note mappings from config', {
-      count: noteMappings.length,
-      mappings: noteMappings
-    });
 
     // Initialize MIDI
     this.initialize();
@@ -101,9 +119,9 @@ export class MidiService extends EventEmitter {
     logger.info('Connecting to all MIDI devices');
 
     // Connect to each device
-    for (const [deviceId, device] of this.midiDevices.entries()) {
+    for (const device of this.midiDevices.values()) {
       try {
-        this.connectToDevice(deviceId);
+        this.connectToDevice(device.name);
         logger.info(`Connected to MIDI device: ${device.name}`);
       } catch (error) {
         logger.error(`Failed to connect to MIDI device: ${device.name}`, { error });
@@ -196,7 +214,7 @@ export class MidiService extends EventEmitter {
 
           // Automatically connect to the new device
           if (this.midiConfig.enabled) {
-            this.connectToDevice(deviceId);
+            this.connectToDevice(inputName);
           }
         });
 
@@ -261,62 +279,68 @@ export class MidiService extends EventEmitter {
       return;
     }
 
-    let deviceId: string | undefined = undefined;
     let deviceName = this.midiConfig.deviceName;
 
-    // If device name is configured, find the device with that name
+    // If device name is configured, use it directly
     if (deviceName) {
-      for (const [id, device] of this.midiDevices.entries()) {
+      // Check if this device exists
+      let deviceExists = false;
+      for (const device of this.midiDevices.values()) {
         if (device.name === deviceName) {
-          deviceId = id;
+          deviceExists = true;
           break;
         }
       }
-    }
 
-    // If no device found by name or no name configured, use the first device
-    if (!deviceId) {
-      const firstKey = this.midiDevices.keys().next();
-      if (!firstKey.done) {
-        deviceId = firstKey.value;
-        const device = this.midiDevices.get(deviceId);
-        if (device) {
-          deviceName = device.name;
-        }
+      if (deviceExists) {
+        this.connectToDevice(deviceName);
+        return;
+      } else {
+        logger.warn(`Configured MIDI device not found: ${deviceName}`);
       }
     }
 
-    // Connect to the device
-    if (deviceId) {
-      this.connectToDevice(deviceId);
+    // If no device configured or not found, use the first device
+    const firstDevice = this.midiDevices.values().next().value;
+    if (firstDevice) {
+      deviceName = firstDevice.name;
+      this.connectToDevice(deviceName);
     }
   }
 
   /**
    * Connect to a MIDI device
-   * @param deviceId - Device ID
+   * @param deviceName - Device name
    * @returns True if connected successfully
    */
-  public connectToDevice(deviceId: string): boolean {
-    // Get device
-    const device = this.midiDevices.get(deviceId);
-    if (!device) {
-      logger.error('MIDI device not found', { deviceId });
+  public connectToDevice(deviceName: string): boolean {
+    // Find device by name
+    let device;
+    let deviceId;
+
+    // Find the device with the matching name
+    for (const [id, dev] of this.midiDevices.entries()) {
+      if (dev.name === deviceName) {
+        device = dev;
+        deviceId = id;
+        break;
+      }
+    }
+
+    if (!device || !deviceId) {
+      logger.error('MIDI device not found by name', { deviceName });
       return false;
     }
 
-    // If device is already connected, don't reconnect
-    if (device.isConnected && this.midiInputs.has(deviceId)) {
-      logger.debug('MIDI device already connected', { deviceId, name: device.name });
-      return true;
-    }
-
     try {
-      // Close existing input if it exists
+      // If device is already connected, close it first to ensure clean reconnection
+      // This helps prevent multiple listeners for the same physical device
       if (this.midiInputs.has(deviceId)) {
         try {
           const existingInput = this.midiInputs.get(deviceId);
           if (existingInput) {
+            // Remove all listeners before closing to prevent any leaks
+            existingInput.removeAllListeners();
             existingInput.close();
           }
           this.midiInputs.delete(deviceId);
@@ -381,8 +405,9 @@ export class MidiService extends EventEmitter {
         const input = this.midiInputs.get(this.activeDeviceId);
 
         if (input) {
-          // Close the input
+          // Remove all listeners before closing to prevent any event listener leaks
           try {
+            input.removeAllListeners();
             input.close();
           } catch (closeError) {
             logger.error(`Error closing MIDI input:`, closeError);
@@ -423,26 +448,42 @@ export class MidiService extends EventEmitter {
 
     // Filter by channel if specified
     if (this.midiConfig.channel !== undefined && this.midiConfig.channel !== null && channel !== this.midiConfig.channel) {
-      logger.debug('Ignoring MIDI note on different channel', { note, channel, configuredChannel: this.midiConfig.channel });
       return;
     }
 
     const device = this.midiDevices.get(deviceId);
     const deviceName = device ? device.name : 'unknown';
 
-    logger.debug('MIDI note on', { note, velocity, channel, deviceId, deviceName });
+
+    // Global debounce - check if we've seen this note recently from any device
+    // This is the key mechanism that prevents the multiple triggering issue:
+    // When a physical MIDI note is pressed, it might be detected by multiple event listeners
+    // (due to reconnection or device polling). By tracking the timestamp globally for each note,
+    // we ensure that only the first detection triggers an action, and subsequent detections
+    // of the same note within the debounce window are ignored.
+    const now = Date.now();
+    const lastTime = this.lastNoteEvents.get(note);
+
+    if (lastTime && (now - lastTime) < this.debounceWindow) {
+      return;
+    }
+
+    // Update the last seen time for this note
+    this.lastNoteEvents.set(note, now);
 
     // Find action for this note
     const action = this.findActionForNote(note);
     if (action) {
-      // Debounce to prevent rapid triggering
+      // Per-note debounce timer (keeps the map clean after the window expires)
       if (this.noteDebounce.has(note)) {
         clearTimeout(this.noteDebounce.get(note)!);
       }
 
       this.noteDebounce.set(note, setTimeout(() => {
         this.noteDebounce.delete(note);
-      }, 200)); // 200ms debounce
+        // Also clean up the lastNoteEvents entry
+        this.lastNoteEvents.delete(note);
+      }, this.debounceWindow));
 
       // Emit action event with device info
       this.emit('action', action.action, { ...action.params, deviceId, deviceName });
@@ -486,7 +527,6 @@ export class MidiService extends EventEmitter {
       default:
         // No additional fallback mappings
 
-        logger.debug('No action found for MIDI note', { note });
         return undefined;
     }
   }
@@ -500,8 +540,18 @@ export class MidiService extends EventEmitter {
     if (newConfig.enabled !== undefined) {
       this.midiConfig.enabled = newConfig.enabled;
     }
+
+    // Only use deviceName, not deviceId
     if (newConfig.deviceName !== undefined) {
       this.midiConfig.deviceName = newConfig.deviceName;
+
+      // If deviceName is empty, it means "All Available Devices"
+      if (!newConfig.deviceName) {
+        this.midiConfig.deviceName = null;
+      }
+
+      // We should clear deviceId as it's no longer used
+      this.midiConfig.deviceId = undefined;
     }
     if (newConfig.channel !== undefined) {
       this.midiConfig.channel = newConfig.channel;
@@ -520,10 +570,6 @@ export class MidiService extends EventEmitter {
       }
     }
 
-    logger.debug('Updating config with note mappings', {
-      count: Object.keys(noteMapping).length,
-      mappings: noteMapping
-    });
 
     // Update global config
     config.updateConfig({
@@ -531,6 +577,8 @@ export class MidiService extends EventEmitter {
         enabled: this.midiConfig.enabled,
         // Use type assertion to handle the type conflict between string|undefined and null
         deviceName: this.midiConfig.deviceName as unknown as null,
+        // We don't save deviceId directly to config.ts as it's not part of its schema
+        // But we set deviceName to null when deviceId is empty (All Available Devices)
         // Use type assertion to force null for channel property
         channel: (this.midiConfig.channel !== undefined ? this.midiConfig.channel : null) as null,
         // Cast the noteMapping to the expected type using type assertion
@@ -563,6 +611,8 @@ export class MidiService extends EventEmitter {
     // Close all inputs
     for (const [deviceId, input] of this.midiInputs.entries()) {
       try {
+        // Remove all listeners before closing to prevent any event listener leaks
+        input.removeAllListeners();
         input.close();
 
         // Update device state
@@ -571,7 +621,6 @@ export class MidiService extends EventEmitter {
           device.isConnected = false;
         }
 
-        logger.debug(`Disconnected from MIDI device: ${deviceId}`);
       } catch (error) {
         logger.error(`Error disconnecting from MIDI device: ${deviceId}`, { error });
       }
@@ -583,6 +632,13 @@ export class MidiService extends EventEmitter {
     // Clear state
     this.activeDevice = null;
     this.activeDeviceId = null;
+
+    // Also clear any pending debounce timers
+    for (const timeout of this.noteDebounce.values()) {
+      clearTimeout(timeout);
+    }
+    this.noteDebounce.clear();
+    this.lastNoteEvents.clear();
 
     logger.info('Disconnected from all MIDI devices');
   }
@@ -611,6 +667,15 @@ export class MidiService extends EventEmitter {
    * @returns MIDI configuration
    */
   public getConfig(): MidiConfig {
+    // Log what we're returning to help debug the issue
+    logger.info('MidiService.getConfig() returning:', {
+      enabled: this.midiConfig.enabled,
+      deviceId: this.midiConfig.deviceId,
+      deviceName: this.midiConfig.deviceName,
+      channel: this.midiConfig.channel,
+      noteMappingsCount: this.midiConfig.noteMappings.length,
+      noteMappings: this.midiConfig.noteMappings
+    });
     return { ...this.midiConfig };
   }
 
@@ -623,7 +688,6 @@ export class MidiService extends EventEmitter {
   public simulateNote(note: number, velocity: number = 127, channel: number = 0): void {
     // Not directly possible with real MIDI devices
     // This method is kept for backward compatibility
-    logger.debug('simulateNote called - this is a no-op with real MIDI devices', { note, velocity, channel });
 
     // Manually trigger the note handler as a fallback
     // Use a dummy deviceId since this is a simulated note
@@ -645,8 +709,9 @@ export class MidiService extends EventEmitter {
     // Close all MIDI inputs
     for (const [deviceId, input] of this.midiInputs.entries()) {
       try {
+        // Remove all event listeners to prevent any leaks
+        input.removeAllListeners();
         input.close();
-        logger.debug(`Closed MIDI input for device: ${deviceId}`);
       } catch (error) {
         logger.error(`Error closing MIDI input for device: ${deviceId}`, error);
       }
@@ -660,6 +725,9 @@ export class MidiService extends EventEmitter {
       clearTimeout(timeout);
     }
     this.noteDebounce.clear();
+
+    // Clear event tracking
+    this.lastNoteEvents.clear();
 
     logger.info('MIDI service cleanup complete');
   }

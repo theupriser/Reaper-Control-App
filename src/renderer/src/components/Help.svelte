@@ -91,6 +91,33 @@
     </div>
 
     <div class="component-section">
+      <h2 class="component-section-heading">Step 4: Configure MIDI Control (Optional)</h2>
+      <p>
+        You can control the app using MIDI notes from connected MIDI devices:
+      </p>
+      <ol class="component-list">
+        <li class="component-list-item">Go to <span class="component-strong">Settings</span> in the app</li>
+        <li class="component-list-item">In the <span class="component-strong">MIDI Settings</span> section:
+          <ul class="component-list">
+            <li class="component-list-item">Ensure <span class="component-strong">Enable MIDI</span> is checked</li>
+            <li class="component-list-item">Optionally select a specific MIDI device (or leave as "All Available Devices")</li>
+            <li class="component-list-item">Choose a MIDI channel to listen to, or leave as "All Channels"</li>
+          </ul>
+        </li>
+        <li class="component-list-item">In the <span class="component-strong">MIDI Note Mappings</span> section:
+          <ul class="component-list">
+            <li class="component-list-item">Add mappings by entering a MIDI note number (0-127) and selecting an action</li>
+            <li class="component-list-item">Remove mappings by clicking the "Remove" button</li>
+          </ul>
+        </li>
+        <li class="component-list-item">Once configured, the app will respond to MIDI note-on messages from your connected devices</li>
+      </ol>
+      <p class="component-note">
+        Note: MIDI notes can trigger various actions like play/pause, next/previous region, toggle autoplay, and more.
+      </p>
+    </div>
+
+    <div class="component-section">
       <h2 class="component-section-heading">Troubleshooting</h2>
       <p>
         If you're experiencing issues with the connection:

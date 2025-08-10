@@ -47,6 +47,7 @@ install:
         chmod +x ./install.sh
         ./install.sh
       fi
+    - npm install -g typescript # Ensure TypeScript is installed globally for all builds
   artifacts:
     paths:
       - node_modules/

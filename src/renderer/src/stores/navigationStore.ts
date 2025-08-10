@@ -15,7 +15,9 @@ import { cleanupRegionAndPlaybackListeners, setupRegionAndPlaybackListeners } fr
 export enum View {
   MAIN = 'main',
   PERFORMER = 'performer',
-  SETLISTS = 'setlists'
+  SETLISTS = 'setlists',
+  HELP = 'help',
+  SETTINGS = 'settings'
 }
 
 /**

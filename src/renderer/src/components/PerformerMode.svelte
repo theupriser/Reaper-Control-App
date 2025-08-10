@@ -224,7 +224,7 @@
         {#if $popoverVisible}
           <div
             class="time-popover"
-            style="left: {$popoverPosition.x}px; top: {$popoverPosition.y}px"
+            style="left: {$popoverPosition.x}px; top: 0"
           >
             {formatTime($popoverTime)}
           </div>

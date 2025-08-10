@@ -44,6 +44,10 @@ export const IPC_CHANNELS = {
   MOVE_SETLIST_ITEM: 'move-setlist-item',
   SET_SELECTED_SETLIST: 'set-selected-setlist',
 
+  // Configuration
+  GET_REAPER_CONFIG: 'get-reaper-config',
+  UPDATE_REAPER_CONFIG: 'update-reaper-config',
+
   // MIDI
   GET_MIDI_DEVICES: 'get-midi-devices',
   GET_MIDI_CONFIG: 'get-midi-config',

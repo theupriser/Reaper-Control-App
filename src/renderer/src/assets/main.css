@@ -1,4 +1,6 @@
 @import 'base.css';
+@import 'component-headers.css';
+@import 'component-layouts.css';
 
 body {
   display: flex;

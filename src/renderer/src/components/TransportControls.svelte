@@ -249,7 +249,7 @@
     {#if $popoverVisible}
       <div
         class="time-popover"
-        style="left: {$popoverPosition.x}px; top: {$popoverPosition.y}px"
+        style="left: {$popoverPosition.x}px; top: 0"
       >
         {formatTime($popoverTime)}
       </div>
@@ -353,6 +353,7 @@
     background-color: #2a2a2a;
     border-radius: 8px;
     padding: 1rem;
+    margin-top: 1rem;
     margin-bottom: 1rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }

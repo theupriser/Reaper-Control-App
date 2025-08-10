@@ -204,11 +204,13 @@
   }
 </script>
 
-<div class="setlist-editor-container">
-  <h1>Setlist Editor</h1>
+<div class="component-container">
+  <div class="component-header">
+    <h1>Setlist Editor</h1>
+  </div>
 
   {#if $setlistError}
-    <div class="error-message">
+    <div class="component-error-message">
       <p>{$setlistError}</p>
       <button on:click={clearSetlistError}>Dismiss</button>
     </div>
@@ -216,20 +218,22 @@
 
   <div class="setlist-layout">
     <!-- Left side: Setlist management -->
-    <div class="setlist-management">
-      <h2>Your Setlists</h2>
+    <div class="component-section">
+      <h2 class="component-section-heading">Your Setlists</h2>
 
       <!-- Create new setlist form -->
       <div class="create-setlist">
-        <h3>Create New Setlist</h3>
-        <div class="form-group">
+<!--        <h3 class="component-section-heading">Create New Setlist</h3>-->
+        <div class="component-form-group">
           <input
+            class="component-input"
             type="text"
             bind:value={newSetlistName}
             placeholder="Enter setlist name"
             disabled={$setlistLoading}
           />
           <button
+            class="component-button"
             on:click={() => handleCreateSetlist(newSetlistName)}
             disabled={!newSetlistName.trim() || $setlistLoading}
           >
@@ -241,7 +245,7 @@
       <!-- Setlist list -->
       <div class="setlist-list">
         {#if $setlistLoading}
-          <div class="loading">Loading setlists...</div>
+          <div class="component-loading">Loading setlists...</div>
         {:else if $setlists.length === 0}
           <div class="empty-state">
             <p>No setlists found</p>
@@ -257,10 +261,11 @@
                       type="text"
                       bind:value={editingSetlistName}
                       placeholder="Setlist name"
+                      class="component-input"
                     />
                     <div class="edit-actions">
-                      <button on:click={() => saveSetlistEdits(editingSetlistId, editingSetlistName)}>Save</button>
-                      <button on:click={cancelEditingSetlist}>Cancel</button>
+                      <button class="component-button" on:click={() => saveSetlistEdits(editingSetlistId, editingSetlistName)}>Save</button>
+                      <button class="component-button" on:click={cancelEditingSetlist}>Cancel</button>
                     </div>
                   </div>
                 {:else}
@@ -272,8 +277,8 @@
                       {setlist.name}
                     </span>
                     <div class="setlist-actions">
-                      <button on:click={() => startEditingSetlist(setlist)}>Edit</button>
-                      <button on:click={() => confirmDeleteSetlist(setlist)}>Delete</button>
+                      <button class="component-button" on:click={() => startEditingSetlist(setlist)}>Edit</button>
+                      <button class="component-button" on:click={() => confirmDeleteSetlist(setlist)}>Delete</button>
                     </div>
                   </div>
                 {/if}
@@ -285,18 +290,17 @@
     </div>
 
     <!-- Right side: Current setlist and available regions -->
-    <div class="setlist-content">
+    <div class="component-section">
       {#if $currentSetlist}
         <div class="current-setlist">
-          <h2>Editing: {$currentSetlist.name}</h2>
+          <h2 class="component-section-heading">Setlist Items: {$currentSetlist.name}</h2>
 
           <!-- Setlist items -->
           <div class="setlist-items">
-            <h3>Setlist Items</h3>
             {#if $currentSetlist.items.length === 0}
               <div class="empty-state">
                 <p>No items in this setlist</p>
-                <p class="hint">Add songs from the list below</p>
+                <p class="component-description">Add songs from the list below</p>
               </div>
             {:else}
               <ul class="item-list">
@@ -310,20 +314,20 @@
                       <button
                         on:click={() => moveItemUp(item.id, index)}
                         disabled={index === 0}
-                        class="move-button"
+                        class="component-button"
                       >
                         ↑
                       </button>
                       <button
                         on:click={() => moveItemDown(item.id, index)}
                         disabled={index === $currentSetlist.items.length - 1}
-                        class="move-button"
+                        class="component-button"
                       >
                         ↓
                       </button>
                       <button
                         on:click={() => removeItemFromSetlist(item.id)}
-                        class="remove-button {processingRemoveButtons.has(item.id) ? 'processing' : ''}"
+                        class="component-button {processingRemoveButtons.has(item.id) ? 'processing' : ''}"
                       >
                         Remove
                       </button>
@@ -345,7 +349,7 @@
               </div>
             {:else}
               {#if $regions.filter(region => !isRegionInSetlist(region.id)).length > 0}
-              <h3>Available Songs</h3>
+              <h3 class="component-section-heading">Available Songs</h3>
               {/if}
               <ul class="region-list">
                 {#each $regions.filter(region => !isRegionInSetlist(region.id)) as region (region.id)}
@@ -359,7 +363,7 @@
                     </div>
                     <button
                       on:click={() => addRegionToSetlist(region.id, region.name)}
-                      class="add-button {processingAddButtons.has(region.id) ? 'processing' : ''}"
+                      class="component-button {processingAddButtons.has(region.id) ? 'processing' : ''}"
                     >
                       Add
                     </button>
@@ -385,9 +389,9 @@
         <h3>Confirm Delete</h3>
         <p>Are you sure you want to delete the setlist "{setlistToDelete?.name}"?</p>
         <p class="warning">This action cannot be undone.</p>
-        <div class="modal-actions">
-          <button on:click={() => handleDeleteSetlist(setlistToDelete?.id || '')} class="delete-button">Delete</button>
-          <button on:click={cancelDelete}>Cancel</button>
+        <div class="component-actions">
+          <button on:click={() => handleDeleteSetlist(setlistToDelete?.id || '')} class="component-button delete-button">Delete</button>
+          <button on:click={cancelDelete} class="component-button">Cancel</button>
         </div>
       </div>
     </div>
@@ -395,51 +399,7 @@
 </div>
 
 <style>
-  .setlist-editor-container {
-    width: 100%;
-    margin: 0 auto;
-    padding: 1rem;
-  }
-
-  h1 {
-    margin-top: 0;
-    margin-bottom: 1.5rem;
-    color: #ffffff;
-  }
-
-  h2 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-    font-size: 1.5rem;
-    color: #ffffff;
-  }
-
-  h3 {
-    margin-top: 0;
-    margin-bottom: 0.75rem;
-    font-size: 1.2rem;
-    color: #ffffff;
-  }
-
-  .error-message {
-    background-color: rgba(244, 67, 54, 0.1);
-    border-left: 4px solid #f44336;
-    color: #f44336;
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-radius: 4px;
-  }
-
-  .error-message button {
-    background: none;
-    border: none;
-    color: inherit;
-    cursor: pointer;
-    font-weight: bold;
-  }
+  /* Header, form elements, cards, and error message styling now handled by component-headers.css and component-layouts.css */
 
   .setlist-layout {
     display: grid;
@@ -447,58 +407,10 @@
     gap: 2rem;
   }
 
-  .setlist-management, .setlist-content {
-    background-color: #2a2a2a;
-    border-radius: 8px;
-    padding: 1.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  }
+  /* Form elements and button styles now handled by component-layouts.css */
 
   .create-setlist {
     margin-bottom: 1.5rem;
-  }
-
-  .form-group {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  input[type="text"] {
-    flex: 1;
-    padding: 0.5rem;
-    border: 1px solid #444;
-    background-color: #333;
-    color: white;
-    border-radius: 4px;
-  }
-
-  button {
-    padding: 0.5rem 1rem;
-    background-color: #4a4a4a;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.15s ease-in-out;
-    position: relative;
-    overflow: hidden;
-  }
-
-  button:hover:not(:disabled) {
-    background-color: #5a5a5a;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  }
-
-  button:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: none;
-    background-color: #3a3a3a;
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   button.processing {
@@ -557,11 +469,7 @@
     }
   }
 
-  .loading {
-    color: #aaa;
-    font-style: italic;
-    padding: 1rem 0;
-  }
+  /* Loading state and description styles now handled by component-layouts.css */
 
   .empty-state {
     color: #aaa;
@@ -727,12 +635,7 @@
     font-weight: bold;
   }
 
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 1.5rem;
-  }
+  /* Modal actions now use component-actions from component-layouts.css */
 
   .delete-button {
     background-color: #f44336;

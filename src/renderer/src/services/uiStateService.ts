@@ -82,8 +82,10 @@ export function calculatePopoverPosition(
   if (popoverX < minX) popoverX = minX;
   if (popoverX > maxX) popoverX = maxX;
 
+  // No offset needed for Y position because the CSS transform: translate(-50%, -100%)
+  // will position the popover above the cursor automatically
   return {
     x: popoverX,
-    y: containerTop - 30 // Position above the progress bar
+    y: containerTop
   };
 }

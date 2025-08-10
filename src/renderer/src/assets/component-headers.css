@@ -1,0 +1,42 @@
+/* Shared header styles for components
+   This file provides consistent header styling across all components */
+
+.component-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+  padding-bottom: 1rem;
+  margin-bottom: .5rem;
+}
+
+.component-header h1,
+.component-header h2 {
+  margin: 0;
+  color: #4CAF50;
+}
+
+.component-header h1 {
+  font-size: 2rem;
+}
+
+.component-header h2 {
+  font-size: 1.8rem;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .component-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .component-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .component-header h2 {
+    font-size: 1.5rem;
+  }
+}

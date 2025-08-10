@@ -66,6 +66,16 @@ interface StatusMessage {
   details?: string;
 }
 
+interface ReaperConfig {
+  host: string;
+  port: number;
+  protocol: string;
+  reconnectInterval: number;
+  maxReconnectAttempts: number;
+  connectionTimeout: number;
+  pollingInterval: number;
+}
+
 interface IpcControl {
   refreshRegions: () => Promise<Region[]>;
   seekToPosition: (position: number, useCountIn?: boolean) => Promise<void>;
@@ -80,6 +90,8 @@ interface IpcControl {
   setAutoplayEnabled: (enabled: boolean) => Promise<void>;
   setCountInEnabled: (enabled: boolean) => Promise<void>;
   setSelectedSetlist: (setlistId: string | null) => Promise<void>;
+  getReaperConfig: () => Promise<ReaperConfig>;
+  updateReaperConfig: (config: Partial<ReaperConfig>) => Promise<boolean>;
   disconnect: () => void;
 }
 
@@ -410,6 +422,24 @@ function createIpcControl(): IpcControl {
         () => window.electronAPI.setSelectedSetlist(setlistId),
         void 0),
 
+    getReaperConfig: () =>
+      safeIpcCall('get Reaper configuration',
+        () => window.electronAPI.getReaperConfig(),
+        {
+          host: 'localhost',
+          port: 8080,
+          protocol: 'http',
+          reconnectInterval: 5000,
+          maxReconnectAttempts: 10,
+          connectionTimeout: 3000,
+          pollingInterval: 1000
+        }),
+
+    updateReaperConfig: (config: Partial<ReaperConfig>) =>
+      safeIpcCall('update Reaper configuration',
+        () => window.electronAPI.updateReaperConfig(config),
+        false),
+
     disconnect: () => {
       try {
         // Clean up resources
@@ -451,6 +481,16 @@ function createDefaultIpcControl(): IpcControl {
     setAutoplayEnabled: (enabled: boolean) => Promise.resolve(),
     setCountInEnabled: (enabled: boolean) => Promise.resolve(),
     setSelectedSetlist: (setlistId: string | null) => Promise.resolve(),
+    getReaperConfig: () => Promise.resolve({
+      host: 'localhost',
+      port: 8080,
+      protocol: 'http',
+      reconnectInterval: 5000,
+      maxReconnectAttempts: 10,
+      connectionTimeout: 3000,
+      pollingInterval: 1000
+    }),
+    updateReaperConfig: (config: Partial<ReaperConfig>) => Promise.resolve(true),
     disconnect: () => {}
   };
 }

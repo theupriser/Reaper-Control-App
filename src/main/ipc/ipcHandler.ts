@@ -11,6 +11,7 @@ import { MidiService } from '../services/midiService';
 import { ProjectService } from '../services/projectService';
 import { StatusMessage } from '../types';
 import logger from '../utils/logger';
+import config from '../utils/config';
 
 export class IpcHandler {
   private mainWindow: BrowserWindow;
@@ -95,6 +96,10 @@ export class IpcHandler {
     ipcMain.handle(IPC_CHANNELS.REMOVE_SETLIST_ITEM, this.handleRemoveSetlistItem.bind(this));
     ipcMain.handle(IPC_CHANNELS.MOVE_SETLIST_ITEM, this.handleMoveSetlistItem.bind(this));
     ipcMain.handle(IPC_CHANNELS.SET_SELECTED_SETLIST, this.handleSetSelectedSetlist.bind(this));
+
+    // Configuration
+    ipcMain.handle(IPC_CHANNELS.GET_REAPER_CONFIG, this.handleGetReaperConfig.bind(this));
+    ipcMain.handle(IPC_CHANNELS.UPDATE_REAPER_CONFIG, this.handleUpdateReaperConfig.bind(this));
 
     // MIDI
     ipcMain.handle(IPC_CHANNELS.GET_MIDI_DEVICES, this.handleGetMidiDevices.bind(this));
@@ -709,6 +714,105 @@ export class IpcHandler {
     }
   }
 
+  // Configuration handlers
+
+  /**
+   * Handle get Reaper config
+   * @returns Reaper configuration
+   */
+  private async handleGetReaperConfig(): Promise<any> {
+    try {
+      return config.getConfig().reaper;
+    } catch (error) {
+      logger.error('Error getting Reaper config', { error });
+      this.sendStatusMessage(this.createErrorMessage('Failed to get Reaper configuration', String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * Handle update Reaper config
+   * @param _ - IPC event
+   * @param config - Updated Reaper config
+   * @returns Success status
+   */
+  private async handleUpdateReaperConfig(_: any, configUpdate: any): Promise<boolean> {
+    try {
+      const currentConfig = config.getConfig();
+
+      // Log the received config update
+      logger.info('Received config update:', {
+        configUpdate,
+        portType: typeof configUpdate.port
+      });
+
+      // Ensure port is a number before updating config
+      if (configUpdate.port !== undefined) {
+        configUpdate.port = Number(configUpdate.port);
+        logger.info('Converted port to number:', {
+          port: configUpdate.port,
+          portType: typeof configUpdate.port
+        });
+      }
+
+      // Update only the reaper section
+      const updatedConfig = {
+        ...currentConfig,
+        reaper: {
+          ...currentConfig.reaper,
+          ...configUpdate
+        }
+      };
+
+      // Save the updated config
+      const result = config.updateConfig(updatedConfig);
+
+      // Check if config update was successful
+      if (result === null) {
+        logger.error('Config update failed - configuration saving returned null');
+        this.sendStatusMessage(this.createErrorMessage('Failed to save configuration',
+          'The configuration could not be written to disk. Check permissions and disk space.'));
+        return false;
+      }
+
+      // Reconnect to Reaper with new settings if port was changed
+      if (configUpdate.port !== undefined && configUpdate.port !== currentConfig.reaper.port) {
+        logger.info('Reaper port changed, reconnecting...', {
+          oldPort: currentConfig.reaper.port,
+          newPort: configUpdate.port,
+          portType: typeof configUpdate.port
+        });
+
+        try {
+          // Disconnect first
+          this.reaperConnector.disconnect();
+
+          // Give a short delay before reconnecting
+          setTimeout(() => {
+            try {
+                this.reaperConnector.connect();
+            } catch (connectError) {
+              logger.error('Error reconnecting to Reaper after port change', { error: connectError });
+              this.sendStatusMessage(this.createErrorMessage('Failed to reconnect to Reaper after port change',
+                String(connectError)));
+            }
+          }, 500);
+        } catch (disconnectError) {
+          logger.error('Error disconnecting from Reaper during port change', { error: disconnectError });
+          // Continue anyway as we want to save the config
+        }
+      }
+
+      this.sendStatusMessage(this.createInfoMessage('Reaper configuration updated successfully'));
+      return true;
+    } catch (error) {
+      logger.error('Error updating Reaper config', { error, config });
+      this.sendStatusMessage(this.createErrorMessage('Failed to update Reaper configuration', String(error)));
+      // Return false instead of throwing to match what the frontend expects
+      return false;
+    }
+  }
+
   // MIDI handlers
 
   /**
@@ -805,6 +909,9 @@ export class IpcHandler {
     ipcMain.removeHandler(IPC_CHANNELS.REMOVE_SETLIST_ITEM);
     ipcMain.removeHandler(IPC_CHANNELS.MOVE_SETLIST_ITEM);
     ipcMain.removeHandler(IPC_CHANNELS.SET_SELECTED_SETLIST);
+    ipcMain.removeHandler(IPC_CHANNELS.GET_REAPER_CONFIG);
+    ipcMain.removeHandler(IPC_CHANNELS.UPDATE_REAPER_CONFIG);
+
     ipcMain.removeHandler(IPC_CHANNELS.GET_MIDI_DEVICES);
     ipcMain.removeHandler(IPC_CHANNELS.GET_MIDI_CONFIG);
     ipcMain.removeHandler(IPC_CHANNELS.UPDATE_MIDI_CONFIG);

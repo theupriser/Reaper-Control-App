@@ -169,8 +169,6 @@
 </script>
 
 <div class="region-list-container">
-  <h2>{currentSetlist ? currentSetlist.name : 'All Regions'}</h2>
-
   {#if $setlists && $setlists.length > 0}
     <div class="setlist-selector">
       <label for="setlist-select">Select Setlist:</label>
@@ -443,7 +441,10 @@
   }
 
   .region-list {
-    max-height: 60vh;
+    /* Dynamic height calculation that ensures the list never extends beyond viewport minus header */
+    height: calc(100vh - var(--header-height, 150px) - var(--transport-height, 200px) - 3rem);
+    /* Minimum height for at least 3 items (estimated at 40px per item plus padding) */
+    min-height: calc(3 * (1.5rem + 45px));
     overflow-y: auto;
     border-radius: 4px;
   }
@@ -559,7 +560,8 @@
   /* Responsive adjustments */
   @media (max-width: 768px) {
     .region-list {
-      max-height: 40vh;
+      /* Use mobile-specific variables for height calculation */
+      height: calc(100vh - var(--header-height-mobile, 180px) - var(--transport-height-mobile, 180px) - 2rem);
     }
 
     .region-item {

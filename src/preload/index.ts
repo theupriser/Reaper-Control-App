@@ -85,6 +85,10 @@ const api = {
   moveSetlistItem: (setlistId: string, itemId: string, newPosition: number) =>
     ipcRenderer.invoke('move-setlist-item', { setlistId, itemId, newPosition }),
 
+  // Configuration management
+  getReaperConfig: () => ipcRenderer.invoke('get-reaper-config'),
+  updateReaperConfig: (config: any) => ipcRenderer.invoke('update-reaper-config', config),
+
   // Ping for latency measurement
   ping: () => ipcRenderer.invoke('ping'),
 

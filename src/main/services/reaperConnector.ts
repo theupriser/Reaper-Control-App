@@ -32,19 +32,10 @@ export class ReaperConnector extends EventEmitter {
   constructor() {
     super();
 
-    // Get REAPER configuration
-    const reaperConfig = config.getConfig().reaper;
+    // Initialize axios instance in the connect method
+    this.axiosInstance = null;
 
-    // Create axios instance for REAPER API requests
-    this.axiosInstance = axios.create({
-      baseURL: `${reaperConfig.protocol}://${reaperConfig.host}:${reaperConfig.port}`,
-      timeout: reaperConfig.connectionTimeout,
-    });
-
-    logger.info('REAPER connector initialized', {
-      host: reaperConfig.host,
-      port: reaperConfig.port
-    });
+    logger.info('REAPER connector initialized');
   }
 
   /**
@@ -58,6 +49,20 @@ export class ReaperConnector extends EventEmitter {
 
     try {
       logger.info('Connecting to REAPER...');
+
+      // Get fresh REAPER configuration
+      const reaperConfig = config.getConfig().reaper;
+
+      // Create or recreate axios instance with current config
+      this.axiosInstance = axios.create({
+        baseURL: `${reaperConfig.protocol}://${reaperConfig.host}:${reaperConfig.port}`,
+        timeout: reaperConfig.connectionTimeout,
+      });
+
+      logger.info('Using REAPER configuration:', {
+        host: reaperConfig.host,
+        port: reaperConfig.port
+      });
 
       // Test connection by getting transport state
       await this.getTransportState();
@@ -408,6 +413,16 @@ export class ReaperConnector extends EventEmitter {
     retryDelay: number = 1000
   ): Promise<T> {
     let attempts = 0;
+
+    // Check if axios instance exists, create if needed
+    if (!this.axiosInstance) {
+      logger.warn('Axios instance not initialized, attempting to create it now');
+      const reaperConfig = config.getConfig().reaper;
+      this.axiosInstance = axios.create({
+        baseURL: `${reaperConfig.protocol}://${reaperConfig.host}:${reaperConfig.port}`,
+        timeout: reaperConfig.connectionTimeout,
+      });
+    }
 
     while (attempts <= retryCount) {
       try {

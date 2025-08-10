@@ -59,6 +59,10 @@ export const IPC_CHANNELS = {
   // System
   SYSTEM_STATS: 'system-stats',
 
+  // Configuration
+  GET_REAPER_CONFIG: 'get-reaper-config',
+  UPDATE_REAPER_CONFIG: 'update-reaper-config',
+
   // Ping/Pong
   PING: 'ping'
 };

@@ -572,7 +572,7 @@ export function handleProgressBarClickWithPopover(
   const clickPosition = currentRegionValue.start + (percentage * effectiveRegionDuration);
 
   // Calculate popover position
-  const popoverPosition = calculatePositionFn(clickX, containerWidth, rect.top);
+  const popoverPosition = calculatePositionFn(clickX, containerWidth, event.clientY);
 
   // Show the popover with the calculated time
   showPopoverFn(

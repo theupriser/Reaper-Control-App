@@ -11,6 +11,9 @@ import logger from '../utils/logger';
 export class MidiService extends EventEmitter {
   private midiDevices: Map<string, MidiDevice> = new Map();
   private midiInputs: Map<string, easymidi.Input> = new Map();
+  // Keeping direct reference to active device for potential future use
+  // even though currently we primarily access via activeDeviceId
+  // @ts-expect-error Intentionally keeping reference for future extension
   private activeDevice: easymidi.Input | null = null;
   private activeDeviceId: string | null = null;
   private midiConfig: MidiConfig;
@@ -310,7 +313,7 @@ export class MidiService extends EventEmitter {
       // If we have a specific device selected, check if it's available
       if (this.midiConfig.enabled && this.midiConfig.deviceName) {
         // Find the device ID for the selected device name
-        let selectedDeviceId = null;
+        let selectedDeviceId: string | null = null;
         let selectedDeviceConnected = false;
 
         for (const [id, device] of this.midiDevices.entries()) {
@@ -341,7 +344,7 @@ export class MidiService extends EventEmitter {
         // Connect to any newly discovered devices
         let newConnectionsMade = false;
 
-        this.midiDevices.forEach((device, deviceId) => {
+        this.midiDevices.forEach(device => {
           if (!device.isConnected) {
             logger.info('Connecting to newly available MIDI device:', { deviceName: device.name });
             if (this.connectToDevice(device.name)) {

@@ -365,8 +365,8 @@ function createIpcControl(): IpcControl {
     playWithCountIn: () =>
       safeIpcCall('play with count-in', () => window.electronAPI.playWithCountIn(), void 0),
 
-    seekToRegion: (regionId: string) =>
-      safeIpcCall('seek to region', () => window.electronAPI.seekToRegion(regionId), void 0),
+    seekToRegion: (regionId: string, autoplay: boolean = true, countIn: null|boolean = null) =>
+      safeIpcCall('seek to region', () => window.electronAPI.seekToRegion(regionId, autoplay, countIn), void 0),
 
     nextRegion: async () => {
       const result = await safeIpcCall('go to next region',

@@ -328,7 +328,14 @@ export function toggleAutoplayHandler(): void {
     // Send to main process via IPC without optimistic UI update
     // This prevents UI flickering when the backend responds
     if (window.electronAPI) {
-      window.electronAPI.setAutoplayEnabled(!autoplayEnabled.get());
+      // Get current autoplayEnabled value using subscription pattern
+      let currentAutoplayEnabled = false;
+      const unsubscribe = autoplayEnabled.subscribe(value => {
+        currentAutoplayEnabled = value;
+      });
+      unsubscribe();
+
+      window.electronAPI.setAutoplayEnabled(!currentAutoplayEnabled);
     } else {
       logger.warn('Electron API not available, autoplay enabled not sent to main process');
     }
@@ -343,7 +350,14 @@ export function toggleCountInHandler(): void {
     // Send to main process via IPC without optimistic UI update
     // This prevents UI flickering when the backend responds
     if (window.electronAPI) {
-      window.electronAPI.setCountInEnabled(!countInEnabled.get());
+      // Get current countInEnabled value using subscription pattern
+      let currentCountInEnabled = false;
+      const unsubscribe = countInEnabled.subscribe(value => {
+        currentCountInEnabled = value;
+      });
+      unsubscribe();
+
+      window.electronAPI.setCountInEnabled(!currentCountInEnabled);
     } else {
       logger.warn('Electron API not available, count-in enabled not sent to main process');
     }

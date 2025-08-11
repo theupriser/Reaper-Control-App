@@ -5,7 +5,8 @@
     statusMessage,
     type Region,
     markers,
-    autoplayEnabled
+    autoplayEnabled,
+    countInEnabled
   } from '../stores';
   import { getEffectiveRegionLength } from '../lib/utils/markerUtils';
   import { formatTime, calculateDuration as calcDuration } from '../lib/utils/timeUtils';
@@ -122,8 +123,8 @@
    */
   function selectRegion(regionId: number): void {
     logger.log(`Seeking to region: ${regionId}`);
-    // Pass the autoplayEnabled value from the store to control auto-resume behavior
-    ipcService.seekToRegion(regionId.toString(), $autoplayEnabled);
+    // Pass the autoplayEnabled and countInEnabled values from the stores
+    ipcService.seekToRegion(regionId.toString(), $autoplayEnabled, $countInEnabled);
   }
 
   /**
@@ -239,7 +240,7 @@
       </p>
     </div>
   {:else}
-    <div class="region-list">
+    <div class="region-list" style="min-height: calc({$setlists.length > 0 ? 3 : 4 } * (1.5rem + 50px)); height: calc((100vh - var(--header-height, 150px) - var(--transport-height, 200px) - 1rem) + {$setlists.length > 0 ? '-59px' : '16px' });">
       {#each displayItems as item (item.id)}
         <div
           class="region-item {$playbackState.currentRegionId === item.regionId ? 'active' : ''}"
@@ -442,9 +443,6 @@
 
   .region-list {
     /* Dynamic height calculation that ensures the list never extends beyond viewport minus header */
-    height: calc(100vh - var(--header-height, 150px) - var(--transport-height, 200px) - 3rem);
-    /* Minimum height for at least 3 items (estimated at 40px per item plus padding) */
-    min-height: calc(3 * (1.5rem + 45px));
     overflow-y: auto;
     border-radius: 4px;
   }

@@ -310,8 +310,6 @@ export class MidiService extends EventEmitter {
         }
         // If the selected device doesn't exist anymore
         else if (!selectedDeviceId) {
-          logger.warn('Selected MIDI device no longer available:', { deviceName: this.midiConfig.deviceName });
-
           // If the active device is set, clear it
           if (this.activeDeviceId) {
             this.disconnectFromCurrentDevice();

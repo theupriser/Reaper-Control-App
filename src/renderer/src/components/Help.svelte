@@ -120,7 +120,7 @@
     <div class="component-section">
       <h2 class="component-section-heading">Special Markers</h2>
       <p>
-        Reaper Control supports special markers that can be placed within regions to control various behaviors:
+        Reaper Control supports special markers that can be placed within regions to control various behaviors. Special markers won't be shown in the timeline, but they affect how regions behave:
       </p>
 
       <h3 class="component-subsection-heading">Marker Placement</h3>
@@ -136,6 +136,7 @@
         <li class="component-list-item">Format: <span class="component-strong">!1008</span> (add this anywhere in a marker name)</li>
         <li class="component-list-item">When playback reaches the end of a region with this marker, it will stop completely</li>
         <li class="component-list-item">Useful for sections that must end definitively rather than continuing to the next section</li>
+        <li class="component-list-item">Although special markers won't be shown in the timeline, a region with a !1008 marker will have a visible hard stop indicator at the end of its timeline</li>
         <li class="component-list-item">Example: <span class="component-code">End Section !1008</span></li>
       </ul>
 
@@ -160,6 +161,7 @@
         <li class="component-list-item">Overrides the actual region length for playback timing purposes</li>
         <li class="component-list-item">Typically used when the song is only a count in or a bit of the song when you don't want to play on click as a band</li>
         <li class="component-list-item">Helps approximate the total timer of the setlist to get closer to the actual real-time duration</li>
+        <li class="component-list-item">When used with a !1008 marker, the hard stop indicator will be displayed at the end of the timeline with the custom length instead of at the actual region end</li>
         <li class="component-list-item">Example: <span class="component-code">!length:45 !1008</span></li>
       </ul>
 

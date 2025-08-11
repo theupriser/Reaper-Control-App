@@ -8,7 +8,6 @@ import { ReaperConnector } from './reaperConnector';
 import { MarkerService } from './markerService';
 import { getBpmForRegion } from '../utils/bpmUtils';
 import logger from '../utils/logger';
-import { ProjectService } from './projectService';
 
 export class RegionService extends EventEmitter {
   private regions: Region[] = [];

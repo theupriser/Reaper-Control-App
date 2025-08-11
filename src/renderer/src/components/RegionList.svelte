@@ -123,8 +123,8 @@
    */
   function selectRegion(regionId: number): void {
     logger.log(`Seeking to region: ${regionId}`);
-    // Pass the autoplayEnabled and countInEnabled values from the stores
-    ipcService.seekToRegion(regionId.toString(), $autoplayEnabled, $countInEnabled);
+    // Always disable count-in when selecting a setlist item, regardless of the current setting
+    ipcService.seekToRegion(regionId.toString(), $autoplayEnabled, false);
   }
 
   /**

@@ -133,7 +133,9 @@ export class RegionService extends EventEmitter {
                 logger.debug('Next region not found');
               }
             } else {
-              logger.debug('No next setlist item found');
+              logger.debug('No next setlist item found, pausing playback');
+              // Pause Reaper at the end of the playlist
+              await this.reaperConnector.pause();
             }
           }
         } finally {

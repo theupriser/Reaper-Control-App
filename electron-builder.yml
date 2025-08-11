@@ -22,6 +22,8 @@ nsis:
   createDesktopShortcut: always
 mac:
   icon: resources/icon.icns
+  hardenedRuntime: true
+  entitlements: resources/build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.

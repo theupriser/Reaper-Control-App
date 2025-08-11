@@ -51,6 +51,7 @@ jobs:
 
       - name: Build application
         run: |
+          npm install typescript
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             npm run build:win:${{ matrix.architecture }}
           elif [ "${{ matrix.os }}" = "macos-latest" ]; then

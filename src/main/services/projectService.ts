@@ -50,17 +50,16 @@ export class ProjectService extends EventEmitter {
         // Load setlists from disk
         await this.loadSetlistsFromDisk();
 
-        // Make sure reaperConnector has the selected setlist ID
-        if (this.selectedSetlistId) {
-          this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
-          logger.debug('Updated reaperConnector with selected setlist during initialization', {
-            selectedSetlistId: this.selectedSetlistId
-          });
-        }
+        // Note: loadSetlistsFromDisk already updates the reaperConnector with selectedSetlistId
+        // (including setting to null if needed), so no need to do it again here
       } else {
         // Initialize empty setlists map
         this.setlists = new Map();
-        logger.debug('No project ID available, initialized empty setlists');
+        this.selectedSetlistId = null;
+
+        // Make sure reaperConnector has null selected setlist ID
+        this.reaperConnector.setSelectedSetlistId(null);
+        logger.debug('No project ID available, initialized empty setlists and cleared selected setlist ID');
       }
     } catch (error) {
       logger.error('Error during setlists initialization', { error });
@@ -138,13 +137,12 @@ export class ProjectService extends EventEmitter {
         selectedSetlistId: this.selectedSetlistId
       });
 
-      // Update the reaperConnector's playback state with the selected setlist ID
-      if (this.selectedSetlistId) {
-        this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
-        logger.debug('Updated reaperConnector with loaded selected setlist', {
-          selectedSetlistId: this.selectedSetlistId
-        });
-      }
+      // Always update the reaperConnector's playback state with the selected setlist ID
+      // If selectedSetlistId is null or undefined, it will clear the selection in the playback state
+      this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
+      logger.debug('Updated reaperConnector with loaded selected setlist', {
+        selectedSetlistId: this.selectedSetlistId
+      });
 
       // Emit setlists update event
       this.emit('setlists', this.getSetlists());
@@ -176,13 +174,8 @@ export class ProjectService extends EventEmitter {
       // Await loading setlists to ensure selectedSetlistId is available before continuing
       await this.loadSetlistsFromDisk();
 
-      // After setlists are loaded, ensure reaperConnector has the selected setlist ID
-      if (this.selectedSetlistId) {
-        this.reaperConnector.setSelectedSetlistId(this.selectedSetlistId);
-        logger.debug('Updated reaperConnector with loaded selected setlist during project ID update', {
-          selectedSetlistId: this.selectedSetlistId
-        });
-      }
+      // Note: loadSetlistsFromDisk already updates the reaperConnector with selectedSetlistId
+      // (including setting to null if needed), so no need to do it again here
     }
 
     // Emit project ID update event

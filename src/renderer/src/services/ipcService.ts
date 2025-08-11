@@ -29,6 +29,10 @@ import {
 let pingInterval: NodeJS.Timeout | null = null;
 let pingTimeout: NodeJS.Timeout | null = null;
 
+// Project ID polling mechanism variables
+let projectIdPollingInterval: NodeJS.Timeout | null = null;
+let currentProjectId: string | null = null;
+
 // Define interfaces for the data types
 interface Region {
   id: string;
@@ -86,6 +90,7 @@ interface IpcControl {
   previousRegion: () => Promise<boolean>;
   seekToCurrentRegionStart: () => Promise<void>;
   refreshProjectId: () => Promise<string>;
+  getProjectId: () => Promise<string>;
   refreshMarkers: () => Promise<Marker[]>;
   setAutoplayEnabled: (enabled: boolean) => Promise<void>;
   setCountInEnabled: (enabled: boolean) => Promise<void>;
@@ -122,6 +127,9 @@ function initialize(): IpcControl {
 
   // Start ping interval
   startPingInterval();
+
+  // Start project ID polling to regularly check for changes
+  startProjectIdPolling();
 
   // Return the IPC control interface
   return createIpcControl();
@@ -186,11 +194,66 @@ function startPingInterval(): void {
 }
 
 /**
+ * Starts polling for project ID changes
+ * This regularly checks if the project ID has changed without waiting for events
+ */
+function startProjectIdPolling(): void {
+  // Store the current project ID initially
+  window.electronAPI.getProjectId().then((projectId) => {
+    currentProjectId = projectId;
+    logger.debug('Initial project ID stored for polling:', { projectId });
+  });
+
+  // Clear any existing interval
+  if (projectIdPollingInterval) clearInterval(projectIdPollingInterval);
+
+  // Start new polling interval (check every 3 seconds)
+  projectIdPollingInterval = setInterval(async () => {
+    try {
+      // Fetch the current project ID from Reaper
+      const latestProjectId = await window.electronAPI.refreshProjectId();
+
+      // If we have no stored ID yet, just store it
+      if (currentProjectId === null) {
+        currentProjectId = latestProjectId;
+        return;
+      }
+
+      // If project ID has changed, handle it
+      if (latestProjectId !== currentProjectId) {
+        logger.info('Project ID change detected through polling', {
+          previous: currentProjectId,
+          current: latestProjectId
+        });
+
+        // Update the stored project ID
+        currentProjectId = latestProjectId;
+
+        // Create an info message to notify the user
+        createInfoMessage('Reaper project changed');
+      }
+    } catch (error) {
+      logger.error('Error during project ID polling:', error);
+    }
+  }, 3000); // Poll every 3 seconds
+}
+
+/**
  * Stops the ping interval
  */
 function stopPingInterval(): void {
   if (pingInterval) clearInterval(pingInterval);
   if (pingTimeout) clearTimeout(pingTimeout);
+}
+
+/**
+ * Stops the project ID polling interval
+ */
+function stopProjectIdPolling(): void {
+  if (projectIdPollingInterval) {
+    clearInterval(projectIdPollingInterval);
+    projectIdPollingInterval = null;
+  }
 }
 
 /**
@@ -390,6 +453,9 @@ function createIpcControl(): IpcControl {
     refreshProjectId: () =>
       safeIpcCall('refresh project ID', () => window.electronAPI.refreshProjectId(), ''),
 
+    getProjectId: () =>
+      safeIpcCall('get project ID', () => window.electronAPI.getProjectId(), ''),
+
     refreshMarkers: () =>
       safeIpcCall('refresh markers', () => window.electronAPI.refreshMarkers(), []),
 
@@ -479,6 +545,9 @@ function createIpcControl(): IpcControl {
         // Clean up resources
         stopPingInterval();
 
+        // Stop project ID polling
+        stopProjectIdPolling();
+
         // First clean up region and playback listeners using the existing function
         cleanupRegionAndPlaybackListeners();
 
@@ -511,6 +580,7 @@ function createDefaultIpcControl(): IpcControl {
     previousRegion: () => Promise.resolve(false),
     seekToCurrentRegionStart: () => Promise.resolve(),
     refreshProjectId: () => Promise.resolve(''),
+    getProjectId: () => Promise.resolve(''),
     refreshMarkers: () => Promise.resolve([]),
     setAutoplayEnabled: (enabled: boolean) => Promise.resolve(),
     setCountInEnabled: (enabled: boolean) => Promise.resolve(),

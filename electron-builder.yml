@@ -23,6 +23,7 @@ nsis:
 mac:
   icon: resources/icon.icns
   hardenedRuntime: true
+  gatekeeperAssess: false # Whether to let @electron/osx-sign validate the signing or not.
   entitlements: resources/build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

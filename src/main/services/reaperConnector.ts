@@ -845,13 +845,7 @@ export class ReaperConnector extends EventEmitter {
       // Store the current state before toggling
       const wasPlaying = this.lastPlaybackState.isPlaying;
 
-      // Immediately toggle the isPlaying state for faster UI feedback
-      this.lastPlaybackState.isPlaying = !wasPlaying;
-
-      // Emit playback state update immediately for responsive UI
-      this.emit('playbackState', this.lastPlaybackState);
-
-      logger.debug('Playback state toggled immediately', { isPlaying: this.lastPlaybackState.isPlaying });
+      // Removed optimistic UI update to prevent flickering
 
       // Use different action IDs for play and pause to avoid issues
       if (!wasPlaying) {
@@ -875,7 +869,7 @@ export class ReaperConnector extends EventEmitter {
       // Emit playback state update again with the confirmed state from REAPER
       this.emit('playbackState', this.lastPlaybackState);
 
-      logger.debug('Play/pause toggled and confirmed with REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
+      logger.debug('Play/pause toggled with REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
     } catch (error) {
       logger.error('Failed to toggle play', { error });
       throw error;
@@ -898,13 +892,7 @@ export class ReaperConnector extends EventEmitter {
         return;
       }
 
-      // Immediately update the isPlaying state for faster UI feedback
-      this.lastPlaybackState.isPlaying = false;
-
-      // Emit playback state update immediately for responsive UI
-      this.emit('playbackState', this.lastPlaybackState);
-
-      logger.debug('Playback state updated immediately', { isPlaying: false });
+      // Removed optimistic UI update to prevent flickering
 
       // Send the 1008 command to REAPER
       logger.debug('Sending pause command to REAPER (action ID 1008)');
@@ -919,7 +907,7 @@ export class ReaperConnector extends EventEmitter {
       // Emit playback state update again with the confirmed state from REAPER
       this.emit('playbackState', this.lastPlaybackState);
 
-      logger.debug('Pause command sent and confirmed with REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
+      logger.debug('Pause command sent to REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
     } catch (error) {
       logger.error('Failed to pause with action ID 1008 command', { error });
       throw error;
@@ -933,13 +921,7 @@ export class ReaperConnector extends EventEmitter {
     try {
       logger.debug('Starting playback with count-in in REAPER');
 
-      // Immediately set isPlaying state for faster UI feedback
-      this.lastPlaybackState.isPlaying = true;
-
-      // Emit playback state update immediately for responsive UI
-      this.emit('playbackState', this.lastPlaybackState);
-
-      logger.debug('Playback state updated immediately for count-in', { isPlaying: true });
+      // Removed optimistic UI update to prevent flickering
 
       // Enable count-in (Action ID 40363)
       logger.debug('Enabling count-in in REAPER (action ID 40363)');
@@ -958,7 +940,7 @@ export class ReaperConnector extends EventEmitter {
       // Emit playback state update again with the confirmed state from REAPER
       this.emit('playbackState', this.lastPlaybackState);
 
-      logger.debug('Playback with count-in started and confirmed with REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
+      logger.debug('Playback with count-in started in REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
     } catch (error) {
       logger.error('Failed to start playback with count-in', { error });
       throw error;

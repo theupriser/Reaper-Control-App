@@ -249,13 +249,8 @@ export function togglePlay(): void {
       }
     }
 
-    // Toggle the playback state immediately for better UI feedback
-    playbackState.update(state => ({
-      ...state,
-      isPlaying: !state.isPlaying
-    }));
-
-    // Then send the command to the backend
+    // Send the command to the backend without optimistic UI update
+    // This prevents UI flickering when the backend responds
     ipcService.togglePlay();
   });
 }
@@ -330,22 +325,10 @@ export function previousRegionHandler(): void {
  */
 export function toggleAutoplayHandler(): void {
   safeTransportAction(() => {
-    // Get the current value
-    let current: boolean;
-    const unsubscribe = autoplayEnabled.subscribe(value => {
-      current = value;
-    });
-    unsubscribe();
-
-    // Toggle the value
-    const newValue = !current;
-
-    // Update the local store
-    autoplayEnabled.set(newValue);
-
-    // Send to main process via IPC
+    // Send to main process via IPC without optimistic UI update
+    // This prevents UI flickering when the backend responds
     if (window.electronAPI) {
-      window.electronAPI.setAutoplayEnabled(newValue);
+      window.electronAPI.setAutoplayEnabled(!autoplayEnabled.get());
     } else {
       logger.warn('Electron API not available, autoplay enabled not sent to main process');
     }
@@ -357,22 +340,10 @@ export function toggleAutoplayHandler(): void {
  */
 export function toggleCountInHandler(): void {
   safeTransportAction(() => {
-    // Get the current value
-    let current: boolean;
-    const unsubscribe = countInEnabled.subscribe(value => {
-      current = value;
-    });
-    unsubscribe();
-
-    // Toggle the value
-    const newValue = !current;
-
-    // Update the local store
-    countInEnabled.set(newValue);
-
-    // Send to main process via IPC
+    // Send to main process via IPC without optimistic UI update
+    // This prevents UI flickering when the backend responds
     if (window.electronAPI) {
-      window.electronAPI.setCountInEnabled(newValue);
+      window.electronAPI.setCountInEnabled(!countInEnabled.get());
     } else {
       logger.warn('Electron API not available, count-in enabled not sent to main process');
     }

@@ -228,31 +228,27 @@ export class IpcHandler {
           break;
         case 'toggleAutoplay':
           logger.info('Handling toggleAutoplay MIDI action');
-          // Get current autoplayEnabled state from reaperConnector
-          const playbackState = this.reaperConnector.getLastPlaybackState();
-          // Toggle the autoplayEnabled value
-          const newAutoplayEnabled = !playbackState.autoplayEnabled;
-          // Update the state
-          playbackState.autoplayEnabled = newAutoplayEnabled;
-          // Emit a playback state update to the renderer
-          this.sendToRenderer(IPC_EVENTS.PLAYBACK_STATE_UPDATE, playbackState);
+          // Use the IPC handler to toggle autoplay using the same mechanism as the UI
+          // This prevents UI flickering by using the established pattern
+          await this.handleSetAutoplayEnabled(null, !this.reaperConnector.getLastPlaybackState().autoplayEnabled);
           break;
         case 'toggleCountIn':
           logger.info('Handling toggleCountIn MIDI action');
-          // Get current countInEnabled state from reaperConnector
-          const playbackStateCountIn = this.reaperConnector.getLastPlaybackState();
-          // Toggle the countInEnabled value
-          const newCountInEnabled = !playbackStateCountIn.countInEnabled;
-          // Update the state
-          playbackStateCountIn.countInEnabled = newCountInEnabled;
-          // Emit a playback state update to the renderer
-          this.sendToRenderer(IPC_EVENTS.PLAYBACK_STATE_UPDATE, playbackStateCountIn);
+          // Use the IPC handler to toggle count-in using the same mechanism as the UI
+          // This prevents UI flickering by using the established pattern
+          await this.handleSetCountInEnabled(null, !this.reaperConnector.getLastPlaybackState().countInEnabled);
           break;
         case 'nextRegion':
-          await this.regionService.nextRegion();
+          // Use the RegionService's canGoToNextRegion method to check if navigation is allowed
+          if (this.regionService.canGoToNextRegion()) {
+            await this.regionService.nextRegion();
+          }
           break;
         case 'previousRegion':
-          await this.regionService.previousRegion();
+          // Use the RegionService's canGoToPreviousRegion method to check if navigation is allowed
+          if (this.regionService.canGoToPreviousRegion()) {
+            await this.regionService.previousRegion();
+          }
           break;
         case 'seekToCurrentRegionStart':
           await this.regionService.seekToCurrentRegionStart();

@@ -111,11 +111,9 @@
   }
 
   onMount(() => {
-    logger.log('Settings component mounted');
     settingsService.init();
 
     return () => {
-      logger.log('Settings component destroyed');
       unsubscribe();
     };
   });
@@ -368,6 +366,59 @@
     background-repeat: no-repeat;
     background-position: right 0.6rem center;
     padding-right: 2.5rem; /* Make room for the arrow */
+  }
+
+  /* Custom styling for numeric input spinners */
+  .component-input[type="number"]::-webkit-inner-spin-button,
+  .component-input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+    height: 101%;
+    margin: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 1.6rem;
+    border: none;
+    background: #333 !important;
+    border-left: 1px solid #444;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+  }
+
+  .component-input[type="number"]::-webkit-inner-spin-button {
+    cursor: pointer;
+    /* Use the same arrow style as select inputs */
+    background-image:
+      url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-position:
+      center top 35%,
+      center bottom 35%;
+    background-repeat: no-repeat, no-repeat;
+    background-size: 10px 10px, 10px 10px;
+  }
+
+  .component-input[type="number"]::-webkit-inner-spin-button:hover {
+    background-color: #444 !important;
+    background-image:
+      url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-position:
+      center top 35%,
+      center bottom 35%;
+    background-repeat: no-repeat, no-repeat;
+    background-size: 10px 10px, 10px 10px;
+  }
+
+  .component-input[type="number"]:focus::-webkit-inner-spin-button {
+    border-left: 1px solid #4CAF50;
+    background-color: #444 !important;
+  }
+
+  /* Position fix for numeric inputs to accommodate the spinner */
+  .component-input[type="number"] {
+    position: relative;
+    padding-right: 1.8rem;
   }
 
   .component-select:focus {

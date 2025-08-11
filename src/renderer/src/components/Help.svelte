@@ -118,6 +118,63 @@
     </div>
 
     <div class="component-section">
+      <h2 class="component-section-heading">Special Markers</h2>
+      <p>
+        Reaper Control supports special markers that can be placed within regions to control various behaviors:
+      </p>
+
+      <h3 class="component-subsection-heading">Marker Placement</h3>
+      <p>
+        All special markers must be placed within 0.001 seconds of the region boundaries. This ensures the app correctly identifies them as belonging to the region.
+      </p>
+
+      <h3 class="component-subsection-heading">!1008 Marker</h3>
+      <p>
+        The <span class="component-strong">!1008</span> marker creates a hard stop at the end of a region:
+      </p>
+      <ul class="component-list">
+        <li class="component-list-item">Format: <span class="component-strong">!1008</span> (add this anywhere in a marker name)</li>
+        <li class="component-list-item">When playback reaches the end of a region with this marker, it will stop completely</li>
+        <li class="component-list-item">Useful for sections that must end definitively rather than continuing to the next section</li>
+        <li class="component-list-item">Example: <span class="component-code">End Section !1008</span></li>
+      </ul>
+
+      <h3 class="component-subsection-heading">!bpm Marker</h3>
+      <p>
+        The <span class="component-strong">!bpm</span> marker strictly tells the app at which BPM the song begins:
+      </p>
+      <ul class="component-list">
+        <li class="component-list-item">Format: <span class="component-strong">!bpm:120</span> (where 120 is the BPM value)</li>
+        <li class="component-list-item">Helps count in on marker when the song is not playing and the BPM is not detected for a song</li>
+        <li class="component-list-item">Sets the tempo used for internal calculations like count-in duration</li>
+        <li class="component-list-item">Note: This doesn't change Reaper's project tempo, it's only used by the app</li>
+        <li class="component-list-item">Example: <span class="component-code">!bpm:120</span></li>
+      </ul>
+
+      <h3 class="component-subsection-heading">!length Marker</h3>
+      <p>
+        The <span class="component-strong">!length</span> marker defines a custom duration for a region and should only be used in combination with a <span class="component-strong">!1008</span> marker:
+      </p>
+      <ul class="component-list">
+        <li class="component-list-item">Format: <span class="component-strong">!length:45</span> (where 45 is the length in seconds)</li>
+        <li class="component-list-item">Overrides the actual region length for playback timing purposes</li>
+        <li class="component-list-item">Typically used when the song is only a count in or a bit of the song when you don't want to play on click as a band</li>
+        <li class="component-list-item">Helps approximate the total timer of the setlist to get closer to the actual real-time duration</li>
+        <li class="component-list-item">Example: <span class="component-code">!length:45 !1008</span></li>
+      </ul>
+
+      <h3 class="component-subsection-heading">Combined Usage</h3>
+      <p>
+        Multiple markers can be used together in the same region:
+      </p>
+      <ul class="component-list">
+        <li class="component-list-item">The markers can appear in any order in the marker name</li>
+        <li class="component-list-item">Example: <span class="component-code">!length:45 !bpm:140 !1008</span></li>
+        <li class="component-list-item">This would set a custom length of 45 seconds, a tempo of 140 BPM, and make the region stop completely at its end</li>
+      </ul>
+    </div>
+
+    <div class="component-section">
       <h2 class="component-section-heading">Troubleshooting</h2>
       <p>
         If you're experiencing issues with the connection:

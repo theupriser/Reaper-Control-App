@@ -11,8 +11,24 @@
   import logger from './lib/utils/logger';
   import { currentView, View, navigateTo } from './stores/navigationStore';
 
+  // Variable to track if help has been shown before
+  const HELP_SHOWN_KEY = 'reaper-control-help-shown';
+
   // Initialize the application
   onMount(() => {
+    // Check if help has been shown before
+    const helpShown = localStorage.getItem(HELP_SHOWN_KEY);
+
+    // If help hasn't been shown before, navigate to help page
+    if (!helpShown) {
+      logger.log('First startup detected, showing help page');
+      navigateTo(View.HELP);
+      // Mark help as shown
+      localStorage.setItem(HELP_SHOWN_KEY, 'true');
+    } else {
+      logger.log('Help already shown previously, starting with main view');
+    }
+
     // Initial data refresh
     setTimeout(() => {
       ipcService.refreshRegions();

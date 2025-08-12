@@ -86,10 +86,6 @@ export function has1008MarkerInRegion(markers: Marker[] | any, region: Region): 
 
   // Ensure markers is an array
   if (!markers || !Array.isArray(markers) || markers.length === 0) {
-    logger.warn('has1008MarkerInRegion: markers is not a valid array', {
-      isArray: Array.isArray(markers),
-      value: markers
-    });
     return false;
   }
 
@@ -168,10 +164,6 @@ export function getCustomLengthForRegion(region: Region, markerList: Marker[] | 
 
   // Ensure markerList is an array
   if (!markerList || !Array.isArray(markerList) || markerList.length === 0) {
-    logger.warn('getCustomLengthForRegion: markerList is not a valid array', {
-      isArray: Array.isArray(markerList),
-      value: markerList
-    });
     return null;
   }
 

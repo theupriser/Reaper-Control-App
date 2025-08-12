@@ -73,7 +73,7 @@ interface ElectronReaperAPI {
   togglePlay: () => Promise<void>;
   playWithCountIn: () => Promise<void>;
   seekToPosition: (position: string, useCountIn?: boolean) => Promise<void>;
-  seekToRegion: (regionId: string, autoplay?: boolean) => Promise<void>;
+  seekToRegion: (regionId: string, autoplay?: boolean, countIn?: boolean) => Promise<void>;
   nextRegion: () => Promise<void>;
   previousRegion: () => Promise<void>;
   seekToCurrentRegionStart: () => Promise<void>;

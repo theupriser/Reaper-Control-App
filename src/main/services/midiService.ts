@@ -40,18 +40,12 @@ export class MidiService extends EventEmitter {
     // Get MIDI configuration
     const configData = config.getConfig();
 
-    // Log the config data to see what we're getting
-    logger.info('MidiService constructor - Config data:', {
-      midiEnabled: configData.midi.enabled,
-      noteMapping: configData.midi.noteMapping
-    });
 
     // Convert noteMapping object from config to noteMappings array
     const noteMappings: MidiNoteMapping[] = [];
 
     // Load note mappings from config if available
     if (configData.midi.noteMapping && typeof configData.midi.noteMapping === 'object') {
-      logger.info('MidiService constructor - Converting noteMapping object to array');
       Object.entries(configData.midi.noteMapping).forEach(([noteStr, action]) => {
         const noteNumber = parseInt(noteStr, 10);
         if (!isNaN(noteNumber) && typeof action === 'string') {
@@ -80,10 +74,6 @@ export class MidiService extends EventEmitter {
     // Initialize MIDI
     this.initialize();
 
-    logger.info('MIDI service initialized', {
-      enabled: this.midiConfig.enabled,
-      channel: this.midiConfig.channel
-    });
   }
 
   /**
@@ -91,7 +81,6 @@ export class MidiService extends EventEmitter {
    */
   private initialize(): void {
     if (!this.midiConfig.enabled) {
-      logger.info('MIDI is disabled');
       return;
     }
 
@@ -101,11 +90,9 @@ export class MidiService extends EventEmitter {
 
       // If a specific device is selected, connect only to that device
       if (this.midiConfig.deviceName) {
-        logger.info('Connecting to configured MIDI device:', { deviceName: this.midiConfig.deviceName });
         this.connectToDevice(this.midiConfig.deviceName);
       } else {
         // Otherwise connect to all available devices
-        logger.info('No specific MIDI device configured, connecting to all available devices');
         this.connectToAllDevices();
       }
 
@@ -121,11 +108,9 @@ export class MidiService extends EventEmitter {
    */
   private connectToAllDevices(): void {
     if (this.midiDevices.size === 0) {
-      logger.warn('No MIDI devices available');
       return;
     }
 
-    logger.info('Connecting to all MIDI devices in all-devices mode');
 
     // First, disconnect from any currently connected devices
     // to ensure we don't have any lingering connections
@@ -155,27 +140,29 @@ export class MidiService extends EventEmitter {
           this.emit('midiActivity', {type: 'noteon', ...msg, deviceId, deviceName: device.name});
         });
 
-        input.on('noteoff', msg => {
-          this.emit('midiActivity', {type: 'noteoff', ...msg, deviceId, deviceName: device.name});
-        });
+        // input.on('noteoff', msg => {
+        //   // Only emit midiActivity but don't trigger actions for note-off events
+        //   // This prevents the playback state from flickering when note-off events are received
+        //   this.emit('midiActivity', {type: 'noteoff', ...msg, deviceId, deviceName: device.name});
+        //   logger.debug('Note-off event received but ignored for actions', { note: msg.note, deviceId, deviceName: device.name });
+        // });
 
         // For other message types
-        try {
-          const otherMessageTypes = ['cc', 'program', 'channel aftertouch', 'pitch', 'position', 'mtc', 'select', 'clock', 'start', 'continue', 'stop', 'reset'];
-          for (const type of otherMessageTypes) {
-            // @ts-ignore - Intentionally bypass type checking for these event types
-            input.on(type, msg => {
-              this.emit('midiActivity', {type, ...msg, deviceId, deviceName: device.name});
-            });
-          }
-        } catch (error) {
-          logger.warn('Some MIDI message types may not be monitored due to type constraints', { error });
-        }
+        // try {
+        //   const otherMessageTypes = ['cc', 'program', 'channel aftertouch', 'pitch', 'position', 'mtc', 'select', 'clock', 'start', 'continue', 'stop', 'reset'];
+        //   for (const type of otherMessageTypes) {
+        //     // @ts-ignore - Intentionally bypass type checking for these event types
+        //     input.on(type, msg => {
+        //       this.emit('midiActivity', {type, ...msg, deviceId, deviceName: device.name});
+        //     });
+        //   }
+        // } catch (error) {
+        //   logger.warn('Some MIDI message types may not be monitored due to type constraints', { error });
+        // }
 
         // Update device state
         device.isConnected = true;
 
-        logger.info(`Connected to MIDI device in all-devices mode: ${device.name}`);
       } catch (error) {
         logger.error(`Failed to connect to MIDI device: ${device.name}`, { error });
       }
@@ -192,7 +179,6 @@ export class MidiService extends EventEmitter {
     try {
       // Get available MIDI inputs
       const inputs = easymidi.getInputs();
-      logger.info('Available MIDI inputs:', { inputs });
 
       // Keep track of existing device IDs to detect removed devices
       const existingDeviceIds = new Set<string>();
@@ -230,7 +216,6 @@ export class MidiService extends EventEmitter {
             isConnected: false
           });
 
-          logger.info(`New MIDI device discovered: ${inputName} (${deviceId})`);
         }
       });
 
@@ -238,7 +223,6 @@ export class MidiService extends EventEmitter {
       existingDeviceIds.forEach(deviceId => {
         const device = this.midiDevices.get(deviceId);
         if (device) {
-          logger.info(`MIDI device no longer available: ${device.name} (${deviceId})`);
 
           // If device is connected, disconnect it
           if (device.isConnected) {
@@ -248,7 +232,6 @@ export class MidiService extends EventEmitter {
               try {
                 input.removeAllListeners();
                 input.close();
-                logger.info(`Closed MIDI input for removed device: ${device.name}`);
               } catch (closeError) {
                 logger.error(`Error closing MIDI input for removed device:`, closeError);
               }
@@ -268,7 +251,6 @@ export class MidiService extends EventEmitter {
         }
       });
 
-      logger.info('Discovered MIDI devices', { count: inputs.length });
     } catch (error) {
       logger.error('Error discovering MIDI devices:', error);
     }
@@ -288,7 +270,6 @@ export class MidiService extends EventEmitter {
       this.checkForNewDevices();
     }, 5000);
 
-    logger.info('Started polling for new MIDI devices every 5 seconds');
   }
 
   /**
@@ -298,7 +279,6 @@ export class MidiService extends EventEmitter {
     if (this.deviceCheckInterval) {
       clearInterval(this.deviceCheckInterval);
       this.deviceCheckInterval = null;
-      logger.info('Stopped polling for new MIDI devices');
     }
   }
 
@@ -326,13 +306,10 @@ export class MidiService extends EventEmitter {
 
         // If the device exists but isn't connected, connect to it
         if (selectedDeviceId && !selectedDeviceConnected) {
-          logger.info('Reconnecting to selected MIDI device:', { deviceName: this.midiConfig.deviceName });
           this.connectToDevice(this.midiConfig.deviceName);
         }
         // If the selected device doesn't exist anymore
         else if (!selectedDeviceId) {
-          logger.warn('Selected MIDI device no longer available:', { deviceName: this.midiConfig.deviceName });
-
           // If the active device is set, clear it
           if (this.activeDeviceId) {
             this.disconnectFromCurrentDevice();
@@ -346,7 +323,6 @@ export class MidiService extends EventEmitter {
 
         this.midiDevices.forEach(device => {
           if (!device.isConnected) {
-            logger.info('Connecting to newly available MIDI device:', { deviceName: device.name });
             if (this.connectToDevice(device.name)) {
               newConnectionsMade = true;
             }
@@ -416,7 +392,6 @@ export class MidiService extends EventEmitter {
     // If deviceName is falsy or "null" (string from dropdown),
     // it means "All Available Devices" mode
     if (!deviceName || deviceName === "null") {
-      logger.info('Setting "All Available Devices" mode');
 
       // Disconnect from all devices first to prevent double connections
       this.disconnectAllDevices();
@@ -483,7 +458,10 @@ export class MidiService extends EventEmitter {
       });
 
       input.on('noteoff', msg => {
+        // Only emit midiActivity but don't trigger actions for note-off events
+        // This prevents the playback state from flickering when note-off events are received
         this.emit('midiActivity', {type: 'noteoff', ...msg, deviceId, deviceName: device.name});
+        logger.debug('Note-off event received but ignored for actions', { note: msg.note, deviceId, deviceName: device.name });
       });
 
       // For other message types, we can try using any, but this may not work with all types
@@ -510,7 +488,6 @@ export class MidiService extends EventEmitter {
       // Update the config to remember this device selection
       this.midiConfig.deviceName = deviceName;
 
-      logger.info('Connected to MIDI device', { deviceId, name: device.name });
       return true;
     } catch (error) {
       logger.error('Failed to connect to MIDI device', { error, deviceId });
@@ -546,7 +523,6 @@ export class MidiService extends EventEmitter {
           device.isConnected = false;
         }
 
-        logger.info('Disconnected from MIDI device', { deviceId: this.activeDeviceId });
       } catch (error) {
         logger.error('Failed to disconnect from MIDI device', { error, deviceId: this.activeDeviceId });
       }
@@ -683,10 +659,6 @@ export class MidiService extends EventEmitter {
       // We should clear deviceId as it's no longer used
       this.midiConfig.deviceId = undefined;
 
-      logger.info('Device selection changed', {
-        deviceName: this.midiConfig.deviceName,
-        allDevicesMode: this.midiConfig.deviceName === undefined
-      });
     }
 
     if (newConfig.channel !== undefined) {
@@ -722,13 +694,6 @@ export class MidiService extends EventEmitter {
       }
     });
 
-    logger.info('MIDI configuration updated', {
-      enabled: this.midiConfig.enabled,
-      deviceName: this.midiConfig.deviceName,
-      channel: this.midiConfig.channel,
-      deviceChanged: deviceChanged,
-      enabledChanged: enabledChanged
-    });
 
     // Handle device and enabled state changes
     if (this.midiConfig.enabled) {
@@ -760,7 +725,6 @@ export class MidiService extends EventEmitter {
    * Disconnect from all MIDI devices
    */
   private disconnectAllDevices(): void {
-    logger.info('Disconnecting from all MIDI devices');
 
     // Close all inputs
     for (const [deviceId, input] of this.midiInputs.entries()) {
@@ -794,7 +758,6 @@ export class MidiService extends EventEmitter {
     this.noteDebounce.clear();
     this.lastNoteEvents.clear();
 
-    logger.info('Disconnected from all MIDI devices');
   }
 
   /**
@@ -821,15 +784,6 @@ export class MidiService extends EventEmitter {
    * @returns MIDI configuration
    */
   public getConfig(): MidiConfig {
-    // Log what we're returning to help debug the issue
-    logger.info('MidiService.getConfig() returning:', {
-      enabled: this.midiConfig.enabled,
-      deviceId: this.midiConfig.deviceId,
-      deviceName: this.midiConfig.deviceName,
-      channel: this.midiConfig.channel,
-      noteMappingsCount: this.midiConfig.noteMappings.length,
-      noteMappings: this.midiConfig.noteMappings
-    });
     return { ...this.midiConfig };
   }
 
@@ -852,7 +806,6 @@ export class MidiService extends EventEmitter {
    * Clean up resources
    */
   public cleanup(): void {
-    logger.info('Cleaning up MIDI service resources');
 
     // Stop device polling
     this.stopDevicePolling();
@@ -883,6 +836,5 @@ export class MidiService extends EventEmitter {
     // Clear event tracking
     this.lastNoteEvents.clear();
 
-    logger.info('MIDI service cleanup complete');
   }
 }

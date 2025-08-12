@@ -44,6 +44,16 @@
   padding-bottom: 0.5rem;
 }
 
+/* Subsection headings */
+.component-subsection-heading {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  color: #4CAF50;
+  font-size: 1.2rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px dotted #333;
+}
+
 /* Form elements */
 .component-form-group {
   margin-bottom: 1.5rem;
@@ -170,6 +180,25 @@
 .component-strong {
   color: #4CAF50;
   font-weight: bold;
+}
+
+/* Code snippets */
+.component-code {
+  font-family: monospace;
+  background-color: #333;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.9rem;
+  color: #f0f0f0;
+  border: 1px solid #444;
+}
+
+/* Marker section styling */
+.component-section h3 + p,
+.component-section h3 + ul {
+  margin-bottom: 1.5rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid rgba(76, 175, 80, 0.2);
 }
 
 /* Responsive styles */

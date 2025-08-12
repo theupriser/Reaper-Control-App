@@ -91,8 +91,8 @@
   });
 
   // Use real data or null if not available
-  $: displayRegion = $currentRegion;
-  $: displayNextRegion = $nextRegion;
+  $: displayRegion = $currentRegion || { name: 'No Region Selected', start: 0, end: 0, id: 0 };
+  $: displayNextRegion = $nextRegion || { name: 'No Region', start: 0, end: 0, id: 0 };
   $: displayMarkers = $sortedMarkers; // Use sortedMarkers to filter out command-only markers
 
   // Initialize playback position if not available
@@ -275,7 +275,7 @@
       class="control-button next"
       on:click={nextRegionHandler}
       aria-label="Next song"
-      disabled={$transportButtonsDisabled || !displayNextRegion}
+      disabled={$transportButtonsDisabled || !$nextRegion}
     >
       <svg viewBox="0 0 24 24" width="36" height="36">
         <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/>

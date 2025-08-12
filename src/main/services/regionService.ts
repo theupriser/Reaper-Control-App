@@ -133,7 +133,9 @@ export class RegionService extends EventEmitter {
                 logger.debug('Next region not found');
               }
             } else {
-              logger.debug('No next setlist item found');
+              logger.debug('No next setlist item found, pausing playback');
+              // Pause Reaper at the end of the playlist
+              await this.reaperConnector.pause();
             }
           }
         } finally {
@@ -386,6 +388,58 @@ export class RegionService extends EventEmitter {
   }
 
   /**
+   * Check if navigation to next region is allowed
+   * @returns Boolean indicating if next region navigation is allowed
+   */
+  public canGoToNextRegion(): boolean {
+    // Get the current playback state to get the current region ID
+    const playbackState = this.reaperConnector.getLastPlaybackState();
+    const currentRegionId = playbackState.currentRegionId;
+    const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
+
+    // If in a setlist, check if there's a next item
+    if (inSetlist) {
+      const nextItem = this.projectService.getNextSetlistItem(currentRegionId);
+      return !!nextItem;
+    }
+
+    // If not in a setlist but have a region, check if there's a next region
+    if (currentRegionId) {
+      const nextRegion = this.getNextRegion(currentRegionId);
+      return !!nextRegion;
+    }
+
+    // If no current region but have regions, we can go to the first one
+    return this.regions.length > 0;
+  }
+
+  /**
+   * Check if navigation to previous region is allowed
+   * @returns Boolean indicating if previous region navigation is allowed
+   */
+  public canGoToPreviousRegion(): boolean {
+    // Get the current playback state to get the current region ID
+    const playbackState = this.reaperConnector.getLastPlaybackState();
+    const currentRegionId = playbackState.currentRegionId;
+    const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
+
+    // If in a setlist, check if there's a previous item
+    if (inSetlist) {
+      const prevItem = this.projectService.getPreviousSetlistItem(currentRegionId);
+      return !!prevItem;
+    }
+
+    // If not in a setlist but have a region, check if there's a previous region
+    if (currentRegionId) {
+      const prevRegion = this.getPreviousRegion(currentRegionId);
+      return !!prevRegion;
+    }
+
+    // If no current region but have regions, we can go to the last one
+    return this.regions.length > 0;
+  }
+
+  /**
    * Refresh regions from REAPER
    * @returns Promise that resolves with the regions
    */
@@ -439,25 +493,17 @@ export class RegionService extends EventEmitter {
    */
   public async nextRegion(): Promise<boolean> {
     try {
-      logger.debug('Going to next region');
-
       // Get the current playback state to get the current region ID
       const playbackState = this.reaperConnector.getLastPlaybackState();
       const currentRegionId = playbackState.currentRegionId;
+      const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
 
       // Check if a setlist is selected and the project service is available
-      if (this.projectService && this.projectService.getSelectedSetlistId()) {
-        logger.debug('Setlist is selected, checking for next item in setlist');
-
+      if (inSetlist) {
         // Get the next item in the setlist
         const nextItem = this.projectService.getNextSetlistItem(currentRegionId);
 
         if (nextItem) {
-          logger.debug('Found next item in setlist, seeking to region', {
-            regionId: nextItem.regionId,
-            name: nextItem.name
-          });
-
           // Get the region
           const region = this.getRegionById(nextItem.regionId);
           if (region) {
@@ -466,19 +512,15 @@ export class RegionService extends EventEmitter {
             return true;
           }
         }
-
-        logger.debug('No next item in setlist, falling back to standard next region');
       }
 
       // If no current region ID, use the first region
       if (!currentRegionId) {
-        logger.debug('No current region ID, using first region');
         if (this.regions.length > 0) {
           const firstRegion = this.regions[0];
           await this.seekToRegionAndPlay(firstRegion, null, false);
           return true;
         } else {
-          logger.debug('No regions available');
           return false;
         }
       }
@@ -489,9 +531,12 @@ export class RegionService extends EventEmitter {
         // Use seekToRegionAndPlay with autoplay=null (use current setting) and countIn=false
         await this.seekToRegionAndPlay(nextRegion, null, false);
         return true;
+      } else if (inSetlist) {
+        // If we're at the end of a setlist, don't attempt further navigation
+        return false;
       } else {
         try {
-          // If no next region found, fall back to the REAPER connector method
+          // Only fall back to the REAPER connector method if not in a setlist
           await this.reaperConnector.nextRegion();
           return true;
         } catch (error) {
@@ -511,25 +556,17 @@ export class RegionService extends EventEmitter {
    */
   public async previousRegion(): Promise<boolean> {
     try {
-      logger.debug('Going to previous region');
-
       // Get the current playback state to get the current region ID
       const playbackState = this.reaperConnector.getLastPlaybackState();
       const currentRegionId = playbackState.currentRegionId;
+      const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
 
       // Check if a setlist is selected and the project service is available
-      if (this.projectService && this.projectService.getSelectedSetlistId()) {
-        logger.debug('Setlist is selected, checking for previous item in setlist');
-
+      if (inSetlist) {
         // Get the previous item in the setlist
         const prevItem = this.projectService.getPreviousSetlistItem(currentRegionId);
 
         if (prevItem) {
-          logger.debug('Found previous item in setlist, seeking to region', {
-            regionId: prevItem.regionId,
-            name: prevItem.name
-          });
-
           // Get the region
           const region = this.getRegionById(prevItem.regionId);
           if (region) {
@@ -538,19 +575,15 @@ export class RegionService extends EventEmitter {
             return true;
           }
         }
-
-        logger.debug('No previous item in setlist, falling back to standard previous region');
       }
 
       // If no current region ID, use the last region
       if (!currentRegionId) {
-        logger.debug('No current region ID, using last region');
         if (this.regions.length > 0) {
           const lastRegion = this.regions[this.regions.length - 1];
           await this.seekToRegionAndPlay(lastRegion, null, false);
           return true;
         } else {
-          logger.debug('No regions available');
           return false;
         }
       }
@@ -561,9 +594,12 @@ export class RegionService extends EventEmitter {
         // Use seekToRegionAndPlay with autoplay=null (use current setting) and countIn=false
         await this.seekToRegionAndPlay(prevRegion, null, false);
         return true;
+      } else if (inSetlist) {
+        // If we're at the beginning of a setlist, don't attempt further navigation
+        return false;
       } else {
         try {
-          // If no previous region found, fall back to the REAPER connector method
+          // Only fall back to the REAPER connector method if not in a setlist
           await this.reaperConnector.previousRegion();
           return true;
         } catch (error) {

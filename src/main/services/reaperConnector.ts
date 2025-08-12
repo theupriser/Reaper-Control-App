@@ -847,15 +847,8 @@ export class ReaperConnector extends EventEmitter {
           await this.makeRequest<string>('GET', '_/1007');
         }
       } else {
-        // if (isRecordingArmed) {
-        //   // If it was recording, stop and save (40667)
-        //   logger.debug('Sending stop recording command to REAPER (action ID 40667)');
-        //   await this.makeRequest<string>('GET', '_/40667');
-        // } else {
-          // If it was playing but not recording, pause (1008)
-          logger.debug('Sending pause command to REAPER (action ID 1008)');
-          await this.makeRequest<string>('GET', '_/1008');
-        // }
+        logger.debug('Sending pause command to REAPER (action ID 1008)');
+        await this.makeRequest<string>('GET', '_/1008');
       }
 
       // Get updated transport state from REAPER to ensure we're in sync

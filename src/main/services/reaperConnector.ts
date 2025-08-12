@@ -8,6 +8,7 @@ import config from '../utils/config';
 import logger from '../utils/logger';
 import { ConnectionStatus, Region, Marker, PlaybackState } from '../types';
 import { bpmCalculator, getBpmForRegion } from '../utils/bpmUtils';
+import { createPlaybackState, updatePlaybackState } from '../utils/playbackStateFactory';
 
 export class ReaperConnector extends EventEmitter {
   private axiosInstance: AxiosInstance;
@@ -16,19 +17,7 @@ export class ReaperConnector extends EventEmitter {
   private reconnectAttempts: number = 0;
   private pollingTimer: NodeJS.Timeout | null = null;
   private projectId: string = '';
-  private lastPlaybackState: PlaybackState = {
-    isPlaying: false,
-    position: 0,
-    bpm: 120,
-    timeSignature: {
-      numerator: 4,
-      denominator: 4
-    },
-    autoplayEnabled: true,
-    countInEnabled: false,
-    isRecordingArmed: false,
-    selectedSetlistId: null
-  };
+  private lastPlaybackState: PlaybackState = createPlaybackState();
 
   constructor() {
     super();
@@ -134,10 +123,9 @@ export class ReaperConnector extends EventEmitter {
               transportState.bpm = bpm;
 
               // Update the last playback state
-              this.lastPlaybackState = {
-                ...this.lastPlaybackState,
+              this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
                 bpm: bpm
-              };
+              });
 
               // Emit updated playback state
               this.emit('playbackState', this.lastPlaybackState);
@@ -318,26 +306,23 @@ export class ReaperConnector extends EventEmitter {
           // Continue with the BPM from transportState if there's an error
         }
 
-        // Update playback state
-        this.lastPlaybackState = {
+        // Update playback state using the factory function
+        this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
           isPlaying: transportState.isPlaying,
           position: transportState.position,
-          // Preserve the current region ID if it's not provided in the transport state
           currentRegionId: transportState.currentRegionId !== undefined ?
-            transportState.currentRegionId : this.lastPlaybackState.currentRegionId,
-          // Preserve the selected setlist ID
+            transportState.currentRegionId : undefined,
           selectedSetlistId: transportState.selectedSetlistId !== undefined ?
-            transportState.selectedSetlistId : this.lastPlaybackState.selectedSetlistId,
+            transportState.selectedSetlistId : undefined,
           bpm: transportState.bpm,
           timeSignature: transportState.timeSignature,
-          // Preserve autoplay and count-in settings
           autoplayEnabled: transportState.autoplayEnabled !== undefined ?
-            transportState.autoplayEnabled : this.lastPlaybackState.autoplayEnabled,
+            transportState.autoplayEnabled : undefined,
           countInEnabled: transportState.countInEnabled !== undefined ?
-            transportState.countInEnabled : this.lastPlaybackState.countInEnabled,
+            transportState.countInEnabled : undefined,
           isRecordingArmed: transportState.isRecordingArmed !== undefined ?
-            transportState.isRecordingArmed : this.lastPlaybackState.isRecordingArmed
-        };
+            transportState.isRecordingArmed : undefined
+        });
 
         // Log if we're preserving the current region ID
         if (transportState.currentRegionId === undefined && this.lastPlaybackState.currentRegionId !== null) {
@@ -584,11 +569,10 @@ export class ReaperConnector extends EventEmitter {
    * @param setlistId - Setlist ID or null for all regions
    */
   public setSelectedSetlistId(setlistId: string | null): void {
-    // Update the last playback state
-    this.lastPlaybackState = {
-      ...this.lastPlaybackState,
+    // Update the last playback state using the factory function
+    this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
       selectedSetlistId: setlistId
-    };
+    });
 
     // Emit playback state update
     this.emit('playbackState', this.lastPlaybackState);
@@ -877,8 +861,8 @@ export class ReaperConnector extends EventEmitter {
       // Get updated transport state from REAPER to ensure we're in sync
       const transportState = await this.getTransportState();
 
-      // Update last playback state with the actual state from REAPER
-      this.lastPlaybackState = transportState;
+      // Update last playback state with the actual state from REAPER using the factory function
+      this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, transportState);
 
       // Emit playback state update again with the confirmed state from REAPER
       this.emit('playbackState', this.lastPlaybackState);
@@ -915,8 +899,8 @@ export class ReaperConnector extends EventEmitter {
       // Get updated transport state from REAPER to ensure we're in sync
       const transportState = await this.getTransportState();
 
-      // Update last playback state with the actual state from REAPER
-      this.lastPlaybackState = transportState;
+      // Update last playback state with the actual state from REAPER using the factory function
+      this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, transportState);
 
       // Emit playback state update again with the confirmed state from REAPER
       this.emit('playbackState', this.lastPlaybackState);
@@ -939,11 +923,10 @@ export class ReaperConnector extends EventEmitter {
       // Check if we're disabling recording that was previously armed
       const wasArmed = this.lastPlaybackState.isRecordingArmed;
 
-      // Update local state
-      this.lastPlaybackState = {
-        ...this.lastPlaybackState,
+      // Update local state using the factory function
+      this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
         isRecordingArmed: enabled
-      };
+      });
 
       // If recording is being disabled, send commands to REAPER
       if (wasArmed && !enabled) {
@@ -960,11 +943,10 @@ export class ReaperConnector extends EventEmitter {
         // Get updated transport state from REAPER to ensure we're in sync
         const transportState = await this.getTransportState();
 
-        // Update last playback state with the actual state from REAPER
-        this.lastPlaybackState = {
-          ...transportState,
+        // Update last playback state with the actual state from REAPER using the factory function
+        this.lastPlaybackState = updatePlaybackState(transportState, {
           isRecordingArmed: false // Ensure it's set to false
-        };
+        });
       }
 
       // Emit playback state update with the new recording armed state

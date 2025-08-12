@@ -5,6 +5,7 @@
 
 import { writable, type Writable } from 'svelte/store';
 import logger from '../lib/utils/logger';
+import { createPlaybackState, updatePlaybackState as updatePlaybackStateFactory } from '../lib/utils/playbackStateFactory';
 
 /**
  * Interface for time signature
@@ -32,20 +33,7 @@ export interface PlaybackState {
 /**
  * Store for playback state
  */
-export const playbackState: Writable<PlaybackState> = writable({
-  isPlaying: false,
-  currentPosition: 0,
-  currentRegionId: null,
-  selectedSetlistId: null,
-  bpm: 120, // Default BPM value
-  timeSignature: {
-    numerator: 4,
-    denominator: 4
-  }, // Default time signature (4/4)
-  autoplayEnabled: true, // Default to enabled
-  countInEnabled: false, // Default to disabled
-  isRecordingArmed: false // Default to disarmed
-});
+export const playbackState: Writable<PlaybackState> = writable(createPlaybackState());
 
 /**
  * Store for autoplay toggle
@@ -92,41 +80,52 @@ export function updatePlaybackState(data: Partial<PlaybackState>): boolean {
     });
     unsubscribe();
 
-    // Prepare the new state with robust defaults
-    const newState = {
-      // For boolean values, use explicit Boolean conversion with fallbacks
-      isPlaying: data.isPlaying !== undefined ? Boolean(data.isPlaying) : currentState.isPlaying,
+    // Clean and validate incoming data
+    const cleanData: Partial<PlaybackState> = {};
 
-      // For numeric values, handle NaN and other edge cases
-      currentPosition: data.currentPosition !== undefined ?
-        (isNaN(Number(data.currentPosition)) ? currentState.currentPosition : Number(data.currentPosition)) :
-        currentState.currentPosition,
+    // For boolean values, use explicit Boolean conversion
+    if (data.isPlaying !== undefined) cleanData.isPlaying = Boolean(data.isPlaying);
 
-      // For currentRegionId, properly handle null vs undefined vs invalid
-      currentRegionId: data.currentRegionId !== undefined ?
-        (data.currentRegionId === null ? null :
-          (isNaN(Number(data.currentRegionId)) ? currentState.currentRegionId : Number(data.currentRegionId))) :
-        currentState.currentRegionId,
+    // For numeric values, handle NaN and other edge cases
+    if (data.currentPosition !== undefined) {
+      cleanData.currentPosition = isNaN(Number(data.currentPosition))
+        ? currentState.currentPosition
+        : Number(data.currentPosition);
+    }
 
-      // For selectedSetlistId, explicitly check for undefined to preserve null values
-      selectedSetlistId: data.selectedSetlistId !== undefined ? data.selectedSetlistId : currentState.selectedSetlistId,
+    // For currentRegionId, properly handle null vs undefined vs invalid
+    if (data.currentRegionId !== undefined) {
+      cleanData.currentRegionId = data.currentRegionId === null
+        ? null
+        : (isNaN(Number(data.currentRegionId))
+            ? currentState.currentRegionId
+            : Number(data.currentRegionId));
+    }
 
-      // For bpm, ensure we handle NaN and other edge cases
-      bpm: data.bpm !== undefined ?
-        (isNaN(Number(data.bpm)) ? currentState.bpm : Number(data.bpm)) :
-        currentState.bpm,
+    // For selectedSetlistId, explicitly preserve null values
+    if (data.selectedSetlistId !== undefined) cleanData.selectedSetlistId = data.selectedSetlistId;
 
-      // For timeSignature, validate it has required properties
-      timeSignature: (data.timeSignature &&
+    // For bpm, ensure we handle NaN
+    if (data.bpm !== undefined) {
+      cleanData.bpm = isNaN(Number(data.bpm))
+        ? currentState.bpm
+        : Number(data.bpm);
+    }
+
+    // For timeSignature, validate it has required properties
+    if (data.timeSignature &&
         typeof data.timeSignature.numerator === 'number' &&
-        typeof data.timeSignature.denominator === 'number') ?
-        data.timeSignature : currentState.timeSignature,
+        typeof data.timeSignature.denominator === 'number') {
+      cleanData.timeSignature = data.timeSignature;
+    }
 
-      // For autoplayEnabled, countInEnabled, and isRecordingArmed, use explicit Boolean conversion with fallbacks
-      autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : currentState.autoplayEnabled,
-      countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : currentState.countInEnabled,
-      isRecordingArmed: data.isRecordingArmed !== undefined ? Boolean(data.isRecordingArmed) : currentState.isRecordingArmed
-    };
+    // For boolean settings, use explicit Boolean conversion
+    if (data.autoplayEnabled !== undefined) cleanData.autoplayEnabled = Boolean(data.autoplayEnabled);
+    if (data.countInEnabled !== undefined) cleanData.countInEnabled = Boolean(data.countInEnabled);
+    if (data.isRecordingArmed !== undefined) cleanData.isRecordingArmed = Boolean(data.isRecordingArmed);
+
+    // Use factory function to create new state with validated data
+    const newState = updatePlaybackStateFactory(currentState, cleanData);
 
     // Update the playback state store
     playbackState.set(newState);
@@ -166,10 +165,7 @@ export function updatePlaybackState(data: Partial<PlaybackState>): boolean {
  * @param partialState - Partial playback state data
  */
 export function updatePartialPlaybackState(partialState: Partial<PlaybackState>): void {
-  playbackState.update(state => ({
-    ...state,
-    ...partialState
-  }));
+  playbackState.update(state => updatePlaybackStateFactory(state, partialState));
 }
 
 /**

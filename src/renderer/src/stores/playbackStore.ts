@@ -26,6 +26,7 @@ export interface PlaybackState {
   timeSignature: TimeSignature;
   autoplayEnabled?: boolean;
   countInEnabled?: boolean;
+  isRecordingArmed?: boolean;
 }
 
 /**
@@ -42,7 +43,8 @@ export const playbackState: Writable<PlaybackState> = writable({
     denominator: 4
   }, // Default time signature (4/4)
   autoplayEnabled: true, // Default to enabled
-  countInEnabled: false // Default to disabled
+  countInEnabled: false, // Default to disabled
+  isRecordingArmed: false // Default to disarmed
 });
 
 /**
@@ -54,6 +56,11 @@ export const autoplayEnabled: Writable<boolean> = writable(true);
  * Store for count-in toggle
  */
 export const countInEnabled: Writable<boolean> = writable(false);
+
+/**
+ * Store for record arm toggle
+ */
+export const recordingArmed: Writable<boolean> = writable(false);
 
 /**
  * Updates the playback state with new data
@@ -115,9 +122,10 @@ export function updatePlaybackState(data: Partial<PlaybackState>): boolean {
         typeof data.timeSignature.denominator === 'number') ?
         data.timeSignature : currentState.timeSignature,
 
-      // For autoplayEnabled and countInEnabled, use explicit Boolean conversion with fallbacks
+      // For autoplayEnabled, countInEnabled, and isRecordingArmed, use explicit Boolean conversion with fallbacks
       autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : currentState.autoplayEnabled,
-      countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : currentState.countInEnabled
+      countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : currentState.countInEnabled,
+      isRecordingArmed: data.isRecordingArmed !== undefined ? Boolean(data.isRecordingArmed) : currentState.isRecordingArmed
     };
 
     // Update the playback state store
@@ -133,11 +141,17 @@ export function updatePlaybackState(data: Partial<PlaybackState>): boolean {
       countInEnabled.set(Boolean(data.countInEnabled));
     }
 
+    // Update the recordingArmed store if the value is present in the data
+    if (data.isRecordingArmed !== undefined) {
+      recordingArmed.set(Boolean(data.isRecordingArmed));
+    }
+
     // Log success with the new state
     logger.log('Successfully updated playback state:', {
       ...newState,
       autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : undefined,
-      countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : undefined
+      countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : undefined,
+      isRecordingArmed: data.isRecordingArmed !== undefined ? Boolean(data.isRecordingArmed) : undefined
     });
 
     return true;
@@ -272,5 +286,34 @@ export function setSelectedSetlist(setlistId: string | null): void {
     logger.log('Sent selected setlist to main process');
   } else {
     logger.warn('Electron API not available, selected setlist not sent to main process');
+  }
+}
+
+/**
+ * Toggle recording armed state
+ */
+export function toggleRecordingArmed(): void {
+  // Get the current value
+  let current: boolean;
+  const unsubscribe = recordingArmed.subscribe(value => {
+    current = value;
+  });
+  unsubscribe();
+
+  // Toggle the value
+  const newValue = !current;
+
+  // Update the local store
+  recordingArmed.set(newValue);
+
+  // Update the isRecordingArmed property in the main playbackState store
+  updatePartialPlaybackState({ isRecordingArmed: newValue });
+
+  // Send to main process via IPC
+  if (window.electronAPI) {
+    window.electronAPI.setRecordingArmed(newValue);
+    logger.log(`Sent recording armed state (${newValue}) to main process`);
+  } else {
+    logger.warn('Electron API not available, recording armed state not sent to main process');
   }
 }

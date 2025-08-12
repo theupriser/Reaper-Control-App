@@ -81,6 +81,7 @@ export class IpcHandler {
     ipcMain.handle(IPC_CHANNELS.SEEK_TO_CURRENT_REGION_START, this.handleSeekToCurrentRegionStart.bind(this));
     ipcMain.handle(IPC_CHANNELS.SET_AUTOPLAY_ENABLED, this.handleSetAutoplayEnabled.bind(this));
     ipcMain.handle(IPC_CHANNELS.SET_COUNT_IN_ENABLED, this.handleSetCountInEnabled.bind(this));
+    ipcMain.handle(IPC_CHANNELS.SET_RECORDING_ARMED, this.handleSetRecordingArmed.bind(this));
 
     // Project
     ipcMain.handle(IPC_CHANNELS.REFRESH_PROJECT_ID, this.handleRefreshProjectId.bind(this));
@@ -237,6 +238,13 @@ export class IpcHandler {
           // Use the IPC handler to toggle count-in using the same mechanism as the UI
           // This prevents UI flickering by using the established pattern
           await this.handleSetCountInEnabled(null, !this.reaperConnector.getLastPlaybackState().countInEnabled);
+          break;
+        case 'toggleRecordingArmed':
+          logger.info('Handling toggleRecordingArmed MIDI action');
+          // Get current state
+          const isCurrentlyArmed = this.reaperConnector.getLastPlaybackState().isRecordingArmed || false;
+          // Toggle the state
+          await this.reaperConnector.setRecordingArmed(!isCurrentlyArmed);
           break;
         case 'nextRegion':
           // Use the RegionService's canGoToNextRegion method to check if navigation is allowed
@@ -516,6 +524,24 @@ export class IpcHandler {
     } catch (error) {
       logger.error('Error setting count-in enabled', { error, enabled });
       this.sendStatusMessage(this.createErrorMessage('Failed to set count-in enabled', String(error)));
+      throw error;
+    }
+  }
+
+  /**
+   * Handle set recording armed
+   * @param _ - IPC event
+   * @param enabled - Recording armed flag
+   */
+  private async handleSetRecordingArmed(_: any, enabled: boolean): Promise<void> {
+    try {
+      logger.info('Setting recording armed state', { enabled });
+
+      // Use the setRecordingArmed method in the reaperConnector
+      await this.reaperConnector.setRecordingArmed(enabled);
+    } catch (error) {
+      logger.error('Error setting recording armed state', { error, enabled });
+      this.sendStatusMessage(this.createErrorMessage('Failed to set recording armed state', String(error)));
       throw error;
     }
   }

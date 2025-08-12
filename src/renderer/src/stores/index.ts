@@ -86,6 +86,7 @@ export {
   playbackState,
   autoplayEnabled,
   countInEnabled,
+  recordingArmed,
   updatePlaybackState,
   updatePartialPlaybackState,
   getPlaybackState,

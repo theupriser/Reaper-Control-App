@@ -35,6 +35,7 @@ interface PlaybackState {
   };
   autoplayEnabled?: boolean;
   countInEnabled?: boolean;
+  isRecordingArmed?: boolean;
 }
 
 interface StatusMessage {
@@ -66,6 +67,7 @@ const api = {
   seekToCurrentRegionStart: () => ipcRenderer.invoke('seek-to-current-region-start'),
   setAutoplayEnabled: (enabled: boolean) => ipcRenderer.invoke('set-autoplay-enabled', enabled),
   setCountInEnabled: (enabled: boolean) => ipcRenderer.invoke('set-count-in-enabled', enabled),
+  setRecordingArmed: (enabled: boolean) => ipcRenderer.invoke('set-recording-armed', enabled),
 
   // Project management
   refreshProjectId: () => ipcRenderer.invoke('refresh-project-id'),

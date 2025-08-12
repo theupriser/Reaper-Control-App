@@ -28,6 +28,7 @@ export const IPC_CHANNELS = {
   SEEK_TO_CURRENT_REGION_START: 'seek-to-current-region-start',
   SET_AUTOPLAY_ENABLED: 'set-autoplay-enabled',
   SET_COUNT_IN_ENABLED: 'set-count-in-enabled',
+  SET_RECORDING_ARMED: 'set-recording-armed',
 
   // Project
   REFRESH_PROJECT_ID: 'refresh-project-id',

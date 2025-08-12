@@ -26,6 +26,7 @@ export class ReaperConnector extends EventEmitter {
     },
     autoplayEnabled: true,
     countInEnabled: false,
+    isRecordingArmed: false,
     selectedSetlistId: null
   };
 
@@ -333,7 +334,9 @@ export class ReaperConnector extends EventEmitter {
           autoplayEnabled: transportState.autoplayEnabled !== undefined ?
             transportState.autoplayEnabled : this.lastPlaybackState.autoplayEnabled,
           countInEnabled: transportState.countInEnabled !== undefined ?
-            transportState.countInEnabled : this.lastPlaybackState.countInEnabled
+            transportState.countInEnabled : this.lastPlaybackState.countInEnabled,
+          isRecordingArmed: transportState.isRecordingArmed !== undefined ?
+            transportState.isRecordingArmed : this.lastPlaybackState.isRecordingArmed
         };
 
         // Log if we're preserving the current region ID
@@ -492,7 +495,8 @@ export class ReaperConnector extends EventEmitter {
           denominator: 4
         },
         autoplayEnabled: this.lastPlaybackState.autoplayEnabled,
-        countInEnabled: this.lastPlaybackState.countInEnabled
+        countInEnabled: this.lastPlaybackState.countInEnabled,
+        isRecordingArmed: this.lastPlaybackState.isRecordingArmed
       };
 
       // Process each line
@@ -507,8 +511,8 @@ export class ReaperConnector extends EventEmitter {
         if (parts[0] === 'TRANSPORT') {
           // Extract transport information
           if (parts.length >= 2) {
-            // Check play state (1 = playing, 0 = stopped)
-            transportState.isPlaying = parts[1] === '1';
+            // Check play state (5 = recording, 1 = playing, 0 = stopped)
+            transportState.isPlaying = parts[1] === '1' || parts[1] === '5';
           }
 
           if (parts.length >= 3) {
@@ -561,7 +565,8 @@ export class ReaperConnector extends EventEmitter {
           denominator: 4
         },
         autoplayEnabled: this.lastPlaybackState.autoplayEnabled,
-        countInEnabled: this.lastPlaybackState.countInEnabled
+        countInEnabled: this.lastPlaybackState.countInEnabled,
+        isRecordingArmed: this.lastPlaybackState.isRecordingArmed
       };
     }
   }
@@ -836,7 +841,7 @@ export class ReaperConnector extends EventEmitter {
   }
 
   /**
-   * Toggle play/pause in REAPER
+   * Toggle play/pause in REAPER, with recording support
    */
   public async togglePlay(): Promise<void> {
     try {
@@ -844,20 +849,29 @@ export class ReaperConnector extends EventEmitter {
 
       // Store the current state before toggling
       const wasPlaying = this.lastPlaybackState.isPlaying;
-
-      // Removed optimistic UI update to prevent flickering
+      const isRecordingArmed = this.lastPlaybackState.isRecordingArmed || false;
 
       // Use different action IDs for play and pause to avoid issues
       if (!wasPlaying) {
-        // If it was paused, send play command
-        // Action ID 1007 is for play (consistent with old backend)
-        logger.debug('Sending play command to REAPER (action ID 1007)');
-        await this.makeRequest<string>('GET', '_/1007');
+        if (isRecordingArmed) {
+          // If it was paused and recording is armed, start recording (40046)
+          logger.debug('Sending start recording command to REAPER (action ID 40046)');
+          await this.makeRequest<string>('GET', '_/40046');
+        } else {
+          // If it was paused and not recording, send play command (1007)
+          logger.debug('Sending play command to REAPER (action ID 1007)');
+          await this.makeRequest<string>('GET', '_/1007');
+        }
       } else {
-        // If it was playing, send pause command
-        // Action ID 1008 is for pause (consistent with old backend)
-        logger.debug('Sending pause command to REAPER (action ID 1008)');
-        await this.makeRequest<string>('GET', '_/1008');
+        if (isRecordingArmed) {
+          // If it was recording, stop and save (40667)
+          logger.debug('Sending stop recording command to REAPER (action ID 40667)');
+          await this.makeRequest<string>('GET', '_/40667');
+        } else {
+          // If it was playing but not recording, pause (1008)
+          logger.debug('Sending pause command to REAPER (action ID 1008)');
+          await this.makeRequest<string>('GET', '_/1008');
+        }
       }
 
       // Get updated transport state from REAPER to ensure we're in sync
@@ -910,6 +924,29 @@ export class ReaperConnector extends EventEmitter {
       logger.debug('Pause command sent to REAPER', { isPlaying: this.lastPlaybackState.isPlaying });
     } catch (error) {
       logger.error('Failed to pause with action ID 1008 command', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Set recording armed state
+   * @param enabled Whether recording is armed
+   */
+  public async setRecordingArmed(enabled: boolean): Promise<void> {
+    try {
+      logger.debug(`Setting recording armed state to ${enabled}`);
+
+      this.lastPlaybackState = {
+        ...this.lastPlaybackState,
+        isRecordingArmed: enabled
+      };
+
+      // Emit playback state update with the new recording armed state
+      this.emit('playbackState', this.lastPlaybackState);
+
+      logger.debug('Recording armed state updated', { isRecordingArmed: enabled });
+    } catch (error) {
+      logger.error('Failed to set recording armed state', { error });
       throw error;
     }
   }

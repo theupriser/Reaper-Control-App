@@ -94,6 +94,7 @@ interface IpcControl {
   refreshMarkers: () => Promise<Marker[]>;
   setAutoplayEnabled: (enabled: boolean) => Promise<void>;
   setCountInEnabled: (enabled: boolean) => Promise<void>;
+  setRecordingArmed: (enabled: boolean) => Promise<void>;
   setSelectedSetlist: (setlistId: string | null) => Promise<void>;
   getReaperConfig: () => Promise<ReaperConfig>;
   updateReaperConfig: (config: Partial<ReaperConfig>) => Promise<boolean>;
@@ -331,7 +332,8 @@ function handlePlaybackStateUpdate(data: PlaybackState): void {
 
     // For autoplayEnabled and countInEnabled, explicitly convert to boolean with default values
     autoplayEnabled: data.autoplayEnabled !== undefined ? Boolean(data.autoplayEnabled) : true,
-    countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : false
+    countInEnabled: data.countInEnabled !== undefined ? Boolean(data.countInEnabled) : false,
+    isRecordingArmed: data.isRecordingArmed !== undefined ? Boolean(data.isRecordingArmed) : false,
   };
 
   // Update the playback state with the mapped data
@@ -469,6 +471,11 @@ function createIpcControl(): IpcControl {
         () => window.electronAPI.setCountInEnabled(enabled),
         void 0),
 
+    setRecordingArmed: (enabled: boolean) =>
+      safeIpcCall('set recording armed mode',
+        () => window.electronAPI.setRecordingArmed(enabled),
+        void 0),
+
     setSelectedSetlist: (setlistId: string | null) =>
       safeIpcCall('set selected setlist',
         () => window.electronAPI.setSelectedSetlist(setlistId),
@@ -584,6 +591,7 @@ function createDefaultIpcControl(): IpcControl {
     refreshMarkers: () => Promise.resolve([]),
     setAutoplayEnabled: (enabled: boolean) => Promise.resolve(),
     setCountInEnabled: (enabled: boolean) => Promise.resolve(),
+    setRecordingArmed: (enabled: boolean) => Promise.resolve(),
     setSelectedSetlist: (setlistId: string | null) => Promise.resolve(),
     getReaperConfig: () => Promise.resolve({
       host: 'localhost',

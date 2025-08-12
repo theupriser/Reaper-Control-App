@@ -19,12 +19,14 @@
     currentRegion,
     autoplayEnabled,
     countInEnabled,
+    recordingArmed,
     markers,
     sortedMarkers,
     getEffectiveRegionLength,
     getCustomLengthForRegion,
     has1008MarkerInRegion,
   } from '../stores';
+  import { toggleRecordingArmed } from '../stores/playbackStore';
   import ipcService from '../services/ipcService';
   import logger from '../lib/utils/logger';
   import { onMount } from 'svelte';
@@ -89,6 +91,11 @@
   // Toggle count-in function
   function handleToggleCountIn(): void {
     toggleCountInHandler();
+  }
+
+  // Toggle recording armed function
+  function handleToggleRecordingArmed(): void {
+    toggleRecordingArmed();
   }
 
   // Enhanced progress bar click handling with popover, using the service
@@ -263,6 +270,19 @@
         <span class="toggle-slider"></span>
       </label>
       <span class="toggle-label">Count-in when pressing marker</span>
+    </div>
+
+    <div class="toggle-item">
+      <label class="toggle-switch record-button">
+        <input
+          type="checkbox"
+          checked={$recordingArmed}
+          on:change={handleToggleRecordingArmed}
+          disabled={$transportButtonsDisabled}
+        />
+        <span class="toggle-slider record-slider" class:active={$recordingArmed}></span>
+      </label>
+      <span class="toggle-label">Arm Recording</span>
     </div>
   </div>
 
@@ -609,6 +629,33 @@
   .toggle-label {
     font-size: 0.9rem;
     color: #ddd;
+  }
+
+  /* Record button styling */
+  .toggle-switch.record-button .toggle-slider {
+    border-radius: 50%; /* Make it round */
+    background-color: #666;
+  }
+
+  .toggle-switch.record-button .toggle-slider.active {
+    background-color: #ff0000; /* Red when active */
+    box-shadow: 0 0 5px rgba(255, 0, 0, 0.7), 0 0 10px rgba(255, 0, 0, 0.5); /* Glowing effect */
+  }
+
+  /* Customize the record button appearance */
+  .toggle-switch.record-button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .toggle-switch.record-button input:checked + .toggle-slider:before {
+    transform: translateX(0); /* Don't move the circle on toggle */
+    opacity: 0; /* Hide the slider thumb */
+  }
+
+  /* Add this rule to hide the white dot for record button in OFF state */
+  .toggle-switch.record-button .toggle-slider:before {
+    opacity: 0; /* Hide the slider thumb for record button regardless of state */
   }
 
   .controls {

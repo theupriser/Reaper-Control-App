@@ -48,6 +48,7 @@ export interface PlaybackState {
   };
   autoplayEnabled?: boolean;
   countInEnabled?: boolean;
+  isRecordingArmed?: boolean;
 }
 
 /**

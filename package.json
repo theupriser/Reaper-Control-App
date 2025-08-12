@@ -3,8 +3,9 @@
   "version": "1.2.2",
   "description": "All out controller for Cockos Reaper DAW",
   "main": "./out/main/index.js",
-  "author": "TheUpriser",
+  "author": "TheUpriser <rickpeters@upriser.nl>",
   "homepage": "https://electron-vite.org",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "format": "prettier --plugin prettier-plugin-svelte --write electron",
     "lint": "eslint --cache electron",

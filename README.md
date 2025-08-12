@@ -215,3 +215,11 @@ To create a new release:
 - Add more advanced REAPER control features
 - Implement setlist export/import functionality
 
+## License
+
+This software is released under a proprietary Source Available License. The source code is visible for inspection and learning purposes, but all rights to use, copy, modify, distribute, and sell the software are reserved by the copyright holder.
+
+See the [LICENSE](./LICENSE) file for the full terms and conditions.
+
+Any use, distribution, or modification of this software requires explicit written permission from the copyright holder.
+

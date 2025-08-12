@@ -49,6 +49,8 @@ export interface PlaybackState {
   autoplayEnabled?: boolean;
   countInEnabled?: boolean;
   isRecordingArmed?: boolean;
+  isRecordingPaused?: boolean;
+  autoResumeEnabled?: boolean;
 }
 
 /**

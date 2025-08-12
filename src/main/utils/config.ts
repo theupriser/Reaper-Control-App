@@ -17,6 +17,7 @@ const defaultConfig = {
     maxReconnectAttempts: 10,
     connectionTimeout: 3000,
     pollingInterval: 300,
+    autoResumeEnabled: false, // Whether to auto-resume recording after changing setlist in paused recording state
   },
   midi: {
     enabled: true,

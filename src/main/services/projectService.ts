@@ -7,6 +7,7 @@ import { Setlist, SetlistItem } from '../types';
 import { ReaperConnector } from './reaperConnector';
 import { SetlistStorage } from './setlistStorage';
 import logger from '../utils/logger';
+import config from '../utils/config';
 
 export class ProjectService extends EventEmitter {
   private projectId: string = '';
@@ -543,9 +544,12 @@ export class ProjectService extends EventEmitter {
       logger.debug('Saved selected setlist to disk', { setlistId });
     }
 
-    // Update the reaperConnector's playback state
-    this.reaperConnector.setSelectedSetlistId(setlistId);
-    logger.debug('Updated reaperConnector with selected setlist', { setlistId });
+    // Get autoResumeEnabled option from config
+    const autoResumeEnabled = config.getConfig().reaper.autoResumeEnabled || false;
+
+    // Update the reaperConnector's playback state with autoResume option
+    await this.reaperConnector.setSelectedSetlistId(setlistId, autoResumeEnabled);
+    logger.debug('Updated reaperConnector with selected setlist', { setlistId, autoResumeEnabled });
 
     // If a setlist is selected, select the first region and pause playback
     if (setlistId) {

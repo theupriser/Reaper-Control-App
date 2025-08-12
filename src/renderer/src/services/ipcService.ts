@@ -61,6 +61,9 @@ interface PlaybackState {
   };
   autoplayEnabled?: boolean;
   countInEnabled?: boolean;
+  isRecordingArmed?: boolean;
+  isRecordingPaused?: boolean;
+  autoResumeEnabled?: boolean;
 }
 
 interface StatusMessage {
@@ -78,6 +81,7 @@ interface ReaperConfig {
   maxReconnectAttempts: number;
   connectionTimeout: number;
   pollingInterval: number;
+  autoResumeEnabled: boolean;
 }
 
 interface IpcControl {
@@ -597,6 +601,7 @@ function createDefaultIpcControl(): IpcControl {
       host: 'localhost',
       port: 8080,
       protocol: 'http',
+      autoResumeEnabled: false,
       reconnectInterval: 5000,
       maxReconnectAttempts: 10,
       connectionTimeout: 3000,

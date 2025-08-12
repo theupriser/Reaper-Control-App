@@ -481,7 +481,9 @@ export class ReaperConnector extends EventEmitter {
         },
         autoplayEnabled: this.lastPlaybackState.autoplayEnabled,
         countInEnabled: this.lastPlaybackState.countInEnabled,
-        isRecordingArmed: this.lastPlaybackState.isRecordingArmed
+        isRecordingArmed: this.lastPlaybackState.isRecordingArmed,
+        isRecordingPaused: false,
+        autoResumeEnabled: this.lastPlaybackState.autoResumeEnabled || false
       };
 
       // Process each line
@@ -496,8 +498,23 @@ export class ReaperConnector extends EventEmitter {
         if (parts[0] === 'TRANSPORT') {
           // Extract transport information
           if (parts.length >= 2) {
-            // Check play state (5 = recording, 1 = playing, 0 = stopped)
+            // Check play state (5 = recording, 1 = playing, 0 = stopped, 6 = paused recording)
             transportState.isPlaying = parts[1] === '1' || parts[1] === '5';
+
+            // Check for paused recording state (6)
+            transportState.isRecordingPaused = parts[1] === '6';
+
+            // Update isRecordingArmed based on play state
+            if (parts[1] === '5' || parts[1] === '6') {
+              transportState.isRecordingArmed = true;
+            }
+
+            logger.debug('Transport state details', {
+              playState: parts[1],
+              isPlaying: transportState.isPlaying,
+              isRecordingArmed: transportState.isRecordingArmed,
+              isRecordingPaused: transportState.isRecordingPaused
+            });
           }
 
           if (parts.length >= 3) {
@@ -551,7 +568,9 @@ export class ReaperConnector extends EventEmitter {
         },
         autoplayEnabled: this.lastPlaybackState.autoplayEnabled,
         countInEnabled: this.lastPlaybackState.countInEnabled,
-        isRecordingArmed: this.lastPlaybackState.isRecordingArmed
+        isRecordingArmed: this.lastPlaybackState.isRecordingArmed,
+        isRecordingPaused: this.lastPlaybackState.isRecordingPaused || false,
+        autoResumeEnabled: this.lastPlaybackState.autoResumeEnabled || false
       };
     }
   }
@@ -567,17 +586,57 @@ export class ReaperConnector extends EventEmitter {
   /**
    * Set the selected setlist ID in the playback state
    * @param setlistId - Setlist ID or null for all regions
+   * @param autoResume - Whether to auto-resume after changing setlist when in recording pause state
    */
-  public setSelectedSetlistId(setlistId: string | null): void {
-    // Update the last playback state using the factory function
-    this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
-      selectedSetlistId: setlistId
-    });
+  public async setSelectedSetlistId(setlistId: string | null, autoResume: boolean = false): Promise<void> {
+    const isRecordingArmed = this.lastPlaybackState.isRecordingArmed || false;
+    const isPlaying = this.lastPlaybackState.isPlaying || false;
+    const isRecordingPaused = this.lastPlaybackState.isRecordingPaused || false;
+
+    // If we're actively recording, we shouldn't change the setlist
+    if (isRecordingArmed && isPlaying) {
+      logger.warn('Cannot change setlist while actively recording');
+      return;
+    }
+
+    // Special handling for paused recording state
+    if (isRecordingPaused || (isRecordingArmed && !isPlaying)) {
+      try {
+        // When in paused recording state, we need to stop recording first (action ID 40667)
+        logger.debug('In paused recording state, sending stop recording command (action ID 40667)');
+        await this.makeRequest<string>('GET', '_/40667');
+
+        // Update the last playback state using the factory function
+        this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
+          selectedSetlistId: setlistId,
+          isRecordingPaused: false
+        });
+
+        // If autoResume is enabled, start recording again (action ID 40046)
+        if (autoResume) {
+          logger.debug('Auto-resume enabled, starting recording (action ID 40046)');
+          await this.makeRequest<string>('GET', '_/40046');
+        }
+      } catch (error) {
+        logger.error('Error handling recording state during setlist change', { error });
+      }
+    } else {
+      // Normal case - just update the setlist ID
+      this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
+        selectedSetlistId: setlistId
+      });
+    }
 
     // Emit playback state update
     this.emit('playbackState', this.lastPlaybackState);
 
-    logger.info('Updated selected setlist ID in playback state', { setlistId });
+    logger.info('Updated selected setlist ID in playback state', {
+      setlistId,
+      isRecordingArmed,
+      isPlaying,
+      isRecordingPaused,
+      autoResume
+    });
   }
 
   /**
@@ -636,7 +695,10 @@ export class ReaperConnector extends EventEmitter {
         bpm: this.lastPlaybackState.bpm,
         timeSignature: this.lastPlaybackState.timeSignature,
         currentRegionId: this.lastPlaybackState.currentRegionId,
-        selectedSetlistId: this.lastPlaybackState.selectedSetlistId
+        selectedSetlistId: this.lastPlaybackState.selectedSetlistId,
+        isRecordingArmed: this.lastPlaybackState.isRecordingArmed,
+        isRecordingPaused: this.lastPlaybackState.isRecordingPaused,
+        autoResumeEnabled: this.lastPlaybackState.autoResumeEnabled
       };
     }
   }

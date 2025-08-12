@@ -9,11 +9,14 @@
     state = s;
   });
 
-  // Local reference to make binding easier
+  // Local references to make binding easier
   let portValue;
-  // Initialize portValue when state changes
+  let autoResumeEnabled;
+
+  // Initialize values when state changes
   $: if (state?.reaperConfig) {
     portValue = state.reaperConfig.port;
+    autoResumeEnabled = state.reaperConfig.autoResumeEnabled || false;
   }
 
   // Reactive declarations for settings state
@@ -60,7 +63,10 @@
 
   // Handle Reaper config form submission
   function handleReaperConfigSubmit() {
-    settingsService.saveReaperConfig({ port: portValue });
+    settingsService.saveReaperConfig({
+      port: portValue,
+      autoResumeEnabled
+    });
   }
 
   // Handle MIDI settings form submission
@@ -150,6 +156,25 @@
                 bind:value={portValue}
                 min="1"
                 max="65535"
+                disabled={saving}
+              />
+            </div>
+          </div>
+
+          <div class="component-form-group">
+            <div class="component-form-group-content">
+              <label class="component-label" for="auto-resume-enabled">Auto-Resume Recording</label>
+              <p class="component-description">
+                When enabled, recording will automatically resume after changing setlist while in a paused recording state.
+                If disabled, recording will be stopped when changing setlist.
+              </p>
+            </div>
+            <div class="component-form-group-input">
+              <input
+                class="component-checkbox"
+                type="checkbox"
+                id="auto-resume-enabled"
+                bind:checked={autoResumeEnabled}
                 disabled={saving}
               />
             </div>

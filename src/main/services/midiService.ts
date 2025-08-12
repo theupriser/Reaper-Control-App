@@ -615,6 +615,8 @@ export class MidiService extends EventEmitter {
         return { action: 'toggleAutoplay' };
       case 46: // Bb4
         return { action: 'toggleCountIn' };
+      case 47: // Bb4
+        return { action: 'toggleRecordingArmed' };
       case 48: // E4
         return { action: 'previousRegion' };
       case 49:

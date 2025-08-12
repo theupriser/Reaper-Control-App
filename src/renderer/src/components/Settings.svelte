@@ -39,6 +39,7 @@
     { id: 'pause', name: 'Pause' },
     { id: 'toggleAutoplay', name: 'Toggle Autoplay' },
     { id: 'toggleCountIn', name: 'Toggle Count-In' },
+    { id: 'toggleRecordingArmed', name: 'Toggle Recording Armed' },
     { id: 'nextRegion', name: 'Next Region' },
     { id: 'previousRegion', name: 'Previous Region' },
     { id: 'seekToCurrentRegionStart', name: 'Seek to Current Region Start' }

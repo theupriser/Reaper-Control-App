@@ -28,6 +28,7 @@ const defaultConfig = {
       44: 'seekToCurrentRegionStart',
       45: 'toggleAutoplay',
       46: 'toggleCountIn',
+      47: 'toggleRecordingArmed',
       48: 'previousRegion',
       49: 'pause',
       50: 'togglePlay',

@@ -241,10 +241,8 @@ export class IpcHandler {
           break;
         case 'toggleRecordingArmed':
           logger.info('Handling toggleRecordingArmed MIDI action');
-          // Get current state
-          const isCurrentlyArmed = this.reaperConnector.getLastPlaybackState().isRecordingArmed || false;
           // Toggle the state
-          await this.reaperConnector.setRecordingArmed(!isCurrentlyArmed);
+          await this.reaperConnector.setRecordingArmed(!this.reaperConnector.getLastPlaybackState().isRecordingArmed || false);
           break;
         case 'nextRegion':
           // Use the RegionService's canGoToNextRegion method to check if navigation is allowed

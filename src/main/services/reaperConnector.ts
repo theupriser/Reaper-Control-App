@@ -863,15 +863,15 @@ export class ReaperConnector extends EventEmitter {
           await this.makeRequest<string>('GET', '_/1007');
         }
       } else {
-        if (isRecordingArmed) {
-          // If it was recording, stop and save (40667)
-          logger.debug('Sending stop recording command to REAPER (action ID 40667)');
-          await this.makeRequest<string>('GET', '_/40667');
-        } else {
+        // if (isRecordingArmed) {
+        //   // If it was recording, stop and save (40667)
+        //   logger.debug('Sending stop recording command to REAPER (action ID 40667)');
+        //   await this.makeRequest<string>('GET', '_/40667');
+        // } else {
           // If it was playing but not recording, pause (1008)
           logger.debug('Sending pause command to REAPER (action ID 1008)');
           await this.makeRequest<string>('GET', '_/1008');
-        }
+        // }
       }
 
       // Get updated transport state from REAPER to ensure we're in sync
@@ -936,10 +936,36 @@ export class ReaperConnector extends EventEmitter {
     try {
       logger.debug(`Setting recording armed state to ${enabled}`);
 
+      // Check if we're disabling recording that was previously armed
+      const wasArmed = this.lastPlaybackState.isRecordingArmed;
+
+      // Update local state
       this.lastPlaybackState = {
         ...this.lastPlaybackState,
         isRecordingArmed: enabled
       };
+
+      // If recording is being disabled, send commands to REAPER
+      if (wasArmed && !enabled) {
+        logger.debug('Disabling armed recording, sending required commands to REAPER');
+
+        // Send pause command first (action ID 1008)
+        logger.debug('Sending pause command to REAPER (action ID 1008)');
+        await this.makeRequest<string>('GET', '_/1008');
+
+        // Then send stop recording command (action ID 40667)
+        logger.debug('Sending stop recording command to REAPER (action ID 40667)');
+        await this.makeRequest<string>('GET', '_/40667');
+
+        // Get updated transport state from REAPER to ensure we're in sync
+        const transportState = await this.getTransportState();
+
+        // Update last playback state with the actual state from REAPER
+        this.lastPlaybackState = {
+          ...transportState,
+          isRecordingArmed: false // Ensure it's set to false
+        };
+      }
 
       // Emit playback state update with the new recording armed state
       this.emit('playbackState', this.lastPlaybackState);

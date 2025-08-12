@@ -479,13 +479,6 @@
     min-width: 0;
   }
 
-  .region-name {
-    font-weight: bold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   .region-duration {
     font-size: 0.8rem;
     color: #bbbbbb;

@@ -167,6 +167,19 @@
 <div class="transport-controls" class:hidden={$isLoading || !hasData}>
   <div class="playback-info">
     <div class="current-region">
+      <div class="toggle-item justify-start">
+        <label class="toggle-switch record-button" for="record-toggle">
+          <input
+            id="record-toggle"
+            type="checkbox"
+            checked={$recordingArmed}
+            on:change={handleToggleRecordingArmed}
+            disabled={$transportButtonsDisabled}
+          />
+          <span class="toggle-slider record-slider" class:active={$recordingArmed}></span>
+        </label>
+        <label class="toggle-label" for="record-toggle">Arm Recording</label>
+      </div>
       <span class="region-name">{displayRegion ? displayRegion.name : 'No region selected'}</span>
     </div>
 
@@ -249,6 +262,7 @@
     <div class="toggle-item">
       <label class="toggle-switch">
         <input
+          id="autoplay-toggle"
           type="checkbox"
           checked={$autoplayEnabled}
           on:change={handleToggleAutoplay}
@@ -256,12 +270,13 @@
         />
         <span class="toggle-slider"></span>
       </label>
-      <span class="toggle-label">Auto-resume playback</span>
+      <label class="toggle-label" for="autoplay-toggle">Auto-resume playback</label>
     </div>
 
     <div class="toggle-item">
       <label class="toggle-switch">
         <input
+          id="count-in-toggle"
           type="checkbox"
           checked={$countInEnabled}
           on:change={handleToggleCountIn}
@@ -269,20 +284,7 @@
         />
         <span class="toggle-slider"></span>
       </label>
-      <span class="toggle-label">Count-in when pressing marker</span>
-    </div>
-
-    <div class="toggle-item">
-      <label class="toggle-switch record-button">
-        <input
-          type="checkbox"
-          checked={$recordingArmed}
-          on:change={handleToggleRecordingArmed}
-          disabled={$transportButtonsDisabled}
-        />
-        <span class="toggle-slider record-slider" class:active={$recordingArmed}></span>
-      </label>
-      <span class="toggle-label">Arm Recording</span>
+      <label class="toggle-label" for="count-in-toggle">Count-in when pressing marker</label>
     </div>
   </div>
 
@@ -374,6 +376,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+  }
+
+  .region-name {
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    margin-top: 15px;
   }
 
   .info-display {
@@ -570,6 +581,10 @@
     justify-content: flex-end;
   }
 
+  .toggle-item.justify-start {
+    justify-content: flex-start;
+  }
+
   .toggle-switch {
     position: relative;
     display: inline-block;
@@ -629,6 +644,7 @@
   .toggle-label {
     font-size: 0.9rem;
     color: #ddd;
+    cursor: pointer;
   }
 
   /* Record button styling */
@@ -644,8 +660,9 @@
 
   /* Customize the record button appearance */
   .toggle-switch.record-button {
-    width: 30px;
-    height: 30px;
+    display: block;
+    width: 20px;
+    height: 20px;
   }
 
   .toggle-switch.record-button input:checked + .toggle-slider:before {

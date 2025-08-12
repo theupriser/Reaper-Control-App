@@ -691,8 +691,8 @@ export class MidiService extends EventEmitter {
         // But we set deviceName to undefined when deviceId is empty (All Available Devices)
         // Use type assertion to force null for channel property
         channel: (this.midiConfig.channel !== undefined ? this.midiConfig.channel : null) as null,
-        // Cast the noteMapping to the expected type using type assertion
-        noteMapping: noteMapping as { 44: string; 45: string; 46: string; 48: string; 49: string; 50: string; 51: string; }
+        // Cast the noteMapping to support the full MIDI note range (1-127)
+        noteMapping: noteMapping as any
       }
     });
 

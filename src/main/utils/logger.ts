@@ -2,6 +2,24 @@
  * Logger Utility
  * Provides logging functionality for the application
  */
+import { BrowserWindow } from 'electron';
+import { IPC_EVENTS } from '../ipc/ipcChannels';
+
+// Reference to the mainWindow for sending logs to the renderer
+let mainWindow: BrowserWindow | null = null;
+
+// Function to check if DevTools are open
+let areDevToolsOpen: () => boolean = () => false;
+
+/**
+ * Set the mainWindow reference and DevTools check function
+ * @param window - The main BrowserWindow
+ * @param devToolsCheckFn - Function to check if DevTools are open
+ */
+export function setLoggerContext(window: BrowserWindow, devToolsCheckFn: () => boolean): void {
+  mainWindow = window;
+  areDevToolsOpen = devToolsCheckFn;
+}
 
 // Log levels
 export enum LogLevel {
@@ -63,6 +81,7 @@ function log(level: LogLevel, message: string, data?: any): void {
 
   const formattedMessage = formatLogMessage(level, message, data);
 
+  // Output to console
   switch (level) {
     case LogLevel.DEBUG:
       console.debug(formattedMessage);
@@ -76,6 +95,18 @@ function log(level: LogLevel, message: string, data?: any): void {
     case LogLevel.ERROR:
       console.error(formattedMessage);
       break;
+  }
+
+  // Send to frontend only if DevTools are open
+  if (areDevToolsOpen() && mainWindow && !mainWindow.isDestroyed()) {
+    const logData = {
+      level: LogLevel[level],
+      message,
+      timestamp: new Date().toISOString(),
+      data
+    };
+
+    mainWindow.webContents.send(IPC_EVENTS.LOG_MESSAGE, logData);
   }
 
   // TODO: Implement file logging if needed

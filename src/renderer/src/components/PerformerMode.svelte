@@ -7,7 +7,9 @@
   import {
     playbackState,
     autoplayEnabled,
-    countInEnabled
+    countInEnabled,
+    recordingArmed,
+    toggleRecordingArmed
   } from '../stores/playbackStore';
   import {
     markers,
@@ -144,6 +146,15 @@
     </div>
     <div class="time-display-top">
       <div class="time-and-status">
+        <button
+          class="record-dot"
+          on:click={$transportButtonsDisabled ? null : toggleRecordingArmed}
+          aria-label="Toggle recording"
+          disabled={$transportButtonsDisabled}
+          class:recording-active={$recordingArmed}
+        >
+          <div class="dot"></div>
+        </button>
         {$currentTime.toLocaleTimeString()}
         <div class="performer-status">
           <SystemStats />
@@ -597,6 +608,36 @@
   .status-indicator.enabled {
     background-color: rgba(76, 175, 80, 0.2);
     color: #4CAF50;
+  }
+
+  /* Recording dot styles */
+  .record-dot {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-right: 8px;
+    width: auto;
+    height: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .record-dot:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: white;
+  }
+
+  .recording-active .dot {
+    background-color: red;
   }
 
   .status-indicator.disabled {

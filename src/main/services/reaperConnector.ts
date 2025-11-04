@@ -565,6 +565,22 @@ export class ReaperConnector extends EventEmitter {
   }
 
   /**
+   * Update the current region ID in the playback state and emit an update
+   * @param regionId - The new current region ID
+   */
+  public setCurrentRegionId(regionId: string): void {
+    // Normalize to string and update via factory to keep immutability conventions
+    this.lastPlaybackState = updatePlaybackState(this.lastPlaybackState, {
+      currentRegionId: String(regionId)
+    });
+
+    // Emit playback state update
+    this.emit('playbackState', this.lastPlaybackState);
+
+    logger.debug('Updated currentRegionId in playback state', { regionId: String(regionId) });
+  }
+
+  /**
    * Set the selected setlist ID in the playback state
    * @param setlistId - Setlist ID or null for all regions
    */
@@ -989,10 +1005,11 @@ export class ReaperConnector extends EventEmitter {
    * Seek to position in REAPER
    * @param position - Position to seek to
    * @param useCountIn - Whether to use count-in when seeking (positions cursor 2 bars before)
+   * @param disablePauseBeforeSeeking - Whether to disable pausing before seeking (used during automatic song changes)
    */
-  public async seekToPosition(position: number, useCountIn: boolean = false): Promise<void> {
+  public async seekToPosition(position: number, useCountIn: boolean = false, disablePauseBeforeSeeking: boolean = false): Promise<void> {
     try {
-      logger.debug('Seeking to position in REAPER', { position, useCountIn });
+      logger.debug('Seeking to position in REAPER', { position, useCountIn, disablePauseBeforeSeeking });
 
       // Store the current playback state before seeking
       const wasPlaying = this.lastPlaybackState.isPlaying;
@@ -1020,11 +1037,11 @@ export class ReaperConnector extends EventEmitter {
         }
       }
 
-      // If currently playing, pause first
-      if (wasPlaying) {
+      // If currently playing, pause first (unless disablePauseBeforeSeeking is true)
+      if (wasPlaying && !disablePauseBeforeSeeking) {
         logger.debug('Currently playing, pausing before seeking');
         await this.makeRequest<string>('GET', '_/1008'); // Pause (action ID 1008)
-        await new Promise(resolve => setTimeout(resolve, 150)); // Short delay
+        // await new Promise(resolve => setTimeout(resolve, 150)); // Short delay
       }
 
       // Send the seek command to REAPER
@@ -1033,8 +1050,16 @@ export class ReaperConnector extends EventEmitter {
       // If was playing before, resume playback
       if (wasPlaying) {
         logger.debug('Resuming playback after seeking');
-        await new Promise(resolve => setTimeout(resolve, 150)); // Short delay
-        await this.makeRequest<string>('GET', '_/1007'); // Play (action ID 1007)
+        // await new Promise(resolve => setTimeout(resolve, 150)); // Short delay
+
+        // Use different action ID based on disablePauseBeforeSeeking flag
+        if (disablePauseBeforeSeeking) {
+          logger.debug('Using action ID 40317 (Play from edit cursor, do not restart on stop) for automatic song change');
+          await this.makeRequest<string>('GET', '_/40317'); // Play from edit cursor, do not restart on stop (action ID 40317)
+        } else {
+          logger.debug('Using standard play action ID 1007');
+          await this.makeRequest<string>('GET', '_/1007'); // Standard play (action ID 1007)
+        }
       }
 
       // Get updated transport state
@@ -1052,10 +1077,11 @@ export class ReaperConnector extends EventEmitter {
         currentPosition: this.lastPlaybackState.position,
         wasPlaying,
         isPlayingNow: this.lastPlaybackState.isPlaying,
-        useCountIn
+        useCountIn,
+        disablePauseBeforeSeeking
       });
     } catch (error) {
-      logger.error('Failed to seek to position', { error, position, useCountIn });
+      logger.error('Failed to seek to position', { error, position, useCountIn, disablePauseBeforeSeeking });
       throw error;
     }
   }

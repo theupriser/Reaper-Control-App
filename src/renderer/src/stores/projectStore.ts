@@ -15,7 +15,7 @@ export const projectId: Writable<string | null> = writable(null);
  */
 export function updateProjectId(id: string): void {
   projectId.set(id);
-  logger.log('Project ID updated:', id);
+  // logger.log('Project ID updated:', id);
 }
 
 /**

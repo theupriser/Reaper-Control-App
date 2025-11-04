@@ -16,7 +16,7 @@ const defaultConfig = {
     reconnectInterval: 5000,
     maxReconnectAttempts: 10,
     connectionTimeout: 3000,
-    pollingInterval: 300,
+    pollingInterval: 15,
   },
   midi: {
     enabled: true,

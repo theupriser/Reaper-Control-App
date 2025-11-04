@@ -83,6 +83,9 @@ export const IPC_EVENTS = {
   // Status
   STATUS_MESSAGE: 'status-message',
 
+  // Logging
+  LOG_MESSAGE: 'log-message',
+
   // System
   SYSTEM_STATS: 'system-stats'
 };

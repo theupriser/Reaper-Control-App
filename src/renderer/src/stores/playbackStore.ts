@@ -7,6 +7,7 @@ import { writable, type Writable } from 'svelte/store';
 import logger from '../lib/utils/logger';
 import { createPlaybackState, updatePlaybackState as updatePlaybackStateFactory } from '../lib/utils/playbackStateFactory';
 
+
 /**
  * Interface for time signature
  */
@@ -270,16 +271,39 @@ export function toggleCountIn(): void {
  * @param setlistId - Setlist ID or null for all regions
  */
 export function setSelectedSetlist(setlistId: string | null): void {
-  // Update the local store
+  // Forcibly update the local store immediately
+  playbackState.update(state => {
+    // Create a new state object with the updated selectedSetlistId
+    return {
+      ...state,
+      selectedSetlistId: setlistId
+    };
+  });
+
+  // Also update via the partial update mechanism for consistency
   updatePartialPlaybackState({ selectedSetlistId: setlistId });
 
   // Log the change
   logger.log(`Setting selected setlist to: ${setlistId || 'null (all regions)'}`);
 
-  // Use IPC to send to main process
+  // Use IPC to send to main process with priority
   if (window.electronAPI) {
+    // Send the update to the main process
     window.electronAPI.setSelectedSetlist(setlistId);
     logger.log('Sent selected setlist to main process');
+
+    // Force another update after a small delay to ensure the UI is in sync
+    setTimeout(() => {
+      // Directly update the state again to ensure it's correct
+      playbackState.update(state => {
+        return {
+          ...state,
+          selectedSetlistId: setlistId
+        };
+      });
+
+      logger.debug('Forced additional update of selectedSetlistId to ensure UI consistency');
+    }, 50);
   } else {
     logger.warn('Electron API not available, selected setlist not sent to main process');
   }

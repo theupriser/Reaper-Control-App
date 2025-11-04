@@ -124,6 +124,9 @@ const api = {
     ipcRenderer.on('connection-change', (_, status: ConnectionStatus) => callback(status)),
   onSystemStats: (callback: (data: any) => void) =>
     ipcRenderer.on('system-stats', (_, data: any) => callback(data)),
+  // Log messages (only sent when DevTools are open)
+  onLogMessage: (callback: (logData: any) => void) =>
+    ipcRenderer.on('log-message', (_, logData: any) => callback(logData)),
   // Setlist event listeners
   onSetlistsUpdate: (callback: (data: any[]) => void) =>
     ipcRenderer.on('setlists-update', (_, data: any[]) => callback(data)),

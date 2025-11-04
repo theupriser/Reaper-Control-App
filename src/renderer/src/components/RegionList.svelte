@@ -51,21 +51,43 @@
    * Handle setlist selection change
    * @param event - The change event from the select element
    */
-  function handleSetlistChange(event: Event): void {
+  // Add a local loading state for the setlist selection
+  let isSetlistSelectionLoading = false;
+
+  /**
+   * Handle setlist selection change
+   * @param event - The change event from the select element
+   */
+  async function handleSetlistChange(event: Event): Promise<void> {
     const select = event.target as HTMLSelectElement;
     const setlistId = select.value || null;
 
     logger.log(`Setlist selection changed to: ${setlistId || 'All Regions'}`);
 
-    // Update the selected setlist
-    setSelectedSetlist(setlistId);
+    // Set loading state to disable the selector while changes are processing
+    isSetlistSelectionLoading = true;
+    setlistLoading.set(true);
 
-    // If a setlist is selected, fetch it to update the currentSetlist store
-    if (setlistId) {
-      fetchSetlist(setlistId);
-    } else {
-      // Clear current setlist to show all regions
-      storeCurrentSetlist.set(null);
+    try {
+      // Forcibly update the selected setlist
+      setSelectedSetlist(setlistId);
+
+      // If a setlist is selected, fetch it to update the currentSetlist store
+      if (setlistId) {
+        await fetchSetlist(setlistId);
+      } else {
+        // Clear current setlist to show all regions
+        storeCurrentSetlist.set(null);
+      }
+
+      // Wait a short time to ensure changes have propagated
+      await new Promise(resolve => setTimeout(resolve, 50));
+    } catch (error) {
+      logger.error('Error changing setlist', error);
+    } finally {
+      // Reset loading state
+      isSetlistSelectionLoading = false;
+      setlistLoading.set(false);
     }
   }
 
@@ -177,7 +199,7 @@
         id="setlist-select"
         value={$playbackState.selectedSetlistId || ''}
         on:change={handleSetlistChange}
-        disabled={$setlistLoading}
+        disabled={isSetlistSelectionLoading || $setlistLoading}
       >
         <option value="">All Regions</option>
         {#each $setlists as setlist (setlist.id)}

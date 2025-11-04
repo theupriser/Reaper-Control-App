@@ -11,11 +11,14 @@ import { MidiService } from './services/midiService'
 import { ProjectService } from './services/projectService'
 import { SystemStatsService } from './services/systemStatsService'
 import { IpcHandler } from './ipc/ipcHandler'
-import logger from './utils/logger'
+import logger, { setLoggerContext } from './utils/logger'
 
 
 // Global references
 let mainWindow: BrowserWindow | null = null
+
+// Track DevTools state
+let isDevToolsOpen = false
 
 // Service instances
 let reaperConnector: ReaperConnector | null = null
@@ -25,6 +28,14 @@ let midiService: MidiService | null = null
 let projectService: ProjectService | null = null
 let systemStatsService: SystemStatsService | null = null
 let ipcHandler: IpcHandler | null = null
+
+/**
+ * Function to check if DevTools are currently open
+ * @returns True if DevTools are open, false otherwise
+ */
+function areDevToolsOpen(): boolean {
+  return isDevToolsOpen;
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -45,6 +56,9 @@ function createWindow(): void {
     if (mainWindow) {
       mainWindow.show()
 
+      // Set up logger with mainWindow and DevTools state check
+      setLoggerContext(mainWindow, areDevToolsOpen);
+
       // Initialize services
       initializeServices()
 
@@ -59,6 +73,17 @@ function createWindow(): void {
       return { action: 'deny' }
     })
 
+    // Setup DevTools state tracking
+    mainWindow.webContents.on('devtools-opened', () => {
+      isDevToolsOpen = true;
+      logger.info('DevTools opened');
+    });
+
+    mainWindow.webContents.on('devtools-closed', () => {
+      isDevToolsOpen = false;
+      logger.info('DevTools closed');
+    });
+
     // HMR for renderer base on electron-vite cli.
     // Load the remote URL for development or the local html file for production.
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -70,6 +95,9 @@ function createWindow(): void {
     // Open DevTools in development mode
     if (is.dev) {
       mainWindow.webContents.openDevTools()
+      // DevTools will be opened, but the event might fire later,
+      // so we'll set the flag now
+      isDevToolsOpen = true;
     }
   }
 

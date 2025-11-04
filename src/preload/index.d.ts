@@ -113,6 +113,12 @@ interface ElectronReaperAPI {
   onSystemStats: (callback: (data: any) => void) => void;
   onSetlistsUpdate: (callback: (data: Setlist[]) => void) => void;
   onSetlistUpdate: (callback: (data: Setlist) => void) => void;
+  onLogMessage: (callback: (logData: {
+    level: string;
+    message: string;
+    timestamp: string;
+    data?: any;
+  }) => void) => void;
 
   // Remove event listeners
   removeAllListeners: (channel: string) => void;

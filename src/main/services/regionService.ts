@@ -16,6 +16,7 @@ export class RegionService extends EventEmitter {
   private projectService: any; // Will be set after initialization
   private endOfRegionPollingInterval: NodeJS.Timeout | null = null;
   private isTransitioning: boolean = false;
+  private lastTransitionTime: number = 0; // Track when the last transition occurred
 
   /**
    * Constructor
@@ -102,11 +103,18 @@ export class RegionService extends EventEmitter {
         return;
       }
 
-      // Check if we're within 0.6 seconds of the end of the region
-      // or if we've just passed the end (within 0.1 seconds past)
+      // Check if we're at the end of the region or very close to it
+      // Only transition when we're extremely close to or just past the region end
       const timeToEnd = currentRegion.end - currentPosition;
 
-      if ((timeToEnd > 0 && timeToEnd < 0.6) || (timeToEnd >= -0.1 && timeToEnd <= 0)) {
+      if (timeToEnd <= 0.15) {
+        // Prevent multiple transitions in quick succession
+        const now = Date.now();
+        if (now - this.lastTransitionTime < 1000) {
+          return;
+        }
+        this.lastTransitionTime = now;
+
         logger.debug('Approaching end of region, initiating transition');
         this.isTransitioning = true;
 
@@ -128,7 +136,7 @@ export class RegionService extends EventEmitter {
                 this.reaperConnector.resetBeatPositions(bpm);
 
                 logger.debug('Seeking to next region and playing');
-                await this.seekToRegionAndPlay(region, true, false);
+                await this.seekToRegionAndPlay(region, true, false, true); // Pass directTransition=true for smooth transition
               } else {
                 logger.debug('Next region not found');
               }
@@ -634,15 +642,30 @@ export class RegionService extends EventEmitter {
    * @param region - Region to seek to
    * @param autoplay - Whether to start playback after seeking (defaults to current autoplay setting)
    * @param countIn - Whether to use count-in before playback (defaults to current countIn setting)
+   * @param directTransition - Whether this is a direct transition between regions (used for smooth playback in playlist mode)
    * @returns Promise that resolves when the operation is complete
    */
-  public async seekToRegionAndPlay(region: Region, autoplay: boolean | null = null, countIn: boolean | null = null): Promise<boolean> {
+  public async seekToRegionAndPlay(region: Region, autoplay: boolean | null = null, countIn: boolean | null = null, directTransition: boolean = false): Promise<boolean> {
     try {
       logger.debug(`Seeking to region: ${region.name} (${region.start.toFixed(2)}s - ${region.end.toFixed(2)}s)`);
 
       // Get current playback state and settings
       const playbackState = this.reaperConnector.getLastPlaybackState();
       const isPlaying = playbackState.isPlaying;
+      const currentRegionId = playbackState.currentRegionId;
+
+      // Check if this region is already the next region in Reaper
+      // If it is, and this is a direct transition, we can skip seeking
+      let skipSeeking = false;
+      if (directTransition && currentRegionId) {
+        // Get the next region in Reaper's sequence
+        const nextReaperRegion = this.getNextRegion(currentRegionId);
+
+        if (nextReaperRegion && String(nextReaperRegion.id) === String(region.id)) {
+          logger.debug(`Target region is already the next region in Reaper sequence, skipping unnecessary seeking`);
+          skipSeeking = true;
+        }
+      }
 
       // If autoplay is null, use the current playback state's autoplayEnabled setting
       const isAutoplayEnabled = autoplay !== null ? autoplay : playbackState.autoplayEnabled !== undefined ? playbackState.autoplayEnabled : true;
@@ -662,45 +685,56 @@ export class RegionService extends EventEmitter {
       logger.debug(`Resetting BPM calculation for region: ${region.name}`);
       this.reaperConnector.resetBeatPositions(bpm);
 
-      // If currently playing, pause first
-      if (isPlaying) {
+      // If currently playing and not skipping seeking, pause first
+      if (isPlaying && !skipSeeking) {
         logger.debug('Currently playing, pausing first');
         await this.reaperConnector.togglePlay();
         await new Promise(resolve => setTimeout(resolve, 150));
       }
 
-      let positionToSeek: number;
+      // Only perform seeking if not skipping
+      if (!skipSeeking) {
+        let positionToSeek: number;
 
-      // If count-in is enabled, position the cursor 2 bars before the marker
-      if (isCountInEnabled) {
-        try {
-          logger.debug('Count-in enabled, calculating position 2 bars before region start');
+        // If count-in is enabled, position the cursor 2 bars before the marker
+        if (isCountInEnabled) {
+          try {
+            logger.debug('Count-in enabled, calculating position 2 bars before region start');
 
-          // Get the duration of 2 bars in seconds based on the current time signature
-          const countInDuration = await this.reaperConnector.calculateBarsToSeconds(2);
+            // Get the duration of 2 bars in seconds based on the current time signature
+            const countInDuration = await this.reaperConnector.calculateBarsToSeconds(2);
 
-          // Calculate position 2 bars before region start
-          // Ensure we don't go before the start of the project (negative time)
-          positionToSeek = Math.max(0, region.start - countInDuration);
-          logger.debug(`Positioning cursor 2 bars (${countInDuration.toFixed(2)}s) before region at ${positionToSeek.toFixed(2)}s`);
-        } catch (error) {
-          // Fallback to default calculation if there's an error
-          logger.error('Error calculating count-in position, using default', { error });
-          positionToSeek = Math.max(0, region.start - 4); // Default to 4 seconds (2 bars at 4/4 and 120 BPM)
-          logger.debug(`Using fallback: positioning cursor 2 bars (4s) before region at ${positionToSeek.toFixed(2)}s`);
+            // Calculate position 2 bars before region start
+            // Ensure we don't go before the start of the project (negative time)
+            positionToSeek = Math.max(0, region.start - countInDuration);
+            logger.debug(`Positioning cursor 2 bars (${countInDuration.toFixed(2)}s) before region at ${positionToSeek.toFixed(2)}s`);
+          } catch (error) {
+            // Fallback to default calculation if there's an error
+            logger.error('Error calculating count-in position, using default', { error });
+            positionToSeek = Math.max(0, region.start - 4); // Default to 4 seconds (2 bars at 4/4 and 120 BPM)
+            logger.debug(`Using fallback: positioning cursor 2 bars (4s) before region at ${positionToSeek.toFixed(2)}s`);
+          }
+        } else {
+          // Add a small offset to ensure position is clearly within the region
+          positionToSeek = region.start + 0.001;
+          logger.debug(`Count-in disabled, positioning cursor at region start: ${positionToSeek.toFixed(3)}s`);
         }
+
+        // Send the seek command
+        logger.debug(`Seeking to position: ${positionToSeek.toFixed(3)}s`);
+        // For automatic region changes (called from checkEndOfRegion), disable pause before seeking
+        // Use either directTransition parameter or isTransitioning flag to determine if this is an automatic change
+        logger.debug(`Is automatic region change: ${directTransition}`);
+        await this.reaperConnector.seekToPosition(positionToSeek, false, directTransition);
       } else {
-        // Add a small offset to ensure position is clearly within the region
-        positionToSeek = region.start + 0.001;
-        logger.debug(`Count-in disabled, positioning cursor at region start: ${positionToSeek.toFixed(3)}s`);
+        logger.debug('Skipped seeking as the region is already the next region in Reaper');
+
+        // Update the last playback state to reflect the new region using connector's API
+        this.reaperConnector.setCurrentRegionId(String(region.id));
       }
 
-      // Send the seek command
-      logger.debug(`Seeking to position: ${positionToSeek.toFixed(3)}s`);
-      await this.reaperConnector.seekToPosition(positionToSeek);
-
-      // Only resume playback if it was already playing AND autoplay is enabled
-      if (isPlaying && isAutoplayEnabled) {
+      // Only resume playback if it was already playing AND autoplay is enabled AND we paused for seeking
+      if (isPlaying && isAutoplayEnabled && !skipSeeking) {
         logger.debug('Was playing and autoplay enabled, resuming playback after short delay');
         await new Promise(resolve => setTimeout(resolve, 150));
 
@@ -712,6 +746,8 @@ export class RegionService extends EventEmitter {
           logger.debug('Resuming playback without count-in');
           await this.reaperConnector.togglePlay();
         }
+      } else if (skipSeeking) {
+        logger.debug('Continued playback without interruption');
       } else {
         logger.debug('Not resuming playback: either was not playing or autoplay disabled');
       }

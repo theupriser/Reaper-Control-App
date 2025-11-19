@@ -149,8 +149,12 @@ export class RegionService extends EventEmitter {
     this.isTransitioning = true;
 
     try {
-      if (this.projectService) {
-        const nextSetlistItem = this.projectService.getNextSetlistItem(playbackState.currentRegionId);
+      const ps = this.projectService;
+      if (ps) {
+        // Coalesce possibly undefined currentRegionId to an empty string –
+        // ProjectService treats empty value as "no current region" and returns the first item
+        const safeCurrentRegionId = playbackState.currentRegionId ?? '';
+        const nextSetlistItem = ps.getNextSetlistItem(safeCurrentRegionId);
         if (nextSetlistItem) {
           logger.debug(`Found next setlist item: ${nextSetlistItem.name || nextSetlistItem.regionId}`);
           const region = this.getRegionById(nextSetlistItem.regionId);
@@ -248,9 +252,10 @@ export class RegionService extends EventEmitter {
     });
 
     // Check if we have a project service and a selected setlist
-    if (this.projectService && this.projectService.getSelectedSetlistId()) {
-      const selectedSetlistId = this.projectService.getSelectedSetlistId();
-      const selectedSetlist = this.projectService.getSetlist(selectedSetlistId);
+    const ps = this.projectService;
+    const selectedSetlistId = ps?.getSelectedSetlistId();
+    if (ps && selectedSetlistId) {
+      const selectedSetlist = ps.getSetlist(selectedSetlistId);
 
       logger.debug('Selected setlist info', {
         selectedSetlistId,
@@ -261,7 +266,7 @@ export class RegionService extends EventEmitter {
       // If we have a valid setlist with items, filter the regions
       if (selectedSetlist && selectedSetlist.items.length > 0) {
         // Get all region IDs in the setlist
-        const setlistRegionIds = selectedSetlist.items.map(item => item.regionId);
+        const setlistRegionIds = selectedSetlist.items.map(item => String(item.regionId));
 
         logger.debug('Setlist region IDs', {
           setlistRegionIds,
@@ -269,14 +274,18 @@ export class RegionService extends EventEmitter {
         });
 
         // First check for direct string matches
-        const filteredRegions = this.regions.filter(region =>
-          setlistRegionIds.includes(parseInt(region.id))
-        ).sort((a, b) => {
-            const setlistItemA = selectedSetlist.items.find((item: { regionId: string }) => item.regionId == a.id)
-            const setlistItemB = selectedSetlist.items.find((item: { regionId: string }) => item.regionId == b.id)
+        const filteredRegions = this.regions
+          .filter(region => setlistRegionIds.includes(String(region.id)))
+          .sort((a, b) => {
+            const setlistItemA = selectedSetlist.items.find((item: { regionId: string }) => String(item.regionId) === String(a.id));
+            const setlistItemB = selectedSetlist.items.find((item: { regionId: string }) => String(item.regionId) === String(b.id));
 
+            // If items are missing, fall back to sorting by start time to keep deterministic order
+            if (!setlistItemA && !setlistItemB) return a.start - b.start;
+            if (!setlistItemA) return 1;
+            if (!setlistItemB) return -1;
             return setlistItemA.position - setlistItemB.position;
-        });
+          });
 
         logger.debug('Filtering results', {
           filteredCount: filteredRegions.length,
@@ -326,9 +335,10 @@ export class RegionService extends EventEmitter {
     }
 
     // If still no region found and we have a project service with a selected setlist
-    if (this.projectService && this.projectService.getSelectedSetlistId()) {
-      const selectedSetlistId = this.projectService.getSelectedSetlistId();
-      const selectedSetlist = this.projectService.getSetlist(selectedSetlistId);
+    const ps = this.projectService;
+    const selectedSetlistId = ps?.getSelectedSetlistId();
+    if (ps && selectedSetlistId) {
+      const selectedSetlist = ps.getSetlist(selectedSetlistId);
 
       if (selectedSetlist && selectedSetlist.items.length > 0) {
         // Find the setlist item with this region ID
@@ -428,11 +438,12 @@ export class RegionService extends EventEmitter {
     // Get the current playback state to get the current region ID
     const playbackState = this.reaperConnector.getLastPlaybackState();
     const currentRegionId = playbackState.currentRegionId;
-    const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
+    const ps = this.projectService;
+    const inSetlist = !!(ps && ps.getSelectedSetlistId());
 
     // If in a setlist, check if there's a next item
-    if (inSetlist) {
-      const nextItem = this.projectService.getNextSetlistItem(currentRegionId);
+    if (inSetlist && ps) {
+      const nextItem = ps.getNextSetlistItem(currentRegionId ?? '');
       return !!nextItem;
     }
 
@@ -454,11 +465,12 @@ export class RegionService extends EventEmitter {
     // Get the current playback state to get the current region ID
     const playbackState = this.reaperConnector.getLastPlaybackState();
     const currentRegionId = playbackState.currentRegionId;
-    const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
+    const ps = this.projectService;
+    const inSetlist = !!(ps && ps.getSelectedSetlistId());
 
     // If in a setlist, check if there's a previous item
-    if (inSetlist) {
-      const prevItem = this.projectService.getPreviousSetlistItem(currentRegionId);
+    if (inSetlist && ps) {
+      const prevItem = ps.getPreviousSetlistItem(currentRegionId ?? '');
       return !!prevItem;
     }
 
@@ -529,12 +541,13 @@ export class RegionService extends EventEmitter {
       // Get the current playback state to get the current region ID
       const playbackState = this.reaperConnector.getLastPlaybackState();
       const currentRegionId = playbackState.currentRegionId;
-      const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
+      const ps = this.projectService;
+      const inSetlist = !!(ps && ps.getSelectedSetlistId());
 
       // Check if a setlist is selected and the project service is available
-      if (inSetlist) {
+      if (inSetlist && ps) {
         // Get the next item in the setlist
-        const nextItem = this.projectService.getNextSetlistItem(currentRegionId);
+        const nextItem = ps.getNextSetlistItem(currentRegionId ?? '');
 
         if (nextItem) {
           // Get the region
@@ -592,12 +605,13 @@ export class RegionService extends EventEmitter {
       // Get the current playback state to get the current region ID
       const playbackState = this.reaperConnector.getLastPlaybackState();
       const currentRegionId = playbackState.currentRegionId;
-      const inSetlist = this.projectService && this.projectService.getSelectedSetlistId();
+      const ps = this.projectService;
+      const inSetlist = !!(ps && ps.getSelectedSetlistId());
 
       // Check if a setlist is selected and the project service is available
-      if (inSetlist) {
+      if (inSetlist && ps) {
         // Get the previous item in the setlist
-        const prevItem = this.projectService.getPreviousSetlistItem(currentRegionId);
+        const prevItem = ps.getPreviousSetlistItem(currentRegionId ?? '');
 
         if (prevItem) {
           // Get the region

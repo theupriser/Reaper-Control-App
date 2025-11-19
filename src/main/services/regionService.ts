@@ -3,20 +3,24 @@
  * Manages regions in REAPER
  */
 import { EventEmitter } from 'events';
-import { Region } from '../types';
+import { performance } from 'node:perf_hooks';
+import { Region, PlaybackState } from '../types';
+import { ProjectService } from './projectService';
 import { ReaperConnector } from './reaperConnector';
 import { MarkerService } from './markerService';
 import { getBpmForRegion } from '../utils/bpmUtils';
 import logger from '../utils/logger';
+import config from '../utils/config';
 
 export class RegionService extends EventEmitter {
   private regions: Region[] = [];
   private reaperConnector: ReaperConnector;
   private markerService: MarkerService;
-  private projectService: any; // Will be set after initialization
+  private projectService: ProjectService | null = null; // Will be set after initialization
   private endOfRegionPollingInterval: NodeJS.Timeout | null = null;
   private isTransitioning: boolean = false;
   private lastTransitionTime: number = 0; // Track when the last transition occurred
+  // Removed precise scheduling; we trigger based on polling guard window only
 
   /**
    * Constructor
@@ -86,7 +90,7 @@ export class RegionService extends EventEmitter {
    * Check if we're at or approaching the end of the current region
    * @param playbackState - Current playback state
    */
-  private async checkEndOfRegion(playbackState: any): Promise<void> {
+  private async checkEndOfRegion(playbackState: PlaybackState): Promise<void> {
     try {
       if (!playbackState.currentRegionId) {
         return;
@@ -103,53 +107,29 @@ export class RegionService extends EventEmitter {
         return;
       }
 
-      // Check if we're at the end of the region or very close to it
-      // Only transition when we're extremely close to or just past the region end
-      const timeToEnd = currentRegion.end - currentPosition;
+      // If transport stopped/paused or setlist not selected → do nothing
+      if (!playbackState.isPlaying || !this.projectService || !this.projectService.getSelectedSetlistId()) {
+        return;
+      }
 
-      if (timeToEnd <= 0.15) {
-        // Prevent multiple transitions in quick succession
-        const now = Date.now();
-        if (now - this.lastTransitionTime < 1000) {
-          return;
-        }
-        this.lastTransitionTime = now;
+      // Check how close we are to the end of the region
+      const timeToEnd = currentRegion.end - currentPosition; // seconds
 
-        logger.debug('Approaching end of region, initiating transition');
-        this.isTransitioning = true;
+      // Dynamic guard time based on measured Web API RTT to REAPER
+      // Use p95 RTT + small execution overhead + user-configurable offset to decide when to trigger next transition
+      const latencyStats = this.reaperConnector.getLatencyStats?.()
+        ?? { avg: 0, p95: 0, std: 0, last: 0, samples: 0 };
+      const execOverheadMs = 12; // measured/tunable safety margin for command processing
+      const offsetMs = Math.trunc(config.getConfig().reaper?.transitionOffsetMs ?? 0);
+      const baseMs = (latencyStats.p95 || latencyStats.avg || 50) + execOverheadMs + offsetMs;
+      const guardMs = Math.max(20, Math.min(600, baseMs));
+      // Note: we use polling-only triggering; no pre-scheduling timer
+      const msToEnd = Math.max(0, timeToEnd * 1000);
 
-        try {
-          if (this.projectService) {
-            const nextSetlistItem = this.projectService.getNextSetlistItem(playbackState.currentRegionId);
-            if (nextSetlistItem) {
-              logger.debug(`Found next setlist item: ${nextSetlistItem.name || nextSetlistItem.regionId}`);
-              const region = this.getRegionById(nextSetlistItem.regionId);
-              if (region) {
-                logger.debug(`Found next region: ${region.name}`);
-
-                // Check if the region has a !bpm marker
-                const markers = this.markerService.getMarkers();
-                const bpm = getBpmForRegion(region, markers);
-
-                // Reset BPM when automatically transitioning to the next song
-                logger.debug('Resetting BPM calculation for next region');
-                this.reaperConnector.resetBeatPositions(bpm);
-
-                logger.debug('Seeking to next region and playing');
-                await this.seekToRegionAndPlay(region, true, false, true); // Pass directTransition=true for smooth transition
-              } else {
-                logger.debug('Next region not found');
-              }
-            } else {
-              logger.debug('No next setlist item found, pausing playback');
-              // Pause Reaper at the end of the playlist
-              await this.reaperConnector.pause();
-            }
-          }
-        } finally {
-          this.isTransitioning = false;
-          logger.debug('Transition completed');
-        }
+      // If we're already within the guard window, trigger immediately (subject to debounce)
+      if (msToEnd <= guardMs) {
+        await this.triggerTransitionIfAllowed(playbackState);
+        return;
       }
     } catch (error) {
       this.isTransitioning = false;
@@ -157,11 +137,56 @@ export class RegionService extends EventEmitter {
     }
   }
 
+  private async triggerTransitionIfAllowed(playbackState: PlaybackState): Promise<void> {
+    // Prevent multiple transitions in quick succession
+    const now = performance.now();
+    if (now - this.lastTransitionTime < 1000) {
+      return;
+    }
+    this.lastTransitionTime = now;
+
+    logger.debug('Approaching end of region, initiating transition');
+    this.isTransitioning = true;
+
+    try {
+      if (this.projectService) {
+        const nextSetlistItem = this.projectService.getNextSetlistItem(playbackState.currentRegionId);
+        if (nextSetlistItem) {
+          logger.debug(`Found next setlist item: ${nextSetlistItem.name || nextSetlistItem.regionId}`);
+          const region = this.getRegionById(nextSetlistItem.regionId);
+          if (region) {
+            logger.debug(`Found next region: ${region.name}`);
+
+            // Check if the region has a !bpm marker
+            const markers = this.markerService.getMarkers();
+            const bpm = getBpmForRegion(region, markers);
+
+            // Reset BPM when automatically transitioning to the next song
+            logger.debug('Resetting BPM calculation for next region');
+            this.reaperConnector.resetBeatPositions(bpm);
+
+            logger.debug('Seeking to next region and playing');
+            await this.seekToRegionAndPlay(region, true, false, true); // directTransition=true for smooth transition
+          } else {
+            logger.debug('Next region not found');
+          }
+        } else {
+          logger.debug('No next setlist item found, pausing playback');
+          // Pause Reaper at the end of the playlist
+          await this.reaperConnector.pause();
+        }
+      }
+    } finally {
+      this.isTransitioning = false;
+      logger.debug('Transition completed');
+    }
+  }
+
   /**
    * Set the project service
    * @param projectService - Project service instance
    */
-  public setProjectService(projectService: any): void {
+  public setProjectService(projectService: ProjectService): void {
     this.projectService = projectService;
 
     // Set up listener for setlist selection changes

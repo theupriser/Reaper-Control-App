@@ -2,6 +2,8 @@ import { BrowserWindow } from 'electron';
 import si from 'systeminformation';
 import process from 'process';
 import logger from '../utils/logger';
+import { ReaperConnector } from './reaperConnector';
+import { LatencyStats } from '../types';
 
 /**
  * Service for monitoring system statistics including CPU and memory usage
@@ -11,15 +13,33 @@ export class SystemStatsService {
   private interval: NodeJS.Timeout | null = null;
   private mainWindow: BrowserWindow | null = null;
   private updateIntervalMs: number = 2000;
+  private reaperConnector: ReaperConnector | null = null;
+  private lastLatencyMs: number | undefined;
 
   /**
    * Create a new SystemStatsService
    * @param mainWindow - The main Electron browser window
    * @param updateIntervalMs - Optional interval in milliseconds for updates (default: 2000ms)
    */
-  constructor(mainWindow: BrowserWindow, updateIntervalMs: number = 2000) {
+  constructor(mainWindow: BrowserWindow, updateIntervalMs: number = 2000, reaperConnector?: ReaperConnector) {
     this.mainWindow = mainWindow;
     this.updateIntervalMs = updateIntervalMs;
+    this.reaperConnector = reaperConnector ?? null;
+
+    // If a connector is provided, subscribe to latency updates
+    if (this.reaperConnector) {
+      try {
+        this.reaperConnector.on('latencyUpdate', (stats: LatencyStats) => {
+          // Prefer p95 if available, else avg, else last
+          const p95 = stats?.p95;
+          const avg = stats?.avg;
+          const last = stats?.last;
+          this.lastLatencyMs = typeof p95 === 'number' ? p95 : (typeof avg === 'number' ? avg : (typeof last === 'number' ? last : undefined));
+        });
+      } catch (e) {
+        logger.warn('Failed to subscribe to reaperConnector latencyUpdate', { error: e });
+      }
+    }
     logger.info('SystemStatsService initialized');
   }
 
@@ -57,6 +77,10 @@ export class SystemStatsService {
             free: memInfo.total - nodeMemory.rss,
             usedPercent: Math.round((nodeMemory.rss / memInfo.total) * 100),
             rss: nodeMemory.rss // Resident Set Size - total memory allocated for the process
+          },
+          network: {
+            connected: this.reaperConnector ? this.reaperConnector.isConnected() : false,
+            latency: this.lastLatencyMs
           },
           lastUpdated: Date.now()
         };

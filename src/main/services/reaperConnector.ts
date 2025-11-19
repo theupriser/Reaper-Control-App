@@ -3,10 +3,11 @@
  * Handles communication with REAPER through its web interface
  */
 import { EventEmitter } from 'events';
+import { performance } from 'node:perf_hooks';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import config from '../utils/config';
 import logger from '../utils/logger';
-import { ConnectionStatus, Region, Marker, PlaybackState } from '../types';
+import { ConnectionStatus, Region, Marker, PlaybackState, LatencyStats } from '../types';
 import { bpmCalculator, getBpmForRegion } from '../utils/bpmUtils';
 import { createPlaybackState, updatePlaybackState } from '../utils/playbackStateFactory';
 
@@ -16,8 +17,19 @@ export class ReaperConnector extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts: number = 0;
   private pollingTimer: NodeJS.Timeout | null = null;
+  private pollingInFlight: boolean = false; // prevent overlapping polls
   private projectId: string = '';
   private lastPlaybackState: PlaybackState = createPlaybackState();
+
+  // Network latency tracking (EWMA + ring buffer for p95)
+  private netRttAvg = 0;           // ms
+  private netRttVar = 0;           // variance estimate
+  private netRttAlpha = 0.2;       // smoothing factor
+  private rttSamples: number[] = [];
+  private rttIdx = 0;
+  private rttWindow = 64;
+  private rttSampleCount = 0;
+  private lastRtt = 0;
 
   constructor() {
     super();
@@ -26,6 +38,54 @@ export class ReaperConnector extends EventEmitter {
     this.axiosInstance = axios.create();
 
     logger.info('REAPER connector initialized');
+  }
+
+  /**
+   * Get current latency statistics for REAPER Web API requests
+   */
+  public getLatencyStats(): LatencyStats {
+    const samples = Math.max(this.rttSampleCount, this.rttSamples.length);
+    // Compute approximate p95 from ring buffer if we have enough samples, else fall back to avg/last
+    let p95 = this.netRttAvg || this.lastRtt || 0;
+    if (this.rttSamples.length > 0) {
+      const sorted = [...this.rttSamples].sort((a, b) => a - b);
+      p95 = sorted[Math.floor(0.95 * (sorted.length - 1))] ?? sorted[sorted.length - 1];
+    }
+
+    return {
+      avg: this.netRttAvg || this.lastRtt || 0,
+      p95,
+      std: Math.sqrt(Math.max(0, this.netRttVar)),
+      last: this.lastRtt,
+      samples
+    };
+  }
+
+  /**
+   * Record an observed HTTP round-trip time in milliseconds
+   */
+  private recordRtt(ms: number): void {
+    this.lastRtt = ms;
+    this.rttSampleCount++;
+    if (this.netRttAvg === 0) {
+      this.netRttAvg = ms;
+    } else {
+      this.netRttAvg = this.netRttAvg + this.netRttAlpha * (ms - this.netRttAvg);
+    }
+    const diff = ms - this.netRttAvg;
+    this.netRttVar = (1 - this.netRttAlpha) * (this.netRttVar + this.netRttAlpha * diff * diff);
+
+    if (this.rttSamples.length < this.rttWindow) {
+      this.rttSamples.push(ms);
+    } else {
+      this.rttSamples[this.rttIdx] = ms;
+      this.rttIdx = (this.rttIdx + 1) % this.rttWindow;
+    }
+
+    // Emit periodic updates (only when buffer filled or every 8 samples)
+    if (this.rttSamples.length === this.rttWindow || (this.rttSampleCount % 8) === 0) {
+      this.emit('latencyUpdate', this.getLatencyStats());
+    }
   }
 
   /**
@@ -253,7 +313,14 @@ export class ReaperConnector extends EventEmitter {
         return;
       }
 
+      // Skip this tick if previous poll has not finished
+      if (this.pollingInFlight) {
+        logger.debug('Skipping poll tick: previous poll still in flight');
+        return;
+      }
+
       try {
+        this.pollingInFlight = true;
         // Get transport state
         const transportState = await this.getTransportState();
 
@@ -338,6 +405,8 @@ export class ReaperConnector extends EventEmitter {
 
         // Handle connection error
         this.handleConnectionError(error);
+      } finally {
+        this.pollingInFlight = false;
       }
     }, reaperConfig.pollingInterval);
   }
@@ -423,7 +492,9 @@ export class ReaperConnector extends EventEmitter {
 
         logger.debug(`Making request to REAPER API: ${method} ${endpoint}${attempts > 0 ? ` (retry ${attempts}/${retryCount})` : ''}`);
 
+        const t0 = performance.now();
         const response = await this.axiosInstance.request<T>(config);
+        this.recordRtt(performance.now() - t0);
         logger.debug(`Received response from REAPER API: ${method} ${endpoint}`, {
           status: response.status,
           statusText: response.statusText
@@ -431,6 +502,8 @@ export class ReaperConnector extends EventEmitter {
 
         return response.data;
       } catch (error: any) {
+        // Attempt to record observed RTT if possible
+        // Using timeout path we cannot measure; ignore
         attempts++;
 
         if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {

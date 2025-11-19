@@ -11,9 +11,13 @@
 
   // Local reference to make binding easier
   let portValue;
+  let pollingIntervalValue;
+  let transitionOffsetValue;
   // Initialize portValue when state changes
   $: if (state?.reaperConfig) {
     portValue = state.reaperConfig.port;
+    pollingIntervalValue = state.reaperConfig.pollingInterval;
+    transitionOffsetValue = state.reaperConfig.transitionOffsetMs ?? 200;
   }
 
   // Reactive declarations for settings state
@@ -60,7 +64,11 @@
 
   // Handle Reaper config form submission
   function handleReaperConfigSubmit() {
-    settingsService.saveReaperConfig({ port: portValue });
+    settingsService.saveReaperConfig({
+      port: portValue,
+      pollingInterval: pollingIntervalValue,
+      transitionOffsetMs: transitionOffsetValue
+    });
   }
 
   // Handle MIDI settings form submission
@@ -150,6 +158,48 @@
                 bind:value={portValue}
                 min="1"
                 max="65535"
+                disabled={saving}
+              />
+            </div>
+          </div>
+
+          <div class="component-form-group">
+            <div class="component-form-group-content">
+              <label class="component-label" for="polling-interval">Polling Interval (ms)</label>
+              <p class="component-description">
+                How frequently the app polls REAPER for transport and project updates. Lower values are more responsive but use more CPU. Recommended range: 50–1000 ms. Default is 150 ms.
+              </p>
+            </div>
+            <div class="component-form-group-input">
+              <input
+                class="component-input"
+                type="number"
+                id="polling-interval"
+                bind:value={pollingIntervalValue}
+                min="20"
+                max="10000"
+                step="10"
+                disabled={saving}
+              />
+            </div>
+          </div>
+
+          <div class="component-form-group">
+            <div class="component-form-group-content">
+              <label class="component-label" for="transition-offset">Transition Offset (ms)</label>
+              <p class="component-description">
+                Extra lead time to trigger the next-song transition before the end of the current region. This is added to the measured API latency. Use this to compensate for REAPER's internal seek/playhead latency. Range: -200 to 600 ms. Default is 200 ms.
+              </p>
+            </div>
+            <div class="component-form-group-input">
+              <input
+                class="component-input"
+                type="number"
+                id="transition-offset"
+                bind:value={transitionOffsetValue}
+                min="-200"
+                max="600"
+                step="5"
                 disabled={saving}
               />
             </div>

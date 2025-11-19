@@ -78,6 +78,7 @@ interface ReaperConfig {
   maxReconnectAttempts: number;
   connectionTimeout: number;
   pollingInterval: number;
+  transitionOffsetMs?: number;
 }
 
 interface IpcControl {
@@ -491,7 +492,8 @@ function createIpcControl(): IpcControl {
           reconnectInterval: 5000,
           maxReconnectAttempts: 10,
           connectionTimeout: 3000,
-          pollingInterval: 1000
+          pollingInterval: 1000,
+          transitionOffsetMs: 200
         }),
 
     updateReaperConfig: (config: Partial<ReaperConfig>) =>

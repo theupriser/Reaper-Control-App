@@ -16,6 +16,7 @@ export interface ReaperConfig {
   maxReconnectAttempts: number;
   connectionTimeout: number;
   pollingInterval: number;
+  transitionOffsetMs?: number;
 }
 
 export interface MidiNoteMapping {
@@ -59,7 +60,8 @@ const defaultState: SettingsState = {
     reconnectInterval: 5000,
     maxReconnectAttempts: 10,
     connectionTimeout: 3000,
-    pollingInterval: 1000
+    pollingInterval: 150,
+    transitionOffsetMs: 200
   },
   midiConfig: {
     enabled: true,
@@ -147,7 +149,9 @@ export const settingsService = {
     }));
 
     try {
-      // Only handle port updates for now (can be expanded for other properties)
+      // Validate and normalize inputs
+      let normalized: Partial<ReaperConfig> = {};
+
       if (config.port !== undefined) {
         // Validate port number
         const port = Number(config.port);
@@ -159,30 +163,66 @@ export const settingsService = {
           }));
           return false;
         }
+        normalized.port = port;
+      }
 
-        // Save port to backend
-        const success = await ipcService.updateReaperConfig({ port });
+      if (config.pollingInterval !== undefined) {
+        const pollingInterval = Number(config.pollingInterval);
+        if (isNaN(pollingInterval) || pollingInterval < 20 || pollingInterval > 10000) {
+          settingsStore.update(state => ({
+            ...state,
+            saving: false,
+            error: 'Polling interval must be between 20 and 10000 ms'
+          }));
+          return false;
+        }
+        normalized.pollingInterval = pollingInterval;
+      }
 
+      if (config.transitionOffsetMs !== undefined) {
+        const offset = Number(config.transitionOffsetMs);
+        if (isNaN(offset) || offset < -200 || offset > 600) {
+          settingsStore.update(state => ({
+            ...state,
+            saving: false,
+            error: 'Transition offset must be between -200 and 600 ms'
+          }));
+          return false;
+        }
+        normalized.transitionOffsetMs = Math.round(offset);
+      }
+
+      if (Object.keys(normalized).length > 0) {
+        const success = await ipcService.updateReaperConfig(normalized);
         if (success) {
-          // Update store with new port value
-          const isPortUnchanged = port === currentState.originalPort;
+          // Compose success message
+          const messages: string[] = [];
+          if (normalized.port !== undefined) {
+            const isPortUnchanged = normalized.port === currentState.originalPort;
+            messages.push(isPortUnchanged ? 'Port saved' : `Port updated to ${normalized.port}. Reconnecting...`);
+          }
+          if (normalized.pollingInterval !== undefined) {
+            messages.push(`Polling interval set to ${normalized.pollingInterval} ms`);
+          }
+          if (normalized.transitionOffsetMs !== undefined) {
+            messages.push(`Transition offset set to ${normalized.transitionOffsetMs} ms`);
+          }
+
           settingsStore.update(state => ({
             ...state,
             reaperConfig: {
               ...state.reaperConfig,
-              port
+              ...normalized
             },
-            originalPort: port,
+            originalPort: normalized.port ?? state.originalPort,
             saving: false,
-            successMessage: isPortUnchanged ?
-              'Configuration saved successfully.' :
-              `Reaper port updated to ${port}. Reconnecting...`
+            successMessage: messages.join('. ') + '.'
           }));
 
           // Reload config from backend after a delay to ensure sync
           setTimeout(() => {
             this.loadReaperConfig(true);
-          }, 1000);
+          }, 800);
 
           // Auto-clear success message
           setTimeout(() => {
@@ -193,14 +233,14 @@ export const settingsService = {
           }, SUCCESS_MESSAGE_TIMEOUT);
 
           return true;
-        } else {
-          settingsStore.update(state => ({
-            ...state,
-            saving: false,
-            error: 'Failed to update Reaper port.'
-          }));
-          return false;
         }
+
+        settingsStore.update(state => ({
+          ...state,
+          saving: false,
+          error: 'Failed to update Reaper configuration.'
+        }));
+        return false;
       }
 
       // If no port in config, just return success

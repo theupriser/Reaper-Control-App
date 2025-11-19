@@ -17,6 +17,10 @@
       free: 0,
       usedPercent: 0
     },
+    network: {
+      connected: false,
+      latency: undefined as number | undefined
+    },
     lastUpdated: 0
   };
 
@@ -181,6 +185,14 @@
                 <span class="stat-label">Latency:</span>
                 <span class="stat-value {getUsageClass($connectionStatus.pingLatency < 100 ? 0 : $connectionStatus.pingLatency < 300 ? 50 : 90)}">
                   {$connectionStatus.pingLatency}ms
+                </span>
+              </div>
+            {/if}
+            {#if stats.network && stats.network.latency !== undefined}
+              <div class="stat-item">
+                <span class="stat-label">API RTT p95:</span>
+                <span class="stat-value {getUsageClass((stats.network.latency || 0) < 100 ? 0 : (stats.network.latency || 0) < 300 ? 50 : 90)}">
+                  {Math.round(stats.network.latency)}ms
                 </span>
               </div>
             {/if}

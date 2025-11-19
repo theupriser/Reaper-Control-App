@@ -154,7 +154,7 @@ function startSystemStatsMonitoring(): void {
 
   // Create and start the system stats service if it doesn't exist
   if (!systemStatsService) {
-    systemStatsService = new SystemStatsService(mainWindow)
+    systemStatsService = new SystemStatsService(mainWindow, 2000, reaperConnector || undefined)
   }
 
   // Start the monitoring service

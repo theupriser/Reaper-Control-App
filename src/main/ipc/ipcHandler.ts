@@ -796,11 +796,17 @@ export class IpcHandler {
       }
 
       // Reconnect to Reaper with new settings if port was changed
-      if (configUpdate.port !== undefined && configUpdate.port !== currentConfig.reaper.port) {
+      const portChanged = configUpdate.port !== undefined && configUpdate.port !== currentConfig.reaper.port;
+      const pollingChanged = configUpdate.pollingInterval !== undefined && configUpdate.pollingInterval !== currentConfig.reaper.pollingInterval;
+
+      if (portChanged || pollingChanged) {
         logger.info('Reaper port changed, reconnecting...', {
           oldPort: currentConfig.reaper.port,
           newPort: configUpdate.port,
-          portType: typeof configUpdate.port
+          portType: typeof configUpdate.port,
+          pollingChanged,
+          newPollingInterval: configUpdate.pollingInterval,
+          oldPollingInterval: currentConfig.reaper.pollingInterval
         });
 
         try {
@@ -812,13 +818,13 @@ export class IpcHandler {
             try {
                 this.reaperConnector.connect();
             } catch (connectError) {
-              logger.error('Error reconnecting to Reaper after port change', { error: connectError });
-              this.sendStatusMessage(this.createErrorMessage('Failed to reconnect to Reaper after port change',
+              logger.error('Error reconnecting to Reaper after config change', { error: connectError });
+              this.sendStatusMessage(this.createErrorMessage('Failed to reconnect to Reaper after configuration change',
                 String(connectError)));
             }
           }, 500);
         } catch (disconnectError) {
-          logger.error('Error disconnecting from Reaper during port change', { error: disconnectError });
+          logger.error('Error disconnecting from Reaper during configuration change', { error: disconnectError });
           // Continue anyway as we want to save the config
         }
       }

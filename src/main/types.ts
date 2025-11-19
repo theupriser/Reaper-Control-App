@@ -13,6 +13,17 @@ export interface ConnectionStatus {
 }
 
 /**
+ * Network/request latency statistics gathered from REAPER Web API calls
+ */
+export interface LatencyStats {
+  avg: number;        // EWMA average in ms
+  p95: number;        // 95th percentile in ms (approx over a small window)
+  std: number;        // standard deviation estimate in ms
+  last: number;       // last observed RTT in ms
+  samples: number;    // total number of recorded samples
+}
+
+/**
  * Region
  */
 export interface Region {
